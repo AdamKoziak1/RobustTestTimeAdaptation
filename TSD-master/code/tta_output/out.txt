@@ -1,0 +1,228 @@
+Environment:
+	Python: 3.10.12
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/unsupervise_adapt.py", line 316, in <module>
+    logits = adapt_model(image)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 348, in forward
+    z = self.featurizer(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/network/img_network.py", line 61, in forward
+    x = self.layer3(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/container.py", line 139, in forward
+    input = module(input)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/resnet.py", line 155, in forward
+    out = self.bn3(out)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/batchnorm.py", line 168, in forward
+    return F.batch_norm(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/functional.py", line 2438, in batch_norm
+    return torch.batch_norm(
+RuntimeError: CUDA out of memory. Tried to allocate 98.00 MiB (GPU 0; 10.75 GiB total capacity; 9.69 GiB already allocated; 45.69 MiB free; 9.75 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+Environment:
+	Python: 3.10.12
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/unsupervise_adapt.py", line 316, in <module>
+    logits = adapt_model(image)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 348, in forward
+    z = self.featurizer(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/network/img_network.py", line 61, in forward
+    x = self.layer3(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/container.py", line 139, in forward
+    input = module(input)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/resnet.py", line 155, in forward
+    out = self.bn3(out)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/batchnorm.py", line 168, in forward
+    return F.batch_norm(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/functional.py", line 2438, in batch_norm
+    return torch.batch_norm(
+RuntimeError: CUDA out of memory. Tried to allocate 98.00 MiB (GPU 0; 10.75 GiB total capacity; 9.69 GiB already allocated; 45.69 MiB free; 9.75 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+Environment:
+	Python: 3.10.12
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/unsupervise_adapt.py", line 316, in <module>
+    logits = adapt_model(image)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 571, in forward
+    outputs = self.forward_and_adapt(x, self.model, self.optimizer)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 577, in forward_and_adapt
+    logits = model.predict(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/alg/algs/ERM.py", line 38, in predict
+    return self.network(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/container.py", line 139, in forward
+    input = module(input)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/network/img_network.py", line 61, in forward
+    x = self.layer3(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/container.py", line 139, in forward
+    input = module(input)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/resnet.py", line 155, in forward
+    out = self.bn3(out)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/batchnorm.py", line 168, in forward
+    return F.batch_norm(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/functional.py", line 2438, in batch_norm
+    return torch.batch_norm(
+RuntimeError: CUDA out of memory. Tried to allocate 98.00 MiB (GPU 0; 10.75 GiB total capacity; 9.69 GiB already allocated; 45.69 MiB free; 9.75 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+Environment:
+	Python: 3.10.12
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/unsupervise_adapt.py", line 316, in <module>
+    logits = adapt_model(image)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 571, in forward
+    outputs = self.forward_and_adapt(x, self.model, self.optimizer)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 594, in forward_and_adapt
+    logits_adv = model.predict(x + epsilon)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/alg/algs/ERM.py", line 38, in predict
+    return self.network(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/container.py", line 139, in forward
+    input = module(input)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/network/img_network.py", line 61, in forward
+    x = self.layer3(x)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/container.py", line 139, in forward
+    input = module(input)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/resnet.py", line 155, in forward
+    out = self.bn3(out)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/modules/batchnorm.py", line 168, in forward
+    return F.batch_norm(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torch/nn/functional.py", line 2438, in batch_norm
+    return torch.batch_norm(
+RuntimeError: CUDA out of memory. Tried to allocate 50.00 MiB (GPU 0; 10.75 GiB total capacity; 9.65 GiB already allocated; 25.69 MiB free; 9.76 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+Environment:
+	Python: 3.10.12
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+[[254   2   3  13  55  10  42]
+ [132  53   0   8  42   3  17]
+ [121  18  61  32  34   7  12]
+ [ 76   4   2  50  40   8   4]
+ [144   3   2   2  43   0   7]
+ [ 45   1   0   1 173  56  19]
+ [298  23   4  18  66   6  34]]
+Accuracy of per class:
+[67.02 20.78 21.4  27.17 21.39 18.98  7.57]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet50
+	 Test domain: 0
+	 Algorithm: TTA3
+	 Accuracy: 26.904297
+	 Cost time: 85.096878 s
+Environment:
+	Python: 3.10.12
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/venv/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet50_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet50_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+[[139  33 131   7   4  53  12]
+ [ 38  47  92  12   0  66   0]
+ [ 52  19 153   3   3  48   7]
+ [ 50   8  65  15   0  43   3]
+ [ 47  25  82   4  15  22   6]
+ [ 32  12  90  10   2 147   2]
+ [112  24 169  13   5  55  71]]
+Accuracy of per class:
+[36.68 18.43 53.68  8.15  7.46 49.83 15.81]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet50
+	 Test domain: 0
+	 Algorithm: TSD
+	 Accuracy: 28.662109
+	 Cost time: 41.761230 s

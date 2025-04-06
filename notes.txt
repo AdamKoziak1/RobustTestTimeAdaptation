@@ -1,0 +1,28 @@
+adapt_algorithm.py now contains TTA3 class
+unsupervise_adapt.py now has some extra options pertaining to it
+
+    note: insufficient VRAM for VIT (at default batch size at least)
+    by default it trains with train-time domain adaptation methods 
+python train.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --opt_type Adam --lr 5e-5 --max_epoch=50 
+
+    note: default batch size of 128 crashes it. not sure what the limit is.
+python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TSD --lr 1e-4 --pretrain_dir train_output/model_last.pkl --batch_size 4
+python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TTA3 --lr 1e-4 --pretrain_dir train_output/model_last.pkl --batch_size 4
+
+
+
+
+resnet18 first, then resnet50
+
+1. for each domain, train a model on it, produce adverserially attacked version for that model
+
+choose an attack rate at test-adapt time
+predefine indicator vector for different attack rates and store them
+
+
+train on test domain with no noise as upper bound performance benchmark
+
+
+adv noise train on all domains or specific ones?
+
+train on all but one?
