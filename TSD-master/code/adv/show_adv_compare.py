@@ -1,71 +1,100 @@
 # coding=utf‑8
 """
-Show clean vs. adversarial image, run model, print top‑5 probabilities.
-Example:
+Visualise a clean image, its adversarial counterpart and the perturbation.
+Print ‖δ‖₂ and ‖δ‖_∞  in pixel space + Top‑5 probabilities.
+
+Example
+-------
 python adv/show_adv_compare.py \
        --clean ../../datasets_adv/PACS_resnet18_linf8/art_painting_clean/42.pt \
        --adv   ../../datasets_adv/PACS_resnet18_linf8/art_painting_adv/42.pt   \
-       --model ../../datasets_adv/PACS_resnet18_linf8/art_painting_model.pt
+       --model ../../datasets_adv/PACS_resnet18_linf8/art_painting_model.pt    \
+       --dataset PACS
 """
-import torch, argparse, matplotlib.pyplot as plt, torch.nn.functional as F
+import argparse, os
+import torch, torch.nn.functional as F
+import matplotlib.pyplot as plt
 from torchvision import models, transforms
 from torchvision.datasets import ImageFolder
-from PIL import Image
-import numpy as np, json, os, sys
+import numpy as np
 
-norm = transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+# ---------- helpers ----------------------------------------------------------
+INV_NORM = transforms.Normalize(mean=[-m/s for m,s in zip([0.485,0.456,0.406],
+                                                          [0.229,0.224,0.225])],
+                                std =[1/s for s in [0.229,0.224,0.225]])
+
+def unnorm(t):                      # C×H×W → H×W×C in [0,1]
+    return INV_NORM(t).mul_(1).clamp_(0,1).permute(1,2,0).cpu().numpy()
+def img_form(t):                      # C×H×W → H×W×C in [0,1]
+    return t.mul_(1).clamp_(0,1).permute(1,2,0).cpu().numpy()
 
 def load_net(ckpt, arch="resnet18"):
     net = (models.resnet18 if arch=="resnet18" else models.resnet50)(weights=None)
-    ck = torch.load(ckpt, map_location="cpu")
-    n_cls = ck["fc.weight"].shape[0] if isinstance(ck,dict) else None
-    if n_cls: net.fc = torch.nn.Linear(net.fc.in_features, n_cls)
-    net.load_state_dict(ck if isinstance(ck,dict) else torch.load(ck))
+    sd  = torch.load(ckpt, map_location="cpu")
+    if isinstance(sd,dict) and "fc.weight" in sd:
+        net.fc = torch.nn.Linear(net.fc.in_features, sd["fc.weight"].shape[0])
+    net.load_state_dict(sd)
     net.eval(); return net
 
-def show_pair(clean_t, adv_t):
-    inv = transforms.Normalize(mean=[-m/s for m,s in zip([0.485,0.456,0.406],[0.229,0.224,0.225])],
-                               std=[1/s for s in [0.229,0.224,0.225]])
-    c_img, a_img = inv(clean_t).permute(1,2,0).numpy(), inv(adv_t).permute(1,2,0).numpy()
-    f,ax = plt.subplots(1,2,figsize=(6,3)); ax[0].imshow(c_img); ax[0].set_title("clean"); ax[0].axis("off")
-    ax[1].imshow(a_img); ax[1].set_title("adversarial"); ax[1].axis("off"); plt.tight_layout(); plt.show()
-
-def top5(logits, classes):
-    probs = F.softmax(logits,1)[0]; vals,idx = probs.topk(5)
+def top5(probs, labels):
+    vals, idx = probs.topk(5)
     for v,i in zip(vals.tolist(), idx.tolist()):
-        label = classes[i] if isinstance(classes, dict) else classes[i]
-        print(f"{str(label):25s}: {v*100:.2f}%")
+        print(f"{labels[i]:25s}: {v*100:6.2f} %")
 
+# ---------- main -------------------------------------------------------------
 if __name__ == "__main__":
-    pa = argparse.ArgumentParser(); 
-    pa.add_argument("--clean")
-    pa.add_argument("--adv")
-    pa.add_argument("--model")
-    pa.add_argument("--dataset")
+    pa = argparse.ArgumentParser()
+    pa.add_argument("--clean", required=True)
+    pa.add_argument("--adv",   required=True)
+    pa.add_argument("--model", required=True)
+    pa.add_argument("--dataset", required=True)
     args = pa.parse_args()
 
+    # tensors are stored *after* normalisation
+    x_clean = torch.load(args.clean)          # shape C×H×W, float32
+    x_adv   = torch.load(args.adv)
 
-    root_domain = os.path.dirname(args.clean)          # …/art_painting_clean
-    root_dataset = os.path.dirname(root_domain)                         # …/PACS_resnet18_linf8
-    domain_name  = os.path.basename(root_domain).replace("_clean","")   # art_painting
-    img_root     = os.path.join("..", "..", "datasets", args.dataset, domain_name)  # adjust if needed
-    print(root_domain)
-    print(root_dataset)
-    print(domain_name)
-    print(img_root)
-    class_to_idx = ImageFolder(img_root).class_to_idx
-    idx_to_class = {v:k for k,v in class_to_idx.items()}
-    clean = torch.load(args.clean); adv = torch.load(args.adv)
-    show_pair(clean, adv)
+    # ---- visual -------------------------------------------------------------
+    # img_c   = unnorm(x_clean)
+    # img_a   = unnorm(x_adv)    
+    img_c   = img_form(x_clean)
+    img_a   = img_form(x_adv)
+    delta   = np.abs(img_a - img_c)           # for display
 
-    ckpt_dir = os.path.dirname(args.model)
-    #meta = json.load(open(os.path.join(ckpt_dir, os.path.basename(ckpt_dir).split('_')[-3]+"_meta.json"))) # hacky
 
-    net = load_net(args.model)
-    logits_clean = net(clean.unsqueeze(0))
-    logits_adv   = net(adv.unsqueeze(0))
+
+    # ---- norms in pixel space ----------------------------------------------
+    delta_flat = (img_a - img_c).reshape(-1)
+    l2  = np.linalg.norm(delta_flat, ord=2)
+    linf = np.linalg.norm(delta_flat, ord=np.inf)
+    print(f"\n‖δ‖₂  = {l2:.4f}   ‖δ‖_∞ = {linf:.4f}  ( pixel scale 0–1 )")
+
+    # ---- Top‑5 predictions --------------------------------------------------
+    # build label map from the original dataset structure
+    domain_dir = os.path.basename(os.path.dirname(args.clean)).replace("_clean","")
+    root_imgs  = os.path.join("..","..","datasets", args.dataset, domain_dir)
+    idx_to_class = {v:k for k,v in ImageFolder(root_imgs).class_to_idx.items()}
+
+    net = load_net(args.model, "resnet18").eval()
+    with torch.no_grad():
+        prob_c = F.softmax(net(x_clean.unsqueeze(0)),1)[0]
+        prob_a = F.softmax(net(x_adv  .unsqueeze(0)),1)[0]
 
     print("\nTop‑5 clean:")
-    top5(logits_clean, idx_to_class)
+    top5(prob_c, idx_to_class)
     print("\nTop‑5 adversarial:")
-    top5(logits_adv, idx_to_class)
+    top5(prob_a, idx_to_class)
+    
+    fig, ax = plt.subplots(1,3, figsize=(9,3))
+    ax[0].imshow(img_c)
+    ax[0].set_title("clean")
+    ax[0].axis("off")
+    ax[1].imshow(img_a)
+    ax[1].set_title("adversarial")
+    ax[1].axis("off")
+    im = ax[2].imshow(delta.max(-1), cmap="inferno");    # heat‑map
+    ax[2].set_title("‖δ‖ per‑pixel")
+    ax[2].axis("off")
+    fig.colorbar(im, ax=ax[2], fraction=0.046, pad=0.04)
+    plt.tight_layout()
+    plt.show()

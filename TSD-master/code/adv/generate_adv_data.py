@@ -25,51 +25,72 @@ def get_model(name, n_cls, load_weights=False):
     m.fc = nn.Linear(m.fc.in_features, n_cls)
     return m
 
-# -------- PGD (no in‑place ops) --------------------------------------------
-def pgd(model, x, y, eps, alpha, steps, norm="linf"):
-    x_adv = x.clone().detach()
-
+def pgd(model, x, y, eps, alpha, steps, n_classes, norm="linf"):
+    # mean = torch.tensor([0.485, 0.456, 0.406],
+    #                 device=x.device).view(1,3,1,1)
+    # std  = torch.tensor([0.229, 0.224, 0.225],
+    #                 device=x.device).view(1,3,1,1)
+    y_onehot = nn.functional.one_hot(y, num_classes=n_classes).float()
+    #x_pixel = x.clone().detach()* std + mean  
+    #x_adv = x_pixel.clone().detach() 
+    x_adv = x.clone().detach() 
+    #x_adv_pixel = x_pixel.clone().detach() 
+    delta = torch.zeros_like(x, requires_grad=True)
+    
+    softmax = nn.Softmax(dim=1)
+    #print()
     for _ in range(steps):
     #while True:
         x_adv = x_adv.clone().detach().requires_grad_(True)
-        logits = model(x_adv)
-        preds  = logits.argmax(1)
-        success = preds.ne(y)  
+        #x_adv_pixel = x_adv_pixel.clone().detach().requires_grad_(True)
+
+        #lab = nn.functional.one_hot(lab, num_classes=n_classes).float()
+        preds = softmax(model(x_adv))
+        pred  = preds.argmax(1)
+        success = pred.ne(y)  
         #print(logits.shape, preds.shape, y.shape)
+        #sorted, indices = torch.sort(logits)
+        #print(y[0].item(), round(logits[0][y].item(), 2), preds.item(), round(logits[0][preds].item(), 2), indices)
         if success.all():
             break
-        loss = nn.CrossEntropyLoss()(logits, y)
+        loss = nn.CrossEntropyLoss()(preds, y_onehot)
         grad = torch.autograd.grad(loss, x_adv)[0]
 
         with torch.no_grad():
             if norm == "linf":
-                x_adv = x_adv + alpha * grad.sign()
-                delta = torch.clamp(x_adv - x, min=-eps, max=eps)
+                delta = delta + alpha * grad.sign()
+                delta = torch.clamp(delta, min=-eps, max=eps)
             else:  # l2
                 grad_norm = grad.view(grad.size(0),-1).norm(2,1).view(-1,1,1,1)
-                x_adv = x_adv + alpha * grad/grad_norm
-                delta = x_adv - x
+                delta = delta + alpha * grad/grad_norm
                 delta = delta.renorm(2,0,eps)
+            # x_adv_pixel = (x_adv_pixel + delta).clamp(0,1)
+            # x_adv = (x_adv_pixel - mean) / std
             x_adv = (x + delta).clamp(0,1)
+        #print("x_pixel (", round(x_pixel.min().item(), 4), round(x_pixel.max().item(), 4), ") adv_pixel(", round(x_adv_pixel.min().item(), 4), round(x_adv_pixel.max().item(), 4), ") delta(", round(delta.min().item(), 4), round(delta.max().item(), 4), ")")
+        #print("x (", round(x.min().item(), 4), round(x.max().item(), 4), ") adv(", round(x_adv.min().item(), 4), round(x_adv.max().item(), 4), ") delta(", round(delta.min().item(), 4), round(delta.max().item(), 4), ")")
     return x_adv.detach()
 # ---------------------------------------------------------------------------
 
 def main(cfg):
     seed_everything(cfg.seed)
 
-    norm = transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-    tf_train = transforms.Compose([transforms.Resize(224), transforms.RandomHorizontalFlip(), transforms.ToTensor(), norm])
-    tf_test  = transforms.Compose([transforms.Resize(224), transforms.ToTensor(), norm])
+    #norm = transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+    # tf_train = transforms.Compose([transforms.Resize(224), transforms.RandomHorizontalFlip(), transforms.ToTensor(), norm])
+    # tf_test  = transforms.Compose([transforms.Resize(224), transforms.ToTensor(), norm])
+
+    tf_train = transforms.Compose([transforms.Resize(224), transforms.RandomHorizontalFlip(), transforms.ToTensor()])
+    tf_test  = transforms.Compose([transforms.Resize(224), transforms.ToTensor()])
 
     from utils.util import img_param_init
     doms = img_param_init(argparse.Namespace(dataset=cfg.dataset)).img_dataset[cfg.dataset]
 
-    root_out = os.path.join(cfg.output_dir, f"{cfg.dataset}_{cfg.net}_{cfg.attack}{cfg.eps}")
+    root_out = os.path.join(cfg.output_dir, f"{cfg.dataset}_{cfg.net}_{cfg.attack}_{cfg.eps}")
     os.makedirs(root_out, exist_ok=True)
 
     for dom in doms:
         print(f"\n=== Domain {dom} ===")
-        dom_path = os.path.join(cfg.data_dir, dom)
+        dom_path = os.path.join(cfg.data_dir, cfg.dataset, dom)
 
         # ---------- training -------------------------------------------------
         train_set = ImageFolder(dom_path, transform=tf_train)
@@ -78,25 +99,31 @@ def main(cfg):
 
         test_set = ImageFolder(dom_path, transform=tf_test)
         test_loader = DataLoader(test_set, batch_size=cfg.bs, shuffle=False, num_workers=cfg.workers)
-
-        model = get_model(cfg.net, len(train_set.classes), load_weights=True).to(cfg.dev)
+        #test_loader = DataLoader(test_set, batch_size=1, shuffle=False, num_workers=cfg.workers)
+        n_classes = len(train_set.classes)
+        model = get_model(cfg.net, n_classes, load_weights=True).to(cfg.dev)
         opt   = optim.SGD(model.parameters(), 0.01, 0.9, weight_decay=5e-4)
-
+        softmax = nn.Softmax(dim=1)
         for epoch in range(cfg.ep):
             model.train()
             running = 0
             for img, lab in tqdm(train_loader, leave=False, desc=f"train‑{epoch}"):
                 img, lab = img.to(cfg.dev), lab.to(cfg.dev)
                 opt.zero_grad()
+                pred = softmax(model(img))
+                lab = nn.functional.one_hot(lab, num_classes=n_classes).float()
+                #print(lab[0], pred[0])
+                #print(lab.shape, pred.shape)
+
                 loss = nn.CrossEntropyLoss()(model(img), lab)
                 loss.backward()
                 opt.step()
                 running += loss.item()*img.size(0)
-            # simple accuracy on *train* (fast) – change loader if you prefer val
+            
             model.eval()
             correct = 0
             with torch.no_grad():
-                for img, lab in test_loader:
+                for img, lab in train_loader: # change to val?
                     img, lab = img.to(cfg.dev), lab.to(cfg.dev)
                     pred = model(img).argmax(1)
                     correct += (pred==lab).float().sum().item()
@@ -125,7 +152,7 @@ def main(cfg):
             sel = mask[ptr:ptr+bsz]          # NumPy bools for this batch
             if sel.any():
                 img_adv = pgd(model, img[sel], lab[sel],
-                            cfg.eps/255., cfg.alpha/255., cfg.steps, cfg.attack)
+                            cfg.eps/255., cfg.alpha/255., cfg.steps, n_classes, cfg.attack)
 
             adv_cursor = 0                   # points into img_adv
             for k in range(bsz):
@@ -147,13 +174,13 @@ def main(cfg):
 if __name__ == "__main__":
     pa = argparse.ArgumentParser()
     pa.add_argument("--dataset", default="PACS")      
-    pa.add_argument("--data_dir", default="../../datasets/PACS")
+    pa.add_argument("--data_dir", default="../../datasets")
     pa.add_argument("--output_dir", default="../../datasets_adv")
     pa.add_argument("--net", default="resnet18")       
-    pa.add_argument("--ep", type=int, default=5)
+    pa.add_argument("--ep", type=int, default=3)
     pa.add_argument("--bs", type=int, default=64)      
     pa.add_argument("--workers", type=int, default=4)
-    pa.add_argument("--attack", choices=["linf","l2"], default="l2")
+    pa.add_argument("--attack", choices=["linf","l2"], default="linf")
     pa.add_argument("--eps", type=float, default=8)    
     pa.add_argument("--alpha", type=float, default=2)
     pa.add_argument("--steps", type=int, default=20)   
