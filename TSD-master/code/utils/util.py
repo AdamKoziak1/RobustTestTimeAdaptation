@@ -153,3 +153,7 @@ def sum_param(model):
     """
     total = sum([param.nelement() for param in model.parameters()])
     return total
+
+
+def get_config_id(cfg):
+    return f"{cfg.net}_{cfg.attack}_eps-{cfg.eps}_steps-{cfg.steps}"

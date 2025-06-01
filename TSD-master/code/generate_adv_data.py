@@ -3,13 +3,15 @@
 Train per‑domain model, create ℓp‑bounded PGD images,
 save *one tensor per image*  (clean & adv)  and print accuracy each epoch.
 """
-import argparse, os, random, json, time, math
+import argparse, os, random, time, math
 import numpy as np
 from tqdm import tqdm
 import torch, torch.nn as nn, torch.optim as optim
 from torchvision import transforms, models
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
+from utils.util import img_param_init, get_config_id
+
 # ----------------------------------------------------------
 
 def seed_everything(seed):
@@ -26,31 +28,16 @@ def get_model(name, n_cls, load_weights=False):
     return m
 
 def pgd(model, x, y, eps, alpha, steps, n_classes, norm="linf"):
-    # mean = torch.tensor([0.485, 0.456, 0.406],
-    #                 device=x.device).view(1,3,1,1)
-    # std  = torch.tensor([0.229, 0.224, 0.225],
-    #                 device=x.device).view(1,3,1,1)
     y_onehot = nn.functional.one_hot(y, num_classes=n_classes).float()
-    #x_pixel = x.clone().detach()* std + mean  
-    #x_adv = x_pixel.clone().detach() 
     x_adv = x.clone().detach() 
-    #x_adv_pixel = x_pixel.clone().detach() 
     delta = torch.zeros_like(x, requires_grad=True)
     
     softmax = nn.Softmax(dim=1)
-    #print()
     for _ in range(steps):
-    #while True:
         x_adv = x_adv.clone().detach().requires_grad_(True)
-        #x_adv_pixel = x_adv_pixel.clone().detach().requires_grad_(True)
-
-        #lab = nn.functional.one_hot(lab, num_classes=n_classes).float()
         preds = softmax(model(x_adv))
         pred  = preds.argmax(1)
         success = pred.ne(y)  
-        #print(logits.shape, preds.shape, y.shape)
-        #sorted, indices = torch.sort(logits)
-        #print(y[0].item(), round(logits[0][y].item(), 2), preds.item(), round(logits[0][preds].item(), 2), indices)
         if success.all():
             break
         loss = nn.CrossEntropyLoss()(preds, y_onehot)
@@ -64,29 +51,29 @@ def pgd(model, x, y, eps, alpha, steps, n_classes, norm="linf"):
                 grad_norm = grad.view(grad.size(0),-1).norm(2,1).view(-1,1,1,1)
                 delta = delta + alpha * grad/grad_norm
                 delta = delta.renorm(2,0,eps)
-            # x_adv_pixel = (x_adv_pixel + delta).clamp(0,1)
-            # x_adv = (x_adv_pixel - mean) / std
             x_adv = (x + delta).clamp(0,1)
-        #print("x_pixel (", round(x_pixel.min().item(), 4), round(x_pixel.max().item(), 4), ") adv_pixel(", round(x_adv_pixel.min().item(), 4), round(x_adv_pixel.max().item(), 4), ") delta(", round(delta.min().item(), 4), round(delta.max().item(), 4), ")")
-        #print("x (", round(x.min().item(), 4), round(x.max().item(), 4), ") adv(", round(x_adv.min().item(), 4), round(x_adv.max().item(), 4), ") delta(", round(delta.min().item(), 4), round(delta.max().item(), 4), ")")
     return x_adv.detach()
 # ---------------------------------------------------------------------------
 
 def main(cfg):
     seed_everything(cfg.seed)
 
-    #norm = transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-    # tf_train = transforms.Compose([transforms.Resize(224), transforms.RandomHorizontalFlip(), transforms.ToTensor(), norm])
-    # tf_test  = transforms.Compose([transforms.Resize(224), transforms.ToTensor(), norm])
-
     tf_train = transforms.Compose([transforms.Resize(224), transforms.RandomHorizontalFlip(), transforms.ToTensor()])
     tf_test  = transforms.Compose([transforms.Resize(224), transforms.ToTensor()])
 
-    from utils.util import img_param_init
     doms = img_param_init(argparse.Namespace(dataset=cfg.dataset)).img_dataset[cfg.dataset]
 
-    root_out = os.path.join(cfg.output_dir, f"{cfg.dataset}_{cfg.net}_{cfg.attack}_{cfg.eps}")
-    os.makedirs(root_out, exist_ok=True)
+    dataset_dir = os.path.join(cfg.output_dir, cfg.dataset)
+    os.makedirs(dataset_dir, exist_ok=True)
+    
+    clean_dir = os.path.join(dataset_dir, "clean")
+    os.makedirs(dataset_dir, exist_ok=True)
+
+    configuration_id = get_config_id(cfg)
+
+    attack_config_dir = os.path.join(dataset_dir, configuration_id)
+    os.makedirs(attack_config_dir, exist_ok=True)
+
 
     for dom in doms:
         print(f"\n=== Domain {dom} ===")
@@ -112,8 +99,6 @@ def main(cfg):
                 opt.zero_grad()
                 pred = softmax(model(img))
                 lab = nn.functional.one_hot(lab, num_classes=n_classes).float()
-                #print(lab[0], pred[0])
-                #print(lab.shape, pred.shape)
 
                 loss = nn.CrossEntropyLoss()(model(img), lab)
                 loss.backward()
@@ -130,18 +115,14 @@ def main(cfg):
             acc = correct/len(train_set)*100
             print(f"  epoch {epoch}:  loss {running/len(train_set):.4f} | acc {acc:.2f}%")
 
-        torch.save(model.state_dict(), os.path.join(root_out, f"{dom}_model.pt"))
+        domain_clean_dir = os.path.join(clean_dir, dom)
+        os.makedirs(domain_clean_dir, exist_ok=True)
 
-        # ---------- generate & save one‑by‑one --------------------------------
+        torch.save(model.state_dict(), os.path.join(clean_dir, dom, f"model.pt"))
 
+        attack_config_dom_dir = os.path.join(attack_config_dir, dom)
+        os.makedirs(attack_config_dom_dir, exist_ok=True)
 
-        N = len(test_set)
-        mask = np.zeros(N, bool)
-        mask[np.random.choice(N, int(np.ceil(N*cfg.rate)), replace=False)] = True
-        np.save(os.path.join(root_out, f"{dom}_mask.npy"), mask)
-
-        d_adv   = os.path.join(root_out, dom+"_adv");   os.makedirs(d_adv,   exist_ok=True)
-        d_clean = os.path.join(root_out, dom+"_clean"); os.makedirs(d_clean, exist_ok=True)
 
         model.eval();   
         ptr = 0
@@ -149,26 +130,16 @@ def main(cfg):
             img, lab = img.to(cfg.dev), lab.to(cfg.dev)
             bsz = img.size(0)
 
-            sel = mask[ptr:ptr+bsz]          # NumPy bools for this batch
-            if sel.any():
-                img_adv = pgd(model, img[sel], lab[sel],
-                            cfg.eps/255., cfg.alpha/255., cfg.steps, n_classes, cfg.attack)
+            img_adv = pgd(model, img, lab, cfg.eps/255., cfg.alpha/255., cfg.steps, n_classes, cfg.attack)
 
             adv_cursor = 0                   # points into img_adv
             for k in range(bsz):
                 gidx = ptr + k               # global index in dataset
-                torch.save(img[k].cpu(), os.path.join(d_clean, f"{gidx}.pt"))
-                if sel[k]:
-                    torch.save(img_adv[adv_cursor].cpu(),
-                            os.path.join(d_adv,   f"{gidx}.pt"))
-                    adv_cursor += 1
+                torch.save(img[k].cpu(), os.path.join(domain_clean_dir, f"{gidx}.pt"))
+                torch.save(img_adv[adv_cursor].cpu(), os.path.join(attack_config_dom_dir, f"{gidx}.pt"))
+                adv_cursor += 1
 
             ptr += bsz
-
-        json.dump(dict(eps=cfg.eps, alpha=cfg.alpha, steps=cfg.steps,
-                       rate=cfg.rate, attack=cfg.attack, domain=dom,
-                       time=time.asctime()),
-                  open(os.path.join(root_out,f"{dom}_meta.json"),"w"))
 
 # ---------------- CLI --------------------------------------------------------
 if __name__ == "__main__":
@@ -183,8 +154,7 @@ if __name__ == "__main__":
     pa.add_argument("--attack", choices=["linf","l2"], default="linf")
     pa.add_argument("--eps", type=float, default=8)    
     pa.add_argument("--alpha", type=float, default=2)
-    pa.add_argument("--steps", type=int, default=20)   
-    pa.add_argument("--rate", type=float, default=1)
+    pa.add_argument("--steps", type=int, default=20)  
     pa.add_argument("--seed", type=int, default=0)     
     pa.add_argument("--gpu", default="0")
     #load_weights

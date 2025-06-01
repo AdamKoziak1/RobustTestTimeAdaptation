@@ -6,9 +6,9 @@ Print ‖δ‖₂ and ‖δ‖_∞  in pixel space + Top‑5 probabilities.
 Example
 -------
 python adv/show_adv_compare.py \
-       --clean ../../datasets_adv/PACS_resnet18_linf8/art_painting_clean/42.pt \
-       --adv   ../../datasets_adv/PACS_resnet18_linf8/art_painting_adv/42.pt   \
-       --model ../../datasets_adv/PACS_resnet18_linf8/art_painting_model.pt    \
+       --clean ../../datasets_adv/PACS/clean/art_painting/42.pt \
+       --adv   ../../datasets_adv/PACS/resnet18_linf_eps-8_steps-20/art_painting/42.pt   \
+       --model ../../datasets_adv/PACS/clean/art_painting/model.pt    \
        --dataset PACS
 """
 import argparse, os
