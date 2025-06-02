@@ -18,14 +18,7 @@ from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD
-
-## Replace the ImageFolder call in adapt_loader with:
-# from adv.attack_dataset import AttackAwareDataset
-# testset = AttackAwareDataset(
-#     root=data_root,
-#     transform=test_transform,
-#     adv_root="/absolute/path/to/adv_data/PACS_resnet18_linf8",
-#     domain=args.img_dataset[args.dataset][test_envs])
+from adv.attack_dataset import AttackAwareDataset
 
 
 
