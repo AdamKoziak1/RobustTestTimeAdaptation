@@ -282,3 +282,139 @@ train_acc:0.9999,valid_acc:0.9797,target_acc:0.8213
 total cost time: 2719.3372
 valid acc: 0.9797
 DG result: 0.8213
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+Traceback (most recent call last):
+  File "train.py", line 101, in <module>
+    train_loaders, eval_loaders = get_img_dataloader(args)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/datautil/getdataloader.py", line 19, in get_img_dataloader
+    tedatalist.append(ImageDataset(args.dataset, args.task, args.data_dir,
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/datautil/imgdata/imgdataload.py", line 14, in __init__
+    self.imgs = ImageFolder(os.path.join(root_dir,domain_name)).imgs
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 310, in __init__
+    super().__init__(
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 145, in __init__
+    classes, class_to_idx = self.find_classes(self.root)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 219, in find_classes
+    return find_classes(directory)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 41, in find_classes
+    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
+FileNotFoundError: [Errno 2] No such file or directory: '../data/PACS/art_painting'
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+=======hyper-parameter used========
+==========================================
+algorithm:ERM
+alpha:1
+anneal_iters:500
+batch_size:32
+beta1:0.9
+checkpoint_freq:3
+classifier:linear
+data_file:
+dataset:PACS
+data_dir:/home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS
+dis_hidden:256
+gpu_id:1
+groupdro_eta:1
+inner_lr:0.01
+lam:1
+lr:0.01
+lr_decay:0.75
+lr_decay1:1.0
+lr_decay2:1.0
+lr_gamma:0.0003
+max_epoch:120
+mixupalpha:0.2
+mldg_beta:1
+mmd_gamma:1
+momentum:0.9
+net:resnet18
+N_WORKERS:4
+rsc_f_drop_factor:0.3333333333333333
+rsc_b_drop_factor:0.3333333333333333
+save_model_every_checkpoint:False
+schuse:False
+schusech:cos
+seed:0
+split_style:strat
+task:img_dg
+tau:1
+test_envs:[0]
+opt_type:SGD
+output:train_output
+weight_decay:0.0005
+steps_per_epoch:100
+domains:['art_painting', 'cartoon', 'photo', 'sketch']
+img_dataset:{'office': ['amazon', 'dslr', 'webcam'], 'office-caltech': ['amazon', 'dslr', 'webcam', 'caltech'], 'office-home': ['Art', 'Clipart', 'Product', 'RealWorld'], 'PACS': ['art_painting', 'cartoon', 'photo', 'sketch'], 'dg5': ['mnist', 'mnist_m', 'svhn', 'syn', 'usps'], 'VLCS': ['Caltech101', 'LabelMe', 'SUN09', 'VOC2007'], 'DomainNet': ['clipart', 'infograph', 'painting', 'quickdraw', 'real', 'sketch']}
+input_shape:(3, 224, 224)
+num_classes:7
+domain_num:4
+
+===========start training===========
+===========epoch 0===========
+class_loss:0.2089
+train_acc:0.9450,valid_acc:0.9361,target_acc:0.7778
+total cost time: 43.3410
+===========epoch 3===========
+class_loss:0.0953
+train_acc:0.9844,valid_acc:0.9604,target_acc:0.7520
+total cost time: 126.4411
+===========epoch 6===========
+class_loss:0.0339
+train_acc:0.9877,valid_acc:0.9591,target_acc:0.7256
+total cost time: 209.5082
+===========epoch 9===========
+class_loss:0.0066
+train_acc:0.9941,valid_acc:0.9625,target_acc:0.7681
+total cost time: 292.9593
+===========epoch 12===========
+class_loss:0.0103
+train_acc:0.9967,valid_acc:0.9563,target_acc:0.7417
+total cost time: 376.3367
+===========epoch 15===========
+class_loss:0.0094
+train_acc:0.9976,valid_acc:0.9652,target_acc:0.7759
+total cost time: 460.1266
+===========epoch 18===========
+class_loss:0.0028
+train_acc:0.9957,valid_acc:0.9618,target_acc:0.7441
+total cost time: 542.9427
+===========epoch 21===========
+class_loss:0.0022
+train_acc:0.9981,valid_acc:0.9598,target_acc:0.7612
+total cost time: 625.4206
+===========epoch 24===========
+class_loss:0.0011
+train_acc:0.9990,valid_acc:0.9611,target_acc:0.7515
+total cost time: 708.0895
+===========epoch 27===========
+class_loss:0.0178
+train_acc:0.9993,valid_acc:0.9658,target_acc:0.7803
+total cost time: 791.4383
+===========epoch 30===========
+class_loss:0.0020
+train_acc:0.9995,valid_acc:0.9605,target_acc:0.7930
+total cost time: 874.9554
+Traceback (most recent call last):
+  File "train.py", line 125, in <module>
+    step_vals = algorithm.update(minibatches_device, opt, sch)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/alg/algs/ERM.py", line 35, in update
+    return {'class': loss.item()}
+KeyboardInterrupt

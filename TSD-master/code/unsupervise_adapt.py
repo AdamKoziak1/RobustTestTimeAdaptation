@@ -107,7 +107,10 @@ def get_args():
         "--dataset", type=str, default="PACS", help="office-home,PACS,VLCS,DomainNet"
     )
     parser.add_argument(
-        "--data_dir", type=str, default="/home/wangshuai/data/PACS", help="data dir"
+        "--data_dir", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS", help="data dir"
+    )
+    parser.add_argument(
+        "--attack_data_dir", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv", help="attacked data dir"
     )
     parser.add_argument(
         "--lr",
@@ -118,7 +121,7 @@ def get_args():
     parser.add_argument(
         "--net",
         type=str,
-        default="resnet50",
+        default="resnet18",
         help="featurizer: vgg16, resnet18,resnet50, resnet101,DTNBase,ViT-B16,resnext50",
     )
     parser.add_argument(
@@ -130,7 +133,7 @@ def get_args():
     parser.add_argument(
         "--adapt_alg",
         type=str,
-        default="T3A",
+        default="Tent",
         help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD]",
     )
     parser.add_argument(
@@ -167,11 +170,16 @@ def get_args():
         help="\epsilon in Eqn. (5) for filtering redundant samples",
     )
     parser.add_argument(
-        "--pretrain_dir", type=str, default="./model.pkl", help="pre-train model path"
+        "--pretrain_dir", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/train_output/model.pkl", help="pre-train model path"
     )
     parser.add_argument("--lambda1", type=float, default=1.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lambda2", type=float, default=1.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lambda3", type=float, default=1.0, help="Coefficient for Consistency Regularization Loss")
+    parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
+    parser.add_argument("--eps", type=float, default=8)  
+    parser.add_argument("--attack_rate", type=int, default=0)   
+    parser.add_argument("--mask_id", type=int, choices=[0,1,2,3,4], default=0)   
+
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
@@ -209,7 +217,20 @@ def adapt_loader(args):
     # data
     test_envs = args.test_envs[0]
     data_root = os.path.join(args.data_dir, args.img_dataset[args.dataset][test_envs])
-    testset = ImageFolder(root=data_root, transform=test_transform)
+    if args.attack == "clean":
+        testset = ImageFolder(root=data_root, transform=test_transform)
+    else:
+        testset = AttackAwareDataset(
+            root=data_root,                      # normal ImageFolder root
+            #transform=test_transform,
+            transform=None,
+            adv_root=args.attack_data_dir,
+            dataset=args.dataset,
+            domain=test_envs,
+            config=f"{args.net}_{args.attack}",
+            rate=args.attack_rate,                            
+            mask_idx=args.mask_id)   
+
     testloader = DataLoader(
         testset,
         batch_size=args.batch_size,
@@ -313,6 +334,7 @@ if __name__ == "__main__":
     time1 = time.time()
     outputs_arr, labels_arr = [], []
     for idx, sample in enumerate(dataloader):
+        print(sample[0].shape)
         image, label = sample
         image = image.cuda()
         logits = adapt_model(image)

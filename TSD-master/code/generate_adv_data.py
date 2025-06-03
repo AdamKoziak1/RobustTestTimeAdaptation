@@ -118,7 +118,7 @@ def main(cfg):
         domain_clean_dir = os.path.join(clean_dir, dom)
         os.makedirs(domain_clean_dir, exist_ok=True)
 
-        torch.save(model.state_dict(), os.path.join(clean_dir, dom, f"model.pt"))
+        torch.save(model.state_dict(), os.path.join(clean_dir, f"model_{dom}.pt"))
 
         attack_config_dom_dir = os.path.join(attack_config_dir, dom)
         os.makedirs(attack_config_dom_dir, exist_ok=True)

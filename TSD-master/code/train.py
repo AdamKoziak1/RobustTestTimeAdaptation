@@ -59,7 +59,7 @@ def get_args():
                         default=1, help='MMD, CORAL hyper-param')
     parser.add_argument('--momentum', type=float,
                         default=0.9, help='for optimizer')
-    parser.add_argument('--net', type=str, default='resnet50',
+    parser.add_argument('--net', type=str, default='resnet18',
                         help="featurizer: vgg16, resnet50, resnet101,DTNBase,ViT-B16/32,ViT-L16/32,ViT-H14")
     parser.add_argument('--N_WORKERS', type=int, default=4)
     parser.add_argument('--rsc_f_drop_factor', type=float,

@@ -226,3 +226,941 @@ Accuracy of per class:
 	 Algorithm: TSD
 	 Accuracy: 28.662109
 	 Cost time: 41.761230 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 283, in <module>
+    algorithm = load_ckpt(algorithm, pretrain_model_path)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/utils/util.py", line 33, in load_ckpt
+    checkpoint = torch.load(ckpt_dir)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 699, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 230, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 211, in __init__
+    super(_open_file, self).__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: './model.pkl'
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 285, in <module>
+    dataloader = adapt_loader(args)
+  File "unsupervise_adapt.py", line 244, in adapt_loader
+    testset = AttackAwareDataset(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adv/attack_dataset.py", line 27, in __init__
+    super().__init__(root, transform=transform)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 310, in __init__
+    super().__init__(
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 145, in __init__
+    classes, class_to_idx = self.find_classes(self.root)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 219, in find_classes
+    return find_classes(directory)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/datasets/folder.py", line 41, in find_classes
+    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
+FileNotFoundError: [Errno 2] No such file or directory: '/home/wangshuai/data/PACS/art_painting'
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 285, in <module>
+    dataloader = adapt_loader(args)
+  File "unsupervise_adapt.py", line 244, in adapt_loader
+    testset = AttackAwareDataset(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adv/attack_dataset.py", line 30, in __init__
+    self.cln_root = os.path.join(adv_root, dataset, "clean", domain)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/posixpath.py", line 90, in join
+    genericpath._check_arg_types('join', a, *p)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/genericpath.py", line 152, in _check_arg_types
+    raise TypeError(f'{funcname}() argument must be str, bytes, or '
+TypeError: join() argument must be str, bytes, or os.PathLike object, not 'int'
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+0 <class 'int'>
+resnet18_clean <class 'str'>
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 285, in <module>
+    dataloader = adapt_loader(args)
+  File "unsupervise_adapt.py", line 244, in adapt_loader
+    testset = AttackAwareDataset(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adv/attack_dataset.py", line 35, in __init__
+    self.cln_root = os.path.join(adv_root, dataset, "clean", domain)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/posixpath.py", line 90, in join
+    genericpath._check_arg_types('join', a, *p)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/genericpath.py", line 152, in _check_arg_types
+    raise TypeError(f'{funcname}() argument must be str, bytes, or '
+TypeError: join() argument must be str, bytes, or os.PathLike object, not 'int'
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+0 <class 'int'>
+resnet18_clean <class 'str'>
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 285, in <module>
+    dataloader = adapt_loader(args)
+  File "unsupervise_adapt.py", line 244, in adapt_loader
+    testset = AttackAwareDataset(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adv/attack_dataset.py", line 35, in __init__
+    self.cln_root = os.path.join(adv_root, dataset, "clean", domain)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/posixpath.py", line 90, in join
+    genericpath._check_arg_types('join', a, *p)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/genericpath.py", line 152, in _check_arg_types
+    raise TypeError(f'{funcname}() argument must be str, bytes, or '
+TypeError: join() argument must be str, bytes, or os.PathLike object, not 'int'
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_clean <class 'str'>
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 367, in <module>
+    for idx, sample in enumerate(dataloader):
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 652, in __next__
+    data = self._next_data()
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1347, in _next_data
+    return self._process_data(data)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1373, in _process_data
+    data.reraise()
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/_utils.py", line 461, in reraise
+    raise exception
+FileNotFoundError: Caught FileNotFoundError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/worker.py", line 302, in _worker_loop
+    data = fetcher.fetch(index)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 49, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 49, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adv/attack_dataset.py", line 62, in __getitem__
+    img = torch.load(tensor_path)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 699, in load
+    with _open_file_like(f, 'rb') as opened_file:
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 230, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 211, in __init__
+    super(_open_file, self).__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: '/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv/PACS/resnet18_clean/art_painting/0.pt'
+
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[[ 86  57  60  22  76  13  65]
+ [ 46  42  41  24  50  16  36]
+ [ 63  47  75  20  42  11  27]
+ [ 35  37  21  31  20  23  17]
+ [ 52  32  31  10  54   4  18]
+ [ 45  46  44  45  42  44  29]
+ [121  62  55  41  62  21  87]]
+Accuracy of per class:
+[22.69 16.47 26.32 16.85 26.87 14.92 19.38]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 20.458984
+	 Cost time: 6.533421 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[[114  71  51  15  62  15  51]
+ [ 47  70  34  16  49   8  31]
+ [ 70  36  89  12  44   8  26]
+ [ 33  27  17  51  15  14  27]
+ [ 37  33  22   8  81   5  15]
+ [ 45  33  44  28  41  73  31]
+ [ 92  66  57  24  71   8 131]]
+Accuracy of per class:
+[30.08 27.45 31.23 27.72 40.3  24.75 29.18]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 29.736328
+	 Cost time: 6.166239 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+[[303  19  15   2  31   1   8]
+ [  4 231   6   0  12   0   2]
+ [ 11   4 260   1   8   0   1]
+ [  5   8   4 152   6   5   4]
+ [  9   8   4   1 178   0   1]
+ [  2   5   9   4  13 262   0]
+ [ 39  59  20   3  40   4 284]]
+Accuracy of per class:
+[79.95 90.59 91.23 82.61 88.56 88.81 63.25]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 81.542969
+	 Cost time: 6.792220 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 367, in <module>
+    for idx, sample in enumerate(dataloader):
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 652, in __next__
+    data = self._next_data()
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1347, in _next_data
+    return self._process_data(data)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1373, in _process_data
+    data.reraise()
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/_utils.py", line 461, in reraise
+    raise exception
+TypeError: Caught TypeError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/worker.py", line 302, in _worker_loop
+    data = fetcher.fetch(index)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 49, in fetch
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 49, in <listcomp>
+    data = [self.dataset[idx] for idx in possibly_batched_index]
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adv/attack_dataset.py", line 64, in __getitem__
+    img = self.transform(img)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/transforms/transforms.py", line 94, in __call__
+    img = t(img)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/transforms/transforms.py", line 134, in __call__
+    return F.to_tensor(pic)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/transforms/functional.py", line 138, in to_tensor
+    raise TypeError(f"pic should be PIL Image or ndarray. Got {type(pic)}")
+TypeError: pic should be PIL Image or ndarray. Got <class 'torch.Tensor'>
+
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 368, in <module>
+    print(sample.shape)
+AttributeError: 'list' object has no attribute 'shape'
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[114  71  51  15  62  15  51]
+ [ 47  70  34  16  49   8  31]
+ [ 70  36  89  12  44   8  26]
+ [ 33  27  17  51  15  14  27]
+ [ 37  33  22   8  81   5  15]
+ [ 45  33  44  28  41  73  31]
+ [ 92  66  57  24  71   8 131]]
+Accuracy of per class:
+[30.08 27.45 31.23 27.72 40.3  24.75 29.18]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 29.736328
+	 Cost time: 6.378726 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[303  19  15   2  31   1   8]
+ [  4 231   6   0  12   0   2]
+ [ 11   4 260   1   8   0   1]
+ [  5   8   4 152   6   5   4]
+ [  9   8   4   1 178   0   1]
+ [  2   5   9   4  13 262   0]
+ [ 39  59  20   3  40   4 284]]
+Accuracy of per class:
+[79.95 90.59 91.23 82.61 88.56 88.81 63.25]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 81.542969
+	 Cost time: 6.343234 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[115  64  57  18  60  14  51]
+ [ 43  70  34  19  50   6  33]
+ [ 70  37  87  13  40   9  29]
+ [ 33  26  16  50  16  14  29]
+ [ 36  36  24   8  79   4  14]
+ [ 43  32  49  26  38  78  29]
+ [ 89  77  54  25  67   9 128]]
+Accuracy of per class:
+[30.34 27.45 30.53 27.17 39.3  26.44 28.51]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 29.638672
+	 Cost time: 6.975911 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[302  21  14   2  32   1   7]
+ [  4 229   7   0  12   0   3]
+ [ 13   4 259   1   7   0   1]
+ [  4   8   4 150   8   5   5]
+ [  8   5   3   1 183   0   1]
+ [  4   5   9   5  18 254   0]
+ [ 42  57  19   3  44   4 280]]
+Accuracy of per class:
+[79.68 89.8  90.88 81.52 91.04 86.1  62.36]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 80.908203
+	 Cost time: 6.002368 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[236  35  25   6  50   3  24]
+ [ 12 197  12   6  16   3   9]
+ [ 22  16 225   3  13   1   5]
+ [ 10  19  15 109  13  10   8]
+ [ 15  12  10   3 157   0   4]
+ [ 16  16  21  27  24 190   1]
+ [ 81  56  24  28  40   6 214]]
+Accuracy of per class:
+[62.27 77.25 78.95 59.24 78.11 64.41 47.66]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 64.843750
+	 Cost time: 6.592700 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[236  35  25   6  50   3  24]
+ [ 12 197  12   6  16   3   9]
+ [ 22  16 225   3  13   1   5]
+ [ 10  19  15 109  13  10   8]
+ [ 15  12  10   3 157   0   4]
+ [ 16  16  21  27  24 190   1]
+ [ 81  56  24  28  40   6 214]]
+Accuracy of per class:
+[62.27 77.25 78.95 59.24 78.11 64.41 47.66]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 64.843750
+	 Cost time: 6.245314 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+0.5
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 371, in <module>
+    logits = adapt_model(image)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1130, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 135, in forward
+    outputs = self.forward_and_adapt(x, self.model, self.optimizer)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py", line 156, in forward_and_adapt
+    optimizer.step()        
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/optim/optimizer.py", line 109, in wrapper
+    return func(*args, **kwargs)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/grad_mode.py", line 27, in decorate_context
+    return func(*args, **kwargs)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/optim/adam.py", line 157, in step
+    adam(params_with_grad,
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/optim/adam.py", line 213, in adam
+    func(params,
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/optim/adam.py", line 258, in _single_tensor_adam
+    step_t += 1
+KeyboardInterrupt
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+0.5
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[236  35  25   6  50   3  24]
+ [ 12 197  12   6  16   3   9]
+ [ 22  16 225   3  13   1   5]
+ [ 10  19  15 109  13  10   8]
+ [ 15  12  10   3 157   0   4]
+ [ 16  16  21  27  24 190   1]
+ [ 81  56  24  28  40   6 214]]
+Accuracy of per class:
+[62.27 77.25 78.95 59.24 78.11 64.41 47.66]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 64.843750
+	 Cost time: 6.153725 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv <class 'str'>
+PACS <class 'str'>
+clean <class 'str'>
+art_painting <class 'str'>
+resnet18_linf_eps-8_steps-20 <class 'str'>
+0.0
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[302  21  14   2  32   1   7]
+ [  4 229   7   0  12   0   3]
+ [ 13   4 259   1   7   0   1]
+ [  4   8   4 150   8   5   5]
+ [  8   5   3   1 183   0   1]
+ [  4   5   9   5  18 254   0]
+ [ 42  57  19   3  44   4 280]]
+Accuracy of per class:
+[79.68 89.8  90.88 81.52 91.04 86.1  62.36]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 80.908203
+	 Cost time: 6.290882 s
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 254, in <module>
+    dataloader = adapt_loader(args)
+  File "unsupervise_adapt.py", line 223, in adapt_loader
+    testset = AttackAwareDataset(
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adv/attack_dataset.py", line 42, in __init__
+    raise FileNotFoundError(f"mask file not found: {mask_path}")
+FileNotFoundError: mask file not found: /home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv/PACS/masks/100.0/art_painting_mask_0.npy
+Environment:
+	Python: 3.8.13
+	PyTorch: 1.12.0+cu102
+	Torchvision: 0.13.0+cu102
+	CUDA: 10.2
+	CUDNN: 7605
+	NumPy: 1.22.3
+	PIL: 9.0.1
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+1.0
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/adapt_algorithm.py:153: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  loss = softmax_entropy(outputs).mean()
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/autograd/__init__.py:173: UserWarning: FALLBACK path has been taken inside: runCudaFusionGroup. This is an indication that codegen Failed for some reason.
+To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
+ (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
+  Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+torch.Size([128, 3, 224, 224])
+[[163  39  36  14  67   8  52]
+ [ 18 166  14  12  21   6  18]
+ [ 24  24 185  13  22   4  13]
+ [ 16  31  20  64  16  24  13]
+ [ 24  19  18   6 124   1   9]
+ [ 10  20  34  41  38 145   7]
+ [109  67  28  39  39  20 147]]
+Accuracy of per class:
+[43.01 65.1  64.91 34.78 61.69 49.15 32.74]
+	 Hyper-parameter
+	 Dataset: PACS
+	 Net: resnet18
+	 Test domain: 0
+	 Algorithm: Tent
+	 Accuracy: 48.535156
+	 Cost time: 6.464588 s
