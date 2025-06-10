@@ -176,3 +176,5 @@ cython_debug/
 
 datasets/*
 datasets_adv/*
+train_output/*
+wandb/*
