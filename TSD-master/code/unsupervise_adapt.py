@@ -101,7 +101,7 @@ def get_args():
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--algorithm", type=str, default="ERM")
     parser.add_argument(
-        "--batch_size", type=int, default=128, help="batch_size of **test** time"
+        "--batch_size", type=int, default=108, help="batch_size of **test** time"
     )
     parser.add_argument(
         "--dataset", type=str, default="PACS", help="office-home,PACS,VLCS,DomainNet"
@@ -177,7 +177,7 @@ def get_args():
     parser.add_argument("--lambda3", type=float, default=1.0, help="Coefficient for Consistency Regularization Loss")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=8)  
-    parser.add_argument("--attack_rate", type=int, default=0)   
+    parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
     parser.add_argument("--mask_id", type=int, choices=[0,1,2,3,4], default=0)   
 
 
@@ -185,6 +185,7 @@ def get_args():
     args.steps_per_epoch = 100
     args.data_dir = args.data_file + args.data_dir
 
+    args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate), str(args.mask_id))
     os.environ["CUDA_VISIBLE_DEVICS"] = args.gpu_id
     os.makedirs(args.output, exist_ok=True)
     sys.stdout = Tee(os.path.join(args.output, "out.txt"))
@@ -248,7 +249,7 @@ if __name__ == "__main__":
 
     wandb.init(
         project="tta3",          # ← change to your project name
-        name=f"{args.algorithm}-{args.dataset}_adapt_{args.adapt_alg}_dom_{args.test_envs[0]}_fold_{args.mask_id}",
+        name=f"ADAPT_{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}",
         config=vars(args),
     )
 
@@ -347,7 +348,7 @@ if __name__ == "__main__":
     time1 = time.time()
     outputs_arr, labels_arr = [], []
     for idx, sample in enumerate(dataloader):
-        print(sample[0].shape)
+        #print(sample[0].shape)
         image, label = sample
         image = image.cuda()
         logits = adapt_model(image)
@@ -374,7 +375,7 @@ if __name__ == "__main__":
     print("\t Cost time: %f s" % (time2 - time1))
 
     wandb.log({
-        "final_avg_accuracy": avg_acc,
+        "final_target_acc": avg_acc,
         "time_taken_s": time2 - time1
     }, commit=False)
 
@@ -395,5 +396,5 @@ if __name__ == "__main__":
     plt.tight_layout()
     # This will send the figure to wandb
     wandb.log({"confusion_matrix": wandb.Image(fig)})
-
+    
     wandb.finish()

@@ -1,10 +1,10 @@
 TRAIN: python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
+
+ADAPT: python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TENT --batch_size 1 --attack_rate 50 --mask_id 0
  
  
- 
-    note: insufficient VRAM for VIT (at default batch size at least)
-python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TSD --lr 1e-4 --pretrain_dir train_output/model_last.pkl --batch_size 4
-python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TTA3 --lr 1e-4 --pretrain_dir train_output/model_last.pkl --batch_size 4
+
+note: insufficient VRAM for VIT (at default batch size at least)
 
 
 

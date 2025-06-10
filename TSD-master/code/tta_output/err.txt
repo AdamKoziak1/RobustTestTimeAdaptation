@@ -494,3 +494,36 @@ To debug try disable codegen fallback path via setting the env variable `export 
 To debug try disable codegen fallback path via setting the env variable `export PYTORCH_NVFUSER_DISABLE=fallback`
  (Triggered internally at  ../torch/csrc/jit/codegen/cuda/manager.cpp:334.)
   Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+wandb: Currently logged in as: adam-koziak (bigslav) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.20.1
+wandb: Run data is saved locally in /home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/wandb/run-20250610_105525-dykr3xxx
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run ERM-PACS_adapt_TENT_dom_0_fold_0
+wandb:  View project at https://wandb.ai/bigslav/tta3
+wandb:  View run at https://wandb.ai/bigslav/tta3/runs/dykr3xxx
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and will be removed in 0.15, please use 'weights' instead.
+  warnings.warn(
+/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and will be removed in 0.15. The current behavior is equivalent to passing `weights=ResNet18_Weights.IMAGENET1K_V1`. You can also use `weights=ResNet18_Weights.DEFAULT` to get the most up-to-date weights.
+  warnings.warn(msg)
+Traceback (most recent call last):
+  File "unsupervise_adapt.py", line 258, in <module>
+    algorithm = load_ckpt(algorithm, pretrain_model_path)
+  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/utils/util.py", line 33, in load_ckpt
+    checkpoint = torch.load(ckpt_dir)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 712, in load
+    return _load(opened_zipfile, map_location, pickle_module, **pickle_load_args)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 1049, in _load
+    result = unpickler.load()
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 1019, in persistent_load
+    load_tensor(dtype, nbytes, key, _maybe_decode_ascii(location))
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 1001, in load_tensor
+    wrap_storage=restore_location(storage, location),
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 175, in default_restore_location
+    result = fn(storage, location)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/serialization.py", line 157, in _cuda_deserialize
+    return obj.cuda(device)
+  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/_utils.py", line 78, in _cuda
+    return torch._UntypedStorage(self.size(), device=torch.device('cuda')).copy_(self, non_blocking)
+RuntimeError: CUDA error: out of memory
+CUDA kernel errors might be asynchronously reported at some other API call,so the stacktrace below might be incorrect.
+For debugging consider passing CUDA_LAUNCH_BLOCKING=1.

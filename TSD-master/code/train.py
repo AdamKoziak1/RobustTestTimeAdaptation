@@ -104,7 +104,7 @@ if __name__ == '__main__':
 
     wandb.init(
         project="tta3",         # ← change to your project
-        name=f"{args.algorithm}-{args.dataset}_train_holdout-dom_{args.test_envs[0]}",  # run name in W&B
+        name=f"TRAIN_{args.algorithm}_{args.dataset}_excl-dom-{args.test_envs[0]}",  # run name in W&B
         config=vars(args),                   # log all hyperparameters
     )
 

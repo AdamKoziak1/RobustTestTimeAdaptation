@@ -99,6 +99,9 @@ class Tee:
     def flush(self):
         self.stdout.flush()
         self.file.flush()
+    
+    def isatty(self):
+        return False
 
 
 def img_param_init(args):

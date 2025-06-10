@@ -176,6 +176,6 @@ cython_debug/
 
 datasets/*
 datasets_adv/*
-TSD-master/code/train_output*
-TSD-master/code/tta_output*
-TSD-master/code/wandb*
+TSD-master/code/train_output/*
+TSD-master/code/tta_output/*
+TSD-master/code/wandb/*
