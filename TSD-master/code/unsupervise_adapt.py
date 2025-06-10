@@ -20,7 +20,7 @@ from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD
 from adv.attack_dataset import AttackAwareDataset
 
-
+import wandb
 
 def get_args():
     parser = argparse.ArgumentParser(description="Test time adaptation")
@@ -246,12 +246,25 @@ if __name__ == "__main__":
     pretrain_model_path = args.pretrain_dir
     set_random_seed(args.seed)
 
+    wandb.init(
+        project="tta3",          # ← change to your project name
+        name=f"{args.algorithm}-{args.dataset}_adapt_{args.adapt_alg}_dom_{args.test_envs[0]}_fold_{args.mask_id}",
+        config=vars(args),
+    )
+
     algorithm_class = alg.get_algorithm_class(args.algorithm)
     algorithm = algorithm_class(args)
     algorithm.train()
     algorithm = load_ckpt(algorithm, pretrain_model_path)
 
     dataloader = adapt_loader(args)
+
+    wandb.config.update({
+        "adapt_algorithm": args.adapt_alg,
+        "test_lr": args.lr,
+        "filter_K": args.filter_K,
+    })
+
 
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":
@@ -359,3 +372,28 @@ if __name__ == "__main__":
     print("\t Algorithm: {}".format(args.adapt_alg))
     print("\t Accuracy: %f" % float(avg_acc))
     print("\t Cost time: %f s" % (time2 - time1))
+
+    wandb.log({
+        "final_avg_accuracy": avg_acc,
+        "time_taken_s": time2 - time1
+    }, commit=False)
+
+    # Log per-class accuracy as separate metrics
+    for cls_idx, cls_acc in enumerate(acc_per_class):
+        wandb.log({f"acc_class_{cls_idx}": float(cls_acc)})
+
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=(6, 6))
+    cax = ax.matshow(matrix, cmap="Blues")
+    plt.title("Confusion Matrix")
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    fig.colorbar(cax)
+    for i in range(matrix.shape[0]):
+        for j in range(matrix.shape[1]):
+            ax.text(j, i, matrix[i, j], ha='center', va='center', color='yellow')
+    plt.tight_layout()
+    # This will send the figure to wandb
+    wandb.log({"confusion_matrix": wandb.Image(fig)})
+
+    wandb.finish()

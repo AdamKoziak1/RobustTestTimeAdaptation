@@ -11,6 +11,10 @@ from alg import alg, modelopera
 from utils.util import set_random_seed, save_checkpoint, print_args, train_valid_target_eval_names, alg_loss_dict, Tee, img_param_init, print_environ
 from datautil.getdataloader import get_img_dataloader
 
+# python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
+
+import wandb
+
 
 def get_args():
     parser = argparse.ArgumentParser(description='DG')
@@ -20,7 +24,7 @@ def get_args():
     parser.add_argument('--anneal_iters', type=int,
                         default=500, help='Penalty anneal iters used in VREx')
     parser.add_argument('--batch_size', type=int,
-                        default=32, help='batch_size')
+                        default=108, help='batch_size')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='Adam hyper-param')
     parser.add_argument('--checkpoint_freq', type=int,
@@ -30,7 +34,7 @@ def get_args():
     parser.add_argument('--data_file', type=str, default='',
                         help='root_dir')
     parser.add_argument('--dataset', type=str, default='office')
-    parser.add_argument('--data_dir', type=str, default='../data/PACS', help='data dir')
+    parser.add_argument('--data_dir', type=str, default='datasets', help='data dir')
     parser.add_argument('--dis_hidden', type=int,
                         default=256, help='dis hidden dimension')
     parser.add_argument('--gpu_id', type=str, nargs='?',
@@ -77,14 +81,15 @@ def get_args():
     parser.add_argument('--tau', type=float, default=1, help="andmask tau")
     parser.add_argument('--test_envs', type=int, nargs='+',
                         default=[0], help='target domains')
-    parser.add_argument('--opt_type',type=str,default='SGD')  #if want to use Adam, please set Adam
+    parser.add_argument('--opt_type',type=str,default='Adam')  #if want to use Adam, please set Adam
     parser.add_argument('--output', type=str,
                         default="train_output", help='result output path')
     parser.add_argument('--weight_decay', type=float, default=5e-4)
     args = parser.parse_args()
     args.steps_per_epoch = 100
-    args.data_dir = args.data_file+args.data_dir
+    args.data_dir = os.path.join(args.data_file,args.data_dir,args.dataset)
     os.environ['CUDA_VISIBLE_DEVICS'] = args.gpu_id
+    args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]))
     os.makedirs(args.output, exist_ok=True)
     sys.stdout = Tee(os.path.join(args.output, 'out.txt'))
     sys.stderr = Tee(os.path.join(args.output, 'err.txt'))
@@ -97,6 +102,12 @@ if __name__ == '__main__':
     args = get_args()
     set_random_seed(args.seed)
 
+    wandb.init(
+        project="tta3",         # ← change to your project
+        name=f"{args.algorithm}-{args.dataset}_train_holdout-dom_{args.test_envs[0]}",  # run name in W&B
+        config=vars(args),                   # log all hyperparameters
+    )
+
     loss_list = alg_loss_dict(args)
     train_loaders, eval_loaders = get_img_dataloader(args)
     eval_name_dict = train_valid_target_eval_names(args)
@@ -105,6 +116,12 @@ if __name__ == '__main__':
     algorithm.train()
     opt = get_optimizer(algorithm, args)
     sch = get_scheduler(opt, args)
+
+    wandb.config.update({
+        "num_train_envs": len(train_loaders),
+        "steps_per_epoch": args.steps_per_epoch,
+        "num_classes": args.num_classes
+    })
 
     s = print_args(args, [])
     print('=======hyper-parameter used========')
@@ -115,7 +132,7 @@ if __name__ == '__main__':
     best_valid_acc, target_acc = 0, 0
     print('===========start training===========')
     sss = time.time()
-    for epoch in range(args.max_epoch):
+    for epoch in range(args.max_epoch):                
         for iter_num in range(args.steps_per_epoch):
             minibatches_device = [(data)
                                   for data in next(train_minibatches_iterator)]
@@ -124,6 +141,10 @@ if __name__ == '__main__':
                 sch = get_scheduler(opt, args)
             step_vals = algorithm.update(minibatches_device, opt, sch)
 
+            wandb.log({
+                f"train_loss": step_vals.get('class', step_vals.get('total', None)),
+                "epoch": epoch,
+            }, commit=False)
         if (epoch in [int(args.max_epoch*0.7), int(args.max_epoch*0.9)]) and (not args.schuse):
             print('manually descrease lr')
             for params in opt.param_groups:
@@ -141,6 +162,7 @@ if __name__ == '__main__':
                     algorithm, eval_loaders[i]) for i in eval_name_dict[item]]))
                 s += (item+'_acc:%.4f,' % acc_record[item])
             print(s[:-1])
+            
             if acc_record['valid'] > best_valid_acc:
                 best_valid_acc = acc_record['valid']
                 target_acc = acc_record['target']
@@ -149,11 +171,20 @@ if __name__ == '__main__':
                 save_checkpoint(f'model_epoch{epoch}.pkl', algorithm, args)
             print('total cost time: %.4f' % (time.time()-sss))
             algorithm_dict = algorithm.state_dict()
-
+            wandb.log({
+                "epoch": epoch,
+                "lr": opt.param_groups[0]['lr'],
+                "acc_train": acc_record['train'],
+                "acc_val": acc_record['valid'],
+                "acc_target": acc_record['target'],
+            }, commit=True)
     save_checkpoint('model_last.pkl', algorithm, args)
 
     print('valid acc: %.4f' % best_valid_acc)
     print('DG result: %.4f' % target_acc)
+
+    wandb.summary["best_valid_acc"] = best_valid_acc
+    wandb.summary["final_target_acc"] = target_acc
 
     with open(os.path.join(args.output, 'done.txt'), 'w') as f:
         f.write('done\n')
