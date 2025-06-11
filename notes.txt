@@ -1,30 +1,38 @@
 TRAIN: python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
+TODO TRAIN:
+VLCS (0,1),2,3
+OfficeHome 0,1,2,3
+DomainNet (0,1,2,3,4,5)
+
+CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 0
+CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 1
+CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 2
+CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 3
+CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 4
+CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 5
+
 
 ADAPT: python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TENT --batch_size 1 --attack_rate 50 --mask_id 0
- 
- 
+./run_domain.sh 
 
-note: insufficient VRAM for VIT (at default batch size at least)
-
-
-
-resnet18 first, then resnet50
+resnet18 first, then resnet50. insufficient VRAM for VIT (at default batch size at least)
 
 
 TODO:
 figure out why it needs to be shuffled for the accuracy to be good (was not shuffled when generating data...)
-script the process of running it
-use wandb?
 
 make L_0 (stop gradient) a hyperparameter
 use flatness loss from the correct link (bottom)
 
-train.py scripting:
---output needs to be per-dataset and per-domain
---data_dir needs to be per-dataset 
---data_file?
+add stddev in results
 
+compare against 5+ methods (SOTA)
 
+account for datastets, domains, more methods in plotting
+
+look at t3a, why is it robust
+
+ablation on loss terms
 
 
 

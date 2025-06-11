@@ -39,7 +39,8 @@ res_dict = {"resnet18": models.resnet18,
 class ResBase(nn.Module):
     def __init__(self, res_name):
         super(ResBase, self).__init__()
-        model_resnet = res_dict[res_name](pretrained=True)
+        #model_resnet = res_dict[res_name](pretrained=True)
+        model_resnet = res_dict[res_name](weights=models.ResNet18_Weights.IMAGENET1K_V1)
         self.conv1 = model_resnet.conv1
         self.bn1 = model_resnet.bn1
         self.relu = model_resnet.relu

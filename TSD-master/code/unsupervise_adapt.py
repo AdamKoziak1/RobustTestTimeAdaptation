@@ -134,7 +134,7 @@ def get_args():
         "--adapt_alg",
         type=str,
         default="Tent",
-        help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD]",
+        help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3]",
     )
     parser.add_argument(
         "--beta", type=float, default=0.9, help="threshold for pseudo label(PL)"
@@ -175,6 +175,7 @@ def get_args():
     parser.add_argument("--lambda1", type=float, default=1.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lambda2", type=float, default=1.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lambda3", type=float, default=1.0, help="Coefficient for Consistency Regularization Loss")
+    parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=8)  
     parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
@@ -248,8 +249,8 @@ if __name__ == "__main__":
     set_random_seed(args.seed)
 
     wandb.init(
-        project="tta3",          # ← change to your project name
-        name=f"ADAPT_{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}",
+        project="tta3_adapt",          # ← change to your project name
+        name=f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}",
         config=vars(args),
     )
 
@@ -259,13 +260,6 @@ if __name__ == "__main__":
     algorithm = load_ckpt(algorithm, pretrain_model_path)
 
     dataloader = adapt_loader(args)
-
-    wandb.config.update({
-        "adapt_algorithm": args.adapt_alg,
-        "test_lr": args.lr,
-        "filter_K": args.filter_K,
-    })
-
 
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":
@@ -359,12 +353,12 @@ if __name__ == "__main__":
     labels_arr = torch.cat(labels_arr).numpy()
     outputs_arr = outputs_arr.argmax(1)
     matrix = confusion_matrix(labels_arr, outputs_arr)
-    print(matrix)
     acc_per_class = (matrix.diagonal() / matrix.sum(axis=1) * 100.0).round(2)
+    time2 = time.time()
+    print(matrix)
     print("Accuracy of per class:")
     print(acc_per_class)
 
-    time2 = time.time()
     avg_acc = 100.0 * np.sum(matrix.diagonal()) / matrix.sum()
     print("\t Hyper-parameter")
     print("\t Dataset: {}".format(args.dataset))
@@ -376,12 +370,14 @@ if __name__ == "__main__":
 
     wandb.log({
         "final_target_acc": avg_acc,
-        "time_taken_s": time2 - time1
+        "time_taken_s": time2 - time1,
+        "adapt_algorithm": args.adapt_alg,
+        "attack_rate": args.attack_rate,
     }, commit=False)
 
     # Log per-class accuracy as separate metrics
     for cls_idx, cls_acc in enumerate(acc_per_class):
-        wandb.log({f"acc_class_{cls_idx}": float(cls_acc)})
+        wandb.log({f"acc_class_{cls_idx}": float(cls_acc)}, commit=False)
 
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(figsize=(6, 6))

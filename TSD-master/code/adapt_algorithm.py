@@ -517,6 +517,10 @@ def soft_k_nearest_neighbors(features, features_bank, probs_bank):
 
     return pred_labels, pred_probs
 
+def _normalize(d, norm=2):
+    d_reshaped = d.view(d.shape[0], -1, *(1 for _ in range(d.dim() - 2)))
+    d /= torch.norm(d_reshaped, norm, dim=1, keepdim=True) + 1e-8
+    return d
 
 class TTA3(nn.Module):
     """
@@ -541,7 +545,8 @@ class TTA3(nn.Module):
         eta (float): Step size for adversarial perturbation update.
     """
     def __init__(self, model, optimizer, steps=1, episodic=False, 
-                 lambda1=1.0, lambda2=1.0, lambda3=1.0, r=8/255, eta=0.01):
+                 lambda1=1.0, lambda2=1.0, lambda3=1.0, r=8/255, 
+                 eta=0.01, l_adv_iter=1, xi=10.0):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -552,6 +557,8 @@ class TTA3(nn.Module):
         self.lambda3 = lambda3
         self.r = r
         self.eta = eta
+        self.l_adv_iter = l_adv_iter #TODO change to param
+        self.xi = xi
 
         # Save initial states for episodic adaptation
         self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
@@ -568,10 +575,12 @@ class TTA3(nn.Module):
 
         # Perform N_I adaptation steps on the input batch
         for _ in range(self.steps):
+            
+
             outputs = self.forward_and_adapt(x, self.model, self.optimizer)
         return outputs
 
-    @torch.enable_grad()
+    #@torch.enable_grad()
     def forward_and_adapt(self, x, model, optimizer):
         # Forward pass to get logits and probabilities
         logits = model.predict(x)
@@ -586,24 +595,25 @@ class TTA3(nn.Module):
         L_MI = ent - overall_ent
 
         # --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
-        # Initialize a random perturbation within [-r, r].
-        epsilon = torch.empty_like(x).uniform_(-self.r, self.r)
-        epsilon.requires_grad = True
+        # Initialize a random perturbation within [-r, r]. #TODO check initialization conditions
+        epsilon = torch.rand(x.shape).sub(0.5).to(x.device)
 
-        # Compute predictions for the perturbed input.
-        logits_adv = model.predict(x + epsilon)
-        prob_adv = F.softmax(logits_adv, dim=1)
-        # Compute initial KL divergence.
-        L_adv_initial = F.kl_div(prob_adv.log(), prob, reduction='batchmean')
-        # Compute gradient of the adversarial loss w.r.t. epsilon.
-        grad_epsilon = torch.autograd.grad(L_adv_initial, epsilon, retain_graph=True)[0]
-        # Update epsilon in the ascent direction and clamp it.
-        epsilon_adv = epsilon + self.eta * torch.sign(grad_epsilon)
-        epsilon_adv = torch.clamp(epsilon_adv, -self.r, self.r)
-        # Compute the final adversarial loss.
-        logits_adv = model.predict(x + epsilon_adv.detach())
-        prob_adv = F.softmax(logits_adv, dim=1)
-        L_Adv = F.kl_div(prob_adv.log(), prob, reduction='batchmean')
+        epsilon = _normalize(epsilon)
+
+        for _ in range(self.l_adv_iter): 
+            epsilon.requires_grad_()
+            pred_hat = model.predict(x + self.xi * epsilon)
+            logp_hat = F.log_softmax(pred_hat, dim=1)
+            adv_distance = F.kl_div(logp_hat, prob.detach(), reduction='batchmean')
+            adv_distance.backward()
+            epsilon = _normalize(epsilon.grad)
+            model.zero_grad()
+        
+        r_adv = epsilon * self.r/255 # TODO check difference from self.eps in VAT (normally 1.0).
+        pred_hat = model.predict(x + r_adv)
+        logp_hat = F.log_softmax(pred_hat, dim=1)
+        L_Adv = F.kl_div(logp_hat, prob, reduction='batchmean')
+
 
         # --- Flatness Regularization Loss (L_Flat) ---
         # TODO implement Sharpness Aware Minimization 
@@ -611,21 +621,22 @@ class TTA3(nn.Module):
 
         # --- Consistency Regularization Loss (L_CR) ---
         # TODO implement feature extractor properly/test 
-        if hasattr(model, 'extract_features'):
-            features = model.extract_features(x)
-            # Use the last feature layer as an example.
-            last_feat = features[-1]  # shape: [batch_size, feature_dim]
-            norm_feat = last_feat / (last_feat.norm(dim=1, keepdim=True) + 1e-6)
-            sim_feat = torch.matmul(norm_feat, norm_feat.t())
+        # if hasattr(model, 'extract_features'):
+        #     features = model.extract_features(x)
+        #     # Use the last feature layer as an example.
+        #     last_feat = features[-1]  # shape: [batch_size, feature_dim]
+        #     norm_feat = last_feat / (last_feat.norm(dim=1, keepdim=True) + 1e-6)
+        #     sim_feat = torch.matmul(norm_feat, norm_feat.t())
 
-            # Compute cosine similarity of the prediction probabilities.
-            norm_prob = prob / (prob.norm(dim=1, keepdim=True) + 1e-6)
-            sim_prob = torch.matmul(norm_prob, norm_prob.t())
+        #     # Compute cosine similarity of the prediction probabilities.
+        #     norm_prob = prob / (prob.norm(dim=1, keepdim=True) + 1e-6)
+        #     sim_prob = torch.matmul(norm_prob, norm_prob.t())
 
-            # L_CR: L2 difference between the similarity matrices.
-            L_CR = torch.norm(sim_feat - sim_prob, p=2)
-        else:
-            L_CR = torch.tensor(0.0, device=x.device)
+        #     # L_CR: L2 difference between the similarity matrices.
+        #     L_CR = torch.norm(sim_feat - sim_prob, p=2)
+        # else:
+        #     L_CR = torch.tensor(0.0, device=x.device)
+        L_CR = torch.tensor(0.0, device=x.device)
 
         # --- Overall Loss ---
         loss = L_MI + self.lambda1 * L_Flat + self.lambda2 * L_Adv + self.lambda3 * L_CR
