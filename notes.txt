@@ -1,15 +1,18 @@
-TRAIN: python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
-TODO TRAIN:
-VLCS (0,1),2,3
-OfficeHome 0,1,2,3
-DomainNet (0,1,2,3,4,5)
+Start a tmux session:
+tmux new -s tta
 
-CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 0
-CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 1
-CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 2
-CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 3
-CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 4
-CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 5
+Run your long training or evaluation command.
+
+Detach safely anytime:
+Ctrl + B, then D
+
+Reconnect:
+tmux attach -t tta
+
+TRAIN: python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
+
+**** CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 4 --batch_size 64
+
 
 
 ADAPT: python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TENT --batch_size 1 --attack_rate 50 --mask_id 0
@@ -19,99 +22,20 @@ resnet18 first, then resnet50. insufficient VRAM for VIT (at default batch size 
 
 
 TODO:
-figure out why it needs to be shuffled for the accuracy to be good (was not shuffled when generating data...)
+implement lambda1 loss
+implement lambda2 loss
+  make L_0 (stop gradient) a hyperparameter
 
-make L_0 (stop gradient) a hyperparameter
-use flatness loss from the correct link (bottom)
+
+finish train on officehome 3
+ (hold off on domainnet 4,5)
+run data_generation on officenet
+
+generate masks on vlcs, 
+unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ideally SOTA)
 
 add stddev in results
-
-compare against 5+ methods (SOTA)
-
-account for datastets, domains, more methods in plotting
 
 look at t3a, why is it robust
 
 ablation on loss terms
-
-
-
-
-
-
-FIX DATA GENERATION ON OTHER DATASETS:
-(tta) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/TSD-master/code$ CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset DomainNet
-
-=== Domain clipart ===
-Traceback (most recent call last):                                                                                                                                                                                                                 
-  File "generate_adv_data.py", line 164, in <module>
-    main(cfg)
-  File "generate_adv_data.py", line 97, in main
-    for img, lab in tqdm(train_loader, leave=False, desc=f"train‑{epoch}"):
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/tqdm/std.py", line 1178, in __iter__
-    for obj in iterable:
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 652, in __next__
-    data = self._next_data()
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1347, in _next_data
-    return self._process_data(data)
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1373, in _process_data
-    data.reraise()
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/_utils.py", line 461, in reraise
-    raise exception
-RuntimeError: Caught RuntimeError in DataLoader worker process 0.
-Original Traceback (most recent call last):
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/worker.py", line 302, in _worker_loop
-    data = fetcher.fetch(index)
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
-    return self.collate_fn(data)
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 175, in default_collate
-    return [default_collate(samples) for samples in transposed]  # Backwards compatibility.
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 175, in <listcomp>
-    return [default_collate(samples) for samples in transposed]  # Backwards compatibility.
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 141, in default_collate
-    return torch.stack(batch, 0, out=out)
-RuntimeError: stack expects each tensor to be equal size, but got [3, 233, 224] at entry 0 and [3, 230, 224] at entry 1
-
-(tta) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/TSD-master/code$ CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset OfficeHome
-No such dataset exists!
-Traceback (most recent call last):
-  File "generate_adv_data.py", line 164, in <module>
-    main(cfg)
-  File "generate_adv_data.py", line 64, in main
-    doms = img_param_init(argparse.Namespace(dataset=cfg.dataset)).img_dataset[cfg.dataset]
-  File "/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/utils/util.py", line 122, in img_param_init
-    args.domains = domains
-UnboundLocalError: local variable 'domains' referenced before assignment
-(tta) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/TSD-master/code$ CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
-
-=== Domain Caltech101 ===
-Traceback (most recent call last):                                                                                                                                                                                                                 
-  File "generate_adv_data.py", line 164, in <module>
-    main(cfg)
-  File "generate_adv_data.py", line 97, in main
-    for img, lab in tqdm(train_loader, leave=False, desc=f"train‑{epoch}"):
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/tqdm/std.py", line 1178, in __iter__
-    for obj in iterable:
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 652, in __next__
-    data = self._next_data()
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1347, in _next_data
-    return self._process_data(data)
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/dataloader.py", line 1373, in _process_data
-    data.reraise()
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/_utils.py", line 461, in reraise
-    raise exception
-RuntimeError: Caught RuntimeError in DataLoader worker process 0.
-Original Traceback (most recent call last):
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/worker.py", line 302, in _worker_loop
-    data = fetcher.fetch(index)
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/fetch.py", line 52, in fetch
-    return self.collate_fn(data)
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 175, in default_collate
-    return [default_collate(samples) for samples in transposed]  # Backwards compatibility.
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 175, in <listcomp>
-    return [default_collate(samples) for samples in transposed]  # Backwards compatibility.
-  File "/home/adam/miniconda3/envs/tta/lib/python3.8/site-packages/torch/utils/data/_utils/collate.py", line 140, in default_collate
-    out = elem.new(storage).resize_(len(batch), *list(elem.size()))
-RuntimeError: Trying to resize storage that is not resizable
-
-(tta) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/TSD-master/code$ 

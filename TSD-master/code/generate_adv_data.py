@@ -10,7 +10,11 @@ import torch, torch.nn as nn, torch.optim as optim
 from torchvision import transforms, models
 from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader
+from alg import alg, modelopera
+from alg.opt import *
 from utils.util import img_param_init, get_config_id
+from datautil.getdataloader import get_img_dataloader_adv
+import torch.nn.functional as F
 
 # ----------------------------------------------------------
 
@@ -35,7 +39,7 @@ def pgd(model, x, y, eps, alpha, steps, n_classes, norm="linf"):
     softmax = nn.Softmax(dim=1)
     for _ in range(steps):
         x_adv = x_adv.clone().detach().requires_grad_(True)
-        preds = softmax(model(x_adv))
+        preds = softmax(model.predict(x_adv))
         pred  = preds.argmax(1)
         success = pred.ne(y)  
         if success.all():
@@ -55,21 +59,19 @@ def pgd(model, x, y, eps, alpha, steps, n_classes, norm="linf"):
     return x_adv.detach()
 # ---------------------------------------------------------------------------
 
-def main(cfg):
-    seed_everything(cfg.seed)
+def main(args):
+    seed_everything(args.seed)
+    doms = args.img_dataset[args.dataset]
+    #args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]))
 
-    tf_train = transforms.Compose([transforms.Resize(224), transforms.RandomHorizontalFlip(), transforms.ToTensor()])
-    tf_test  = transforms.Compose([transforms.Resize(224), transforms.ToTensor()])
 
-    doms = img_param_init(argparse.Namespace(dataset=cfg.dataset)).img_dataset[cfg.dataset]
-
-    dataset_dir = os.path.join(cfg.output_dir, cfg.dataset)
+    dataset_dir = os.path.join(args.data_file, "datasets_adv", args.dataset)
     os.makedirs(dataset_dir, exist_ok=True)
     
     clean_dir = os.path.join(dataset_dir, "clean")
-    os.makedirs(dataset_dir, exist_ok=True)
+    os.makedirs(clean_dir, exist_ok=True)
 
-    configuration_id = get_config_id(cfg)
+    configuration_id = get_config_id(args)
 
     attack_config_dir = os.path.join(dataset_dir, configuration_id)
     os.makedirs(attack_config_dir, exist_ok=True)
@@ -77,60 +79,58 @@ def main(cfg):
 
     for dom in doms:
         print(f"\n=== Domain {dom} ===")
-        dom_path = os.path.join(cfg.data_dir, cfg.dataset, dom)
 
         # ---------- training -------------------------------------------------
-        train_set = ImageFolder(dom_path, transform=tf_train)
-        train_loader = DataLoader(train_set, batch_size=cfg.bs, shuffle=True, num_workers=cfg.workers)
+        train_loader, test_loader = get_img_dataloader_adv(args)
 
+        algorithm_class = alg.get_algorithm_class(args.algorithm)
+        model = algorithm_class(args).cuda()
+        model.train()
+        opt = get_optimizer(model, args)
 
-        test_set = ImageFolder(dom_path, transform=tf_test)
-        test_loader = DataLoader(test_set, batch_size=cfg.bs, shuffle=False, num_workers=cfg.workers)
-        #test_loader = DataLoader(test_set, batch_size=1, shuffle=False, num_workers=cfg.workers)
-        n_classes = len(train_set.classes)
-        model = get_model(cfg.net, n_classes, load_weights=True).to(cfg.dev)
-        opt   = optim.SGD(model.parameters(), 0.01, 0.9, weight_decay=5e-4)
+        n_classes = args.num_classes
         softmax = nn.Softmax(dim=1)
-        for epoch in range(cfg.ep):
-            model.train()
-            running = 0
-            for img, lab in tqdm(train_loader, leave=False, desc=f"train‑{epoch}"):
-                img, lab = img.to(cfg.dev), lab.to(cfg.dev)
-                opt.zero_grad()
-                pred = softmax(model(img))
-                lab = nn.functional.one_hot(lab, num_classes=n_classes).float()
-
-                loss = nn.CrossEntropyLoss()(model(img), lab)
-                loss.backward()
-                opt.step()
-                running += loss.item()*img.size(0)
-            
-            model.eval()
-            correct = 0
-            with torch.no_grad():
-                for img, lab in train_loader: # change to val?
-                    img, lab = img.to(cfg.dev), lab.to(cfg.dev)
-                    pred = model(img).argmax(1)
-                    correct += (pred==lab).float().sum().item()
-            acc = correct/len(train_set)*100
-            print(f"  epoch {epoch}:  loss {running/len(train_set):.4f} | acc {acc:.2f}%")
+        best_acc = 0
 
         domain_clean_dir = os.path.join(clean_dir, dom)
         os.makedirs(domain_clean_dir, exist_ok=True)
 
-        torch.save(model.state_dict(), os.path.join(clean_dir, f"model_{dom}.pt"))
+        final_model_path = os.path.join(clean_dir, f"model_{dom}.pt")
+        torch.save(model.state_dict(), final_model_path)
 
         attack_config_dom_dir = os.path.join(attack_config_dir, dom)
         os.makedirs(attack_config_dom_dir, exist_ok=True)
+        best_model_path = os.path.join(clean_dir, f"model_{dom}_best.pt")
+        for epoch in range(args.ep):
+            model.train()
+            running = 0
+            for img, lab, _ in tqdm(train_loader, leave=False, desc=f"train‑{epoch}"):
+                img, lab = img.to(args.dev), lab.to(args.dev)
+                opt.zero_grad()
+                pred = model.predict(img)
+                loss = F.cross_entropy(pred, lab)
+                loss.backward()
+                opt.step()
+                running += loss.item()
+            
+            acc = modelopera.accuracy(model, test_loader)
+            print(f"  epoch {epoch}:  loss {running/len(train_loader):.4f} | test acc {acc:.4f}")
+
+            if acc >= best_acc:
+                best_acc = acc
+                
+                torch.save(model.state_dict(), best_model_path)
 
 
+
+        model.load_state_dict(torch.load(best_model_path))
         model.eval();   
         ptr = 0
-        for img, lab in tqdm(test_loader, desc="attack"):
-            img, lab = img.to(cfg.dev), lab.to(cfg.dev)
+        for img, lab, _ in tqdm(test_loader, desc="attack"):
+            img, lab = img.to(args.dev), lab.to(args.dev)
             bsz = img.size(0)
 
-            img_adv = pgd(model, img, lab, cfg.eps/255., cfg.alpha/255., cfg.steps, n_classes, cfg.attack)
+            img_adv = pgd(model, img, lab, args.eps/255., args.alpha_adv/255., args.steps, n_classes, args.attack)
 
             adv_cursor = 0                   # points into img_adv
             for k in range(bsz):
@@ -143,22 +143,85 @@ def main(cfg):
 
 # ---------------- CLI --------------------------------------------------------
 if __name__ == "__main__":
-    pa = argparse.ArgumentParser()
-    pa.add_argument("--dataset", default="PACS")      
-    pa.add_argument("--data_dir", default="../../datasets")
-    pa.add_argument("--output_dir", default="../../datasets_adv")
-    pa.add_argument("--net", default="resnet18")       
-    pa.add_argument("--ep", type=int, default=3)
-    pa.add_argument("--bs", type=int, default=64)      
-    pa.add_argument("--workers", type=int, default=4)
-    pa.add_argument("--attack", choices=["linf","l2"], default="linf")
-    pa.add_argument("--eps", type=float, default=8)    
-    pa.add_argument("--alpha", type=float, default=2)
-    pa.add_argument("--steps", type=int, default=20)  
-    pa.add_argument("--seed", type=int, default=0)     
-    pa.add_argument("--gpu", default="0")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--algorithm', type=str, default="ERM")
+    parser.add_argument('--alpha', type=float,
+                        default=1, help='DANN dis alpha')
+    parser.add_argument('--anneal_iters', type=int,
+                        default=500, help='Penalty anneal iters used in VREx')
+    parser.add_argument('--batch_size', type=int,
+                        default=108, help='batch_size')
+    parser.add_argument('--beta1', type=float, default=0.9,
+                        help='Adam hyper-param')
+    parser.add_argument('--checkpoint_freq', type=int,
+                        default=3, help='Checkpoint every N epoch')
+    parser.add_argument('--classifier', type=str,
+                        default="linear", choices=["linear", "wn"])
+    parser.add_argument('--data_file', type=str, default='/home/adam/Downloads/RobustTestTimeAdaptation',
+                        help='root_dir')
+    parser.add_argument('--dataset', type=str, default='office-home')
+    parser.add_argument('--data_dir', type=str, default='datasets', help='data dir')
+    parser.add_argument('--dis_hidden', type=int,
+                        default=256, help='dis hidden dimension')
+    parser.add_argument('--gpu_id', type=str, nargs='?',
+                        default='1', help="device id to run")
+    parser.add_argument('--groupdro_eta', type=float,
+                        default=1, help="groupdro eta")
+    parser.add_argument('--inner_lr', type=float,
+                        default=1e-2, help="learning rate used in MLDG")
+    parser.add_argument('--lam', type=float,
+                        default=1, help="tradeoff hyperparameter used in VREx")
+    parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
+    parser.add_argument('--lr_decay', type=float, default=0.75, help='for sgd')
+    parser.add_argument('--lr_decay1', type=float,
+                        default=1.0, help='for pretrained featurizer')
+    parser.add_argument('--lr_decay2', type=float, default=1.0,
+                        help='inital learning rate decay of network')
+    parser.add_argument('--lr_gamma', type=float,
+                        default=0.0003, help='for optimizer')
+    parser.add_argument('--max_epoch', type=int,
+                        default=120, help="max iterations")
+    parser.add_argument('--mixupalpha', type=float,
+                        default=0.2, help='mixup hyper-param')
+    parser.add_argument('--mldg_beta', type=float,
+                        default=1, help="mldg hyper-param")
+    parser.add_argument('--mmd_gamma', type=float,
+                        default=1, help='MMD, CORAL hyper-param')
+    parser.add_argument('--momentum', type=float,
+                        default=0.9, help='for optimizer')
+    parser.add_argument('--net', type=str, default='resnet18',
+                        help="featurizer: vgg16, resnet50, resnet101,DTNBase,ViT-B16/32,ViT-L16/32,ViT-H14")
+    parser.add_argument('--N_WORKERS', type=int, default=4)
+    parser.add_argument('--rsc_f_drop_factor', type=float,
+                        default=1/3, help='rsc hyper-param')
+    parser.add_argument('--rsc_b_drop_factor', type=float,
+                        default=1/3, help='rsc hyper-param')
+    parser.add_argument('--save_model_every_checkpoint', action='store_true')
+    parser.add_argument('--schuse', action='store_true')
+    parser.add_argument('--schusech', type=str, default='cos')
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--split_style', type=str, default='strat',
+                        help="the style to split the train and eval datasets")
+    parser.add_argument('--task', type=str, default="img_dg",
+                        choices=["img_dg"], help='now only support image tasks')
+    parser.add_argument('--tau', type=float, default=1, help="andmask tau")
+    parser.add_argument('--test_envs', type=int, nargs='+',
+                        default=[0], help='target domains')
+    parser.add_argument('--opt_type',type=str,default='Adam')  #if want to use Adam, please set Adam
+    parser.add_argument('--output', type=str, default="train_output", help='result output path')
+    parser.add_argument('--weight_decay', type=float, default=5e-4)
+   
+    parser.add_argument("--output_dir", default="datasets_adv")  
+    parser.add_argument("--ep", type=int, default=80)
+    parser.add_argument("--attack", choices=["linf","l2"], default="linf")
+    parser.add_argument("--eps", type=float, default=8)    
+    parser.add_argument("--alpha_adv", type=float, default=2)
+    parser.add_argument("--steps", type=int, default=20)  
     #load_weights
-    cfg = pa.parse_args()
-    os.environ["CUDA_VISIBLE_DEVICES"]=cfg.gpu
-    cfg.dev = "cuda:0"
-    main(cfg)
+    args = parser.parse_args()
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu_id
+    args.dev = "cuda:0"
+    
+    args.data_dir = os.path.join(args.data_file,args.data_dir,args.dataset)
+    args = img_param_init(args)
+    main(args)

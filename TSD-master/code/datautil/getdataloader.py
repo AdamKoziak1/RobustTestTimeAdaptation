@@ -56,3 +56,29 @@ def get_img_dataloader(args):
         for env in trdatalist+tedatalist]
 
     return train_loaders, eval_loaders
+
+def get_img_dataloader_adv(args):
+    names = args.img_dataset[args.dataset]
+    args.domain_num = len(names)
+    for i in range(len(names)):
+        if i in args.test_envs:
+            train_dataset = ImageDataset(args.dataset, args.task, args.data_dir,
+                names[i], i, transform=imgutil.image_train(args.dataset), test_envs=args.test_envs)
+           
+            test_dataset = ImageDataset(args.dataset, args.task, args.data_dir,
+                names[i], i, transform=imgutil.image_test(args.dataset), test_envs=args.test_envs)
+
+            train_loader = DataLoader(
+                dataset=train_dataset,
+                batch_size=args.batch_size,
+                num_workers=args.N_WORKERS,
+                shuffle=True)
+
+            eval_loader = DataLoader(
+                dataset=test_dataset,
+                batch_size=args.batch_size,
+                num_workers=args.N_WORKERS,
+                drop_last=False,
+                shuffle=False)
+
+            return train_loader, eval_loader
