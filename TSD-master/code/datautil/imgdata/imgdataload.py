@@ -12,6 +12,9 @@ class ImageDataset(object):
     def __init__(self, dataset, task, root_dir, domain_name, domain_label=-1, labels=None, transform=None, target_transform=None, indices=None, test_envs=[], mode='Default'):
         #self.imgs = ImageFolder(root_dir+domain_name).imgs
         self.imgs = ImageFolder(os.path.join(root_dir,domain_name)).imgs
+
+        print(os.path.join(root_dir,domain_name), len(self.imgs))
+
         self.domain_num = 0
         self.task = task
         self.dataset = dataset

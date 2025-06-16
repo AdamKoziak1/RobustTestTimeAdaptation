@@ -57,7 +57,7 @@ def main(args):
             attacked = int(mask.sum())
             actual_rate = (attacked / total) * 100.0
 
-            print(f"{expected_rate:8d} | {domain:20s} | {mask_idx:6d} | {actual_rate:10.2f}")
+            print(f"{expected_rate:8d} | {domain:20s} | {mask_idx:6d} | {actual_rate:10.2f} | {total}")
 
     print("\nDone.\n")
 

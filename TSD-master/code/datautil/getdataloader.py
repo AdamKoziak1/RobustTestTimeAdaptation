@@ -62,6 +62,7 @@ def get_img_dataloader_adv(args):
     args.domain_num = len(names)
     for i in range(len(names)):
         if i in args.test_envs:
+            print(i, args.test_envs)
             train_dataset = ImageDataset(args.dataset, args.task, args.data_dir,
                 names[i], i, transform=imgutil.image_train(args.dataset), test_envs=args.test_envs)
            

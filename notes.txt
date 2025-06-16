@@ -1,13 +1,4 @@
-Start a tmux session:
-tmux new -s tta
 
-Run your long training or evaluation command.
-
-Detach safely anytime:
-Ctrl + B, then D
-
-Reconnect:
-tmux attach -t tta
 
 TRAIN: python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
 
@@ -31,7 +22,17 @@ finish train on officehome 3
  (hold off on domainnet 4,5)
 run data_generation on officenet
 
-generate masks on vlcs, 
+CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset PACS
+python adv/generate_masks.py --dataset PACS
+CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset office-home
+python adv/generate_masks.py --dataset office-home
+CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
+python adv/generate_masks.py --dataset VLCS
+
+
+unsupervise_adapt on all (skip 0)
+
+
 unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ideally SOTA)
 
 add stddev in results

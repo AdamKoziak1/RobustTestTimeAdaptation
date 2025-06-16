@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from alg import alg, modelopera
 from alg.opt import *
 from utils.util import img_param_init, get_config_id
-from datautil.getdataloader import get_img_dataloader_adv
+from datautil.getdataloader import get_img_dataloader_adv, get_img_dataloader
 import torch.nn.functional as F
 
 # ----------------------------------------------------------
@@ -77,19 +77,21 @@ def main(args):
     os.makedirs(attack_config_dir, exist_ok=True)
 
 
-    for dom in doms:
-        print(f"\n=== Domain {dom} ===")
-
+    for dom_id, dom in enumerate(doms):
+        if dom_id == 0:
+            continue
+        print(f"\n=== Domain {dom_id} {dom} ===")
+        args.test_envs = [dom_id]
         # ---------- training -------------------------------------------------
         train_loader, test_loader = get_img_dataloader_adv(args)
-
+        print(len(train_loader)*args.batch_size, len(test_loader)*args.batch_size)
+        
         algorithm_class = alg.get_algorithm_class(args.algorithm)
         model = algorithm_class(args).cuda()
         model.train()
         opt = get_optimizer(model, args)
 
         n_classes = args.num_classes
-        softmax = nn.Softmax(dim=1)
         best_acc = 0
 
         domain_clean_dir = os.path.join(clean_dir, dom)
@@ -212,7 +214,7 @@ if __name__ == "__main__":
     parser.add_argument('--weight_decay', type=float, default=5e-4)
    
     parser.add_argument("--output_dir", default="datasets_adv")  
-    parser.add_argument("--ep", type=int, default=80)
+    parser.add_argument("--ep", type=int, default=50)
     parser.add_argument("--attack", choices=["linf","l2"], default="linf")
     parser.add_argument("--eps", type=float, default=8)    
     parser.add_argument("--alpha_adv", type=float, default=2)

@@ -38,7 +38,7 @@ def get_args():
     parser.add_argument(
         "--classifier", type=str, default="linear", choices=["linear", "wn"]
     )
-    parser.add_argument("--data_file", type=str, default="", help="root_dir")
+    parser.add_argument("--data_file", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/", help="root_dir")
     parser.add_argument(
         "--dis_hidden", type=int, default=256, help="dis hidden dimension"
     )
@@ -107,7 +107,7 @@ def get_args():
         "--dataset", type=str, default="PACS", help="office-home,PACS,VLCS,DomainNet"
     )
     parser.add_argument(
-        "--data_dir", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS", help="data dir"
+        "--data_dir", type=str, default="datasets", help="data dir"
     )
     parser.add_argument(
         "--attack_data_dir", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv", help="attacked data dir"
@@ -169,9 +169,6 @@ def get_args():
         default=0.05,
         help="\epsilon in Eqn. (5) for filtering redundant samples",
     )
-    parser.add_argument(
-        "--pretrain_dir", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/TSD-master/code/train_output/model.pkl", help="pre-train model path"
-    )
     parser.add_argument("--lambda1", type=float, default=1.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lambda2", type=float, default=1.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lambda3", type=float, default=1.0, help="Coefficient for Consistency Regularization Loss")
@@ -184,7 +181,7 @@ def get_args():
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
-    args.data_dir = args.data_file + args.data_dir
+    args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
 
     args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate), str(args.mask_id))
     os.environ["CUDA_VISIBLE_DEVICS"] = args.gpu_id
@@ -245,7 +242,7 @@ def adapt_loader(args):
 
 if __name__ == "__main__":
     args = get_args()
-    pretrain_model_path = args.pretrain_dir
+    pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, str(args.test_envs[0]), "model.pkl")
     set_random_seed(args.seed)
 
     wandb.init(
