@@ -75,6 +75,64 @@ def check_model(model):
     assert has_bn, "tent needs normalization for its optimization"
 
 
+def adversarial_weight_perturb_predict(
+        model,
+        images, 
+        logits,
+        perturb_init_scale=0.01,
+        perturb_grad_scale=0.01
+    ):
+    classifier = model.classifier
+    feature = model.featurizer(images)
+    #----- step 1: generate random perturbation -----#
+    pertub_layers = []
+    for layer in classifier:
+        if isinstance(layer, nn.Linear):
+
+            weight = layer.weight.data
+
+            # generate random perturbation
+            delta = torch.randn(weight.shape).to(logits.device)
+            # normalize to unit ball
+            delta = delta.div(torch.norm(delta, p=2, dim=1, keepdim=True) + 1e-8)
+            # require grad
+            delta.requires_grad = True
+            
+            # not perturb bias
+            bias = layer.bias.data
+
+            pertub_layers.append((weight, delta, bias))
+        else:
+            pertub_layers.append(layer)
+
+    #----- step 2: forward with perturbation -----#
+    z = feature
+    for layer in pertub_layers:
+        if isinstance(layer, tuple):
+            weight, delta, bias = layer
+            z = F.linear(z, weight + perturb_init_scale * delta, bias)
+        else:
+            z = layer(z)
+    logits_perturb = z
+
+    # calculate KL div loss
+    loss_kl = F.kl_div(F.log_softmax(logits_perturb, dim=1), F.softmax(logits, dim=1), reduction='batchmean')
+    loss_kl.backward()
+    
+    #----- step 3: forward with new perturbation -----#
+    z = feature
+    for layer in pertub_layers:
+        if isinstance(layer, tuple):
+            weight, delta, bias = layer
+            grad = delta.grad
+            grad = grad.div(torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+            z = F.linear(z, weight + perturb_grad_scale * grad, bias)
+        else:
+            z = layer(z)
+    logits_perturb = z
+    return logits_perturb.detach()
+
+
 class ERM(nn.Module):
     def __init__(self,model):
         super().__init__()
@@ -594,21 +652,14 @@ class TTA3(nn.Module):
         return ent - overall_ent
 
 # --- Flatness Regularization Loss (L_Flat) ---
-    def flat_loss(self, x):
+    def flat_loss(self, x, model, logits):
         if self.lambda1 <= 1e-8:
             return torch.tensor(0.0, device=x.device)
 
-        # TODO implement Sharpness Aware Minimization 
-        return torch.tensor(0.0, device=x.device)
-    
-        # noise = torch.randn_like(x) * self.r
-        # x_noisy = torch.clip(x + noise, 0, 1)
-        # logits_noisy = self.model.predict(x_noisy)
-        # L_Flat = F.kl_div(
-        #     F.log_softmax(logits_noisy, dim=1),
-        #     prob.detach(),
-        #     reduction='batchmean'
-        # )
+        logits_perturb = adversarial_weight_perturb_predict(model, x, logits)
+        log_prob = F.softmax(logits, dim=1)
+        prob_perturb = F.softmax(logits_perturb, dim=1)
+        return F.kl_div(log_prob, prob_perturb, reduction='batchmean')
 
 # --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
     def adv_loss(self, x, model, prob):
@@ -672,7 +723,7 @@ class TTA3(nn.Module):
         L_MI = self.mi_loss(logits, prob)
 
         # --- Flatness Regularization Loss (L_Flat) ---
-        L_Flat = self.flat_loss(x)
+        L_Flat = self.flat_loss(x, model, logits)
 
         # --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
         L_Adv = self.adv_loss(x, model, prob)
