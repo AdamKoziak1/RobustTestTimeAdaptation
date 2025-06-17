@@ -29,8 +29,27 @@ python adv/generate_masks.py --dataset office-home
 CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
 python adv/generate_masks.py --dataset VLCS
 
+cuda0
+  0 0 0
+  0 1 0
+  0 0 1 'cosine'
 
-unsupervise_adapt on all (skip 0)
+cuda1
+  0 0 1 'l2'
+  0 1 1 'cosine'
+  0 1 1 'l2'
+
+cuda2**
+1 0 0
+1 1 1 'cosine'
+1 1 1 'l2'
+
+cuda3**
+1 1 0
+1 0 1 'cosine'
+1 0 1 'l2'
+
+
 
 
 unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ideally SOTA)

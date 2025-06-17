@@ -545,8 +545,11 @@ class TTA3(nn.Module):
         eta (float): Step size for adversarial perturbation update.
     """
     def __init__(self, model, optimizer, steps=1, episodic=False, 
-                 lambda1=1.0, lambda2=1.0, lambda3=1.0, r=8/255, 
-                 eta=0.01, l_adv_iter=1, xi=10.0):
+                 lambda1=1.0, # flatness weight
+                 lambda2=1.0, # adversarial VAT weight
+                 lambda3=1.0, # consistency weight
+                 r=8/255, 
+                 eta=0.01, l_adv_iter=3, xi=10.0, cr_type='cosine'):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -555,10 +558,13 @@ class TTA3(nn.Module):
         self.lambda1 = lambda1
         self.lambda2 = lambda2
         self.lambda3 = lambda3
+        print(lambda1, lambda2, lambda3)
         self.r = r
         self.eta = eta
-        self.l_adv_iter = l_adv_iter #TODO change to param
+        self.l_adv_iter = l_adv_iter
         self.xi = xi
+        self.cr_type = cr_type.lower()
+        assert self.cr_type in ['cosine', 'l2']
 
         # Save initial states for episodic adaptation
         self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
@@ -575,68 +581,104 @@ class TTA3(nn.Module):
 
         # Perform N_I adaptation steps on the input batch
         for _ in range(self.steps):
-            
-
             outputs = self.forward_and_adapt(x, self.model, self.optimizer)
         return outputs
 
-    #@torch.enable_grad()
+    # --- Mutual Information Maximization Loss (L_MI) ---
+    def mi_loss(self, logits, prob):
+        # Compute the average entropy over the batch.
+        ent = softmax_entropy(logits).mean()
+        # Compute the entropy of the mean prediction.
+        mean_prob = prob.mean(dim=0)
+        overall_ent = -torch.sum(mean_prob * torch.log(mean_prob + 1e-6))
+        return ent - overall_ent
+
+# --- Flatness Regularization Loss (L_Flat) ---
+    def flat_loss(self, x):
+        if self.lambda1 <= 1e-8:
+            return torch.tensor(0.0, device=x.device)
+
+        # TODO implement Sharpness Aware Minimization 
+        return torch.tensor(0.0, device=x.device)
+    
+        # noise = torch.randn_like(x) * self.r
+        # x_noisy = torch.clip(x + noise, 0, 1)
+        # logits_noisy = self.model.predict(x_noisy)
+        # L_Flat = F.kl_div(
+        #     F.log_softmax(logits_noisy, dim=1),
+        #     prob.detach(),
+        #     reduction='batchmean'
+        # )
+
+# --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
+    def adv_loss(self, x, model, prob):
+        if self.lambda2 <= 1e-8:
+            return torch.tensor(0.0, device=x.device)
+
+        # Initialize a random perturbation within [-r, r]. #TODO check initialization conditions
+        epsilon = torch.rand(x.shape).sub(0.5).to(x.device)
+        epsilon = _normalize(epsilon)
+        bound = self.r/255
+        for _ in range(self.l_adv_iter): 
+            epsilon.requires_grad_()
+            pred_hat = model.predict(x + bound * epsilon)
+            logp_hat = F.log_softmax(pred_hat, dim=1)
+            adv_distance = F.kl_div(logp_hat, prob.detach(), reduction='batchmean')
+            adv_distance.backward()
+            epsilon = _normalize(epsilon.grad)
+            model.zero_grad()
+        r_adv = epsilon * bound # TODO check difference from self.eps in VAT (normally 1.0).
+        pred_hat = model.predict(x + r_adv)
+        logp_hat = F.log_softmax(pred_hat, dim=1)
+        return F.kl_div(logp_hat, prob, reduction='batchmean')
+    
+    def similarity_matrix(self, x):
+        if self.cr_type == "cosine":
+            x = F.normalize(x, dim=1)
+        return x @ x.t()
+    
+    def similarity_loss(self, S1, S2):
+        if self.cr_type == 'l2': # eq 8 + 12
+            # Frobenius inner product normalised by L2 norms
+            return (S1 * S2).sum() / (
+                torch.norm(S1) * torch.norm(S2) + 1e-8
+            )
+        else:  # 'l2'   (eq 7 + 11)
+            return torch.norm(S1 - S2, p=2) / S1.numel()
+
+# --- Consistency Regularization Loss (L_CR) ---
+    def cr_loss(self, x, prob):  #TODO check if needs probabilities or logits for output layer
+
+        if self.lambda3 <= 1e-8:
+            return torch.tensor(0.0, device=x.device)
+
+        with torch.no_grad():
+            feats = self.model.featurizer(x) #TODO pull out all layers, vectorize, and make stop layer a hyperparam
+        # print("feats: ", feats.shape)
+        # print("probs: ", prob.shape)
+        S_feat = self.similarity_matrix(feats)
+        S_pred = self.similarity_matrix(prob)
+        # print("S_feat: ", S_feat.shape)
+        # print("S_pred: ", S_pred.shape)
+
+        return self.similarity_loss(S_feat, S_pred)
+
     def forward_and_adapt(self, x, model, optimizer):
         # Forward pass to get logits and probabilities
         logits = model.predict(x)
         prob = F.softmax(logits, dim=1)
 
         # --- Mutual Information Maximization Loss (L_MI) ---
-        # Compute the average entropy over the batch.
-        ent = softmax_entropy(logits).mean()
-        # Compute the entropy of the mean prediction.
-        mean_prob = prob.mean(dim=0)
-        overall_ent = -torch.sum(mean_prob * torch.log(mean_prob + 1e-6))
-        L_MI = ent - overall_ent
-
-        # --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
-        # Initialize a random perturbation within [-r, r]. #TODO check initialization conditions
-        epsilon = torch.rand(x.shape).sub(0.5).to(x.device)
-
-        epsilon = _normalize(epsilon)
-
-        for _ in range(self.l_adv_iter): 
-            epsilon.requires_grad_()
-            pred_hat = model.predict(x + self.xi * epsilon)
-            logp_hat = F.log_softmax(pred_hat, dim=1)
-            adv_distance = F.kl_div(logp_hat, prob.detach(), reduction='batchmean')
-            adv_distance.backward()
-            epsilon = _normalize(epsilon.grad)
-            model.zero_grad()
-        
-        r_adv = epsilon * self.r/255 # TODO check difference from self.eps in VAT (normally 1.0).
-        pred_hat = model.predict(x + r_adv)
-        logp_hat = F.log_softmax(pred_hat, dim=1)
-        L_Adv = F.kl_div(logp_hat, prob, reduction='batchmean')
-
+        L_MI = self.mi_loss(logits, prob)
 
         # --- Flatness Regularization Loss (L_Flat) ---
-        # TODO implement Sharpness Aware Minimization 
-        L_Flat = torch.tensor(0.0, device=x.device)
+        L_Flat = self.flat_loss(x)
+
+        # --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
+        L_Adv = self.adv_loss(x, model, prob)
 
         # --- Consistency Regularization Loss (L_CR) ---
-        # TODO implement feature extractor properly/test 
-        # if hasattr(model, 'extract_features'):
-        #     features = model.extract_features(x)
-        #     # Use the last feature layer as an example.
-        #     last_feat = features[-1]  # shape: [batch_size, feature_dim]
-        #     norm_feat = last_feat / (last_feat.norm(dim=1, keepdim=True) + 1e-6)
-        #     sim_feat = torch.matmul(norm_feat, norm_feat.t())
-
-        #     # Compute cosine similarity of the prediction probabilities.
-        #     norm_prob = prob / (prob.norm(dim=1, keepdim=True) + 1e-6)
-        #     sim_prob = torch.matmul(norm_prob, norm_prob.t())
-
-        #     # L_CR: L2 difference between the similarity matrices.
-        #     L_CR = torch.norm(sim_feat - sim_prob, p=2)
-        # else:
-        #     L_CR = torch.tensor(0.0, device=x.device)
-        L_CR = torch.tensor(0.0, device=x.device)
+        L_CR = self.cr_loss(x, prob)
 
         # --- Overall Loss ---
         loss = L_MI + self.lambda1 * L_Flat + self.lambda2 * L_Adv + self.lambda3 * L_CR

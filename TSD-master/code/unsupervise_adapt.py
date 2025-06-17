@@ -177,6 +177,7 @@ def get_args():
     parser.add_argument("--eps", type=float, default=8)  
     parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
     parser.add_argument("--mask_id", type=int, choices=[0,1,2,3,4], default=0)   
+    parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='l2')   
 
 
     args = parser.parse_args()
@@ -245,9 +246,16 @@ if __name__ == "__main__":
     pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, str(args.test_envs[0]), "model.pkl")
     set_random_seed(args.seed)
 
+    run_name = f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}"
+
+    if args.adapt_alg == "TTA3":
+        cr_modifier = ""
+        if args.lambda3 >= 1e-8:
+            cr_modifier = f"-{args.cr_type}"
+        run_name = f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}_mask_{args.mask_id}"
     wandb.init(
         project="tta3_adapt",          # ← change to your project name
-        name=f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}",
+        name=run_name,
         config=vars(args),
     )
 
@@ -329,7 +337,9 @@ if __name__ == "__main__":
             episodic=args.episodic,
             lambda1=args.lambda1,
             lambda2=args.lambda2,
-            lambda3=args.lambda3
+            lambda3=args.lambda3,
+            l_adv_iter=args.l_adv_iter,
+            cr_type = args.cr_type,
         )
 
 
