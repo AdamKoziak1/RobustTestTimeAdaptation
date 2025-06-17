@@ -82,54 +82,30 @@ def adversarial_weight_perturb_predict(
         perturb_init_scale=0.01,
         perturb_grad_scale=0.01
     ):
-    classifier = model.classifier
-    feature = model.featurizer(images)
+    fc_layer = model.classifier.fc
+    feature = model.featurizer(images).detach()
     #----- step 1: generate random perturbation -----#
-    pertub_layers = []
-    for layer in classifier:
-        if isinstance(layer, nn.Linear):
-
-            weight = layer.weight.data
-
-            # generate random perturbation
-            delta = torch.randn(weight.shape).to(logits.device)
-            # normalize to unit ball
-            delta = delta.div(torch.norm(delta, p=2, dim=1, keepdim=True) + 1e-8)
-            # require grad
-            delta.requires_grad = True
-            
-            # not perturb bias
-            bias = layer.bias.data
-
-            pertub_layers.append((weight, delta, bias))
-        else:
-            pertub_layers.append(layer)
+    weight = fc_layer.weight.data
+    # generate random perturbation
+    delta = torch.randn(weight.shape).to(logits.device)
+    # normalize to unit ball
+    delta = delta.div(torch.norm(delta, p=2, dim=1, keepdim=True) + 1e-8)
+    # require grad
+    delta.requires_grad = True
+    # not perturb bias
+    bias = fc_layer.bias.data
 
     #----- step 2: forward with perturbation -----#
-    z = feature
-    for layer in pertub_layers:
-        if isinstance(layer, tuple):
-            weight, delta, bias = layer
-            z = F.linear(z, weight + perturb_init_scale * delta, bias)
-        else:
-            z = layer(z)
-    logits_perturb = z
-
+    logits_perturb = F.linear(feature, weight + perturb_init_scale * delta, bias)
     # calculate KL div loss
     loss_kl = F.kl_div(F.log_softmax(logits_perturb, dim=1), F.softmax(logits, dim=1), reduction='batchmean')
     loss_kl.backward()
     
     #----- step 3: forward with new perturbation -----#
-    z = feature
-    for layer in pertub_layers:
-        if isinstance(layer, tuple):
-            weight, delta, bias = layer
-            grad = delta.grad
-            grad = grad.div(torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
-            z = F.linear(z, weight + perturb_grad_scale * grad, bias)
-        else:
-            z = layer(z)
-    logits_perturb = z
+    grad = delta.grad
+    grad = grad.div(torch.norm(grad, p=2, dim=1, keepdim=True) + 1e-8)
+    logits_perturb = F.linear(feature, weight + perturb_grad_scale * grad, bias)
+
     return logits_perturb.detach()
 
 
@@ -654,7 +630,7 @@ class TTA3(nn.Module):
         if self.lambda1 <= 1e-8:
             return torch.tensor(0.0, device=x.device)
 
-        logits_perturb = adversarial_weight_perturb_predict(model, x, logits)
+        logits_perturb = adversarial_weight_perturb_predict(model, x, logits.detach())
         log_prob = F.softmax(logits, dim=1)
         prob_perturb = F.softmax(logits_perturb, dim=1)
         return F.kl_div(log_prob, prob_perturb, reduction='batchmean')
