@@ -606,8 +606,8 @@ class TTA3(nn.Module):
                  lambda1=1.0, # flatness weight
                  lambda2=1.0, # adversarial VAT weight
                  lambda3=1.0, # consistency weight
-                 r=8/255, 
-                 eta=0.01, l_adv_iter=3, xi=10.0, cr_type='cosine'):
+                 r=8, 
+                 l_adv_iter=3,  cr_type='cosine'):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -618,9 +618,7 @@ class TTA3(nn.Module):
         self.lambda3 = lambda3
         print(lambda1, lambda2, lambda3)
         self.r = r
-        self.eta = eta
         self.l_adv_iter = l_adv_iter
-        self.xi = xi
         self.cr_type = cr_type.lower()
         assert self.cr_type in ['cosine', 'l2']
 

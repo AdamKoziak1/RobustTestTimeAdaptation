@@ -340,8 +340,8 @@ if __name__ == "__main__":
             lambda3=args.lambda3,
             l_adv_iter=args.l_adv_iter,
             cr_type = args.cr_type,
+            r=args.eps,
         )
-
 
     adapt_model.cuda()
     total, correct = 0, 0

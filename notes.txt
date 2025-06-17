@@ -29,25 +29,33 @@ python adv/generate_masks.py --dataset office-home
 CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
 python adv/generate_masks.py --dataset VLCS
 
-cuda0
+
   0 0 0
   0 1 0
-  0 0 1 'cosine'
+
+cuda0
 
 cuda1
+
+cuda2
+
+cuda3
+
+
+
+  1 1 1 'cosine'
+  1 1 1 'l2'
+  1 0 0
   0 0 1 'l2'
+  0 0 1 'cosine'
   0 1 1 'cosine'
+
   0 1 1 'l2'
+  1 1 0
+  1 0 1 'cosine'
+  1 0 1 'l2'
 
-cuda2**
-1 0 0
-1 1 1 'cosine'
-1 1 1 'l2'
 
-cuda3**
-1 1 0
-1 0 1 'cosine'
-1 0 1 'l2'
 
 
 
