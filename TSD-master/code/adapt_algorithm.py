@@ -556,6 +556,7 @@ def _normalize(d, norm=2):
     d /= torch.norm(d_reshaped, norm, dim=1, keepdim=True) + 1e-8
     return d
 
+import wandb
 class TTA3(nn.Module):
     """
     Test-Time Adaptation against Adversarial Attacks (TTA3).
@@ -592,7 +593,6 @@ class TTA3(nn.Module):
         self.lambda1 = lambda1
         self.lambda2 = lambda2
         self.lambda3 = lambda3
-        print(lambda1, lambda2, lambda3)
         self.r = r
         self.l_adv_iter = l_adv_iter
         self.cr_type = cr_type.lower()
@@ -652,7 +652,7 @@ class TTA3(nn.Module):
             adv_distance.backward()
             epsilon = _normalize(epsilon.grad)
             model.zero_grad()
-        r_adv = epsilon * bound # TODO check difference from self.eps in VAT (normally 1.0).
+        r_adv = epsilon * bound 
         pred_hat = model.predict(x + r_adv)
         logp_hat = F.log_softmax(pred_hat, dim=1)
         return F.kl_div(logp_hat, prob, reduction='batchmean')
@@ -707,6 +707,12 @@ class TTA3(nn.Module):
 
         # --- Overall Loss ---
         loss = L_MI + self.lambda1 * L_Flat + self.lambda2 * L_Adv + self.lambda3 * L_CR
+        wandb.log({"Loss": loss,
+                   "L_MI": L_MI,
+                   "L_Flat": L_Flat,
+                   "L_Adv": L_Adv,
+                   "L_CR": L_CR})
+        #print(f"L_MI: {round(L_MI.item(), 4)} | L_Flat: {round(L_Flat, 4)} | L_Adv: {round(L_Adv, 4)} | L_CR: {round(L_CR, 4)} ")
 
         optimizer.zero_grad()
         loss.backward()

@@ -101,7 +101,7 @@ def get_args():
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--algorithm", type=str, default="ERM")
     parser.add_argument(
-        "--batch_size", type=int, default=108, help="batch_size of **test** time"
+        "--batch_size", type=int, default=64, help="batch_size of **test** time"
     )
     parser.add_argument(
         "--dataset", type=str, default="PACS", help="office-home,PACS,VLCS,DomainNet"
@@ -133,7 +133,7 @@ def get_args():
     parser.add_argument(
         "--adapt_alg",
         type=str,
-        default="Tent",
+        default="TTA3",
         help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3]",
     )
     parser.add_argument(
@@ -175,20 +175,20 @@ def get_args():
     parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=8)  
-    parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
+    parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=100)   
     parser.add_argument("--mask_id", type=int, choices=[0,1,2,3,4], default=0)   
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='l2')   
 
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
-    args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
+    args.data_dir =  os.path.join(args.data_file, args.data_dir)
 
-    args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate), str(args.mask_id))
+    #args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate), str(args.mask_id))
     os.environ["CUDA_VISIBLE_DEVICS"] = args.gpu_id
-    os.makedirs(args.output, exist_ok=True)
-    sys.stdout = Tee(os.path.join(args.output, "out.txt"))
-    sys.stderr = Tee(os.path.join(args.output, "err.txt"))
+    #os.makedirs(args.output, exist_ok=True)
+    #sys.stdout = Tee(os.path.join(args.output, "out.txt"))
+    #sys.stderr = Tee(os.path.join(args.output, "err.txt"))
     args = img_param_init(args)
 
     assert args.filter_K in [
@@ -217,6 +217,7 @@ def adapt_loader(args):
     # data
     test_envs = args.test_envs[0]
     data_root = os.path.join(args.data_dir, args.img_dataset[args.dataset][test_envs])
+    #print(data_root)
     if args.attack == "clean":
         testset = ImageFolder(root=data_root, transform=test_transform)
     else:
@@ -240,33 +241,8 @@ def adapt_loader(args):
     )
     return testloader
 
-
-if __name__ == "__main__":
-    args = get_args()
-    pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, str(args.test_envs[0]), "model.pkl")
-    set_random_seed(args.seed)
-
-    run_name = f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}"
-
-    if args.adapt_alg == "TTA3":
-        cr_modifier = ""
-        if args.lambda3 >= 1e-8:
-            cr_modifier = f"-{args.cr_type}"
-        run_name = f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}_mask_{args.mask_id}"
-    wandb.init(
-        project="tta3_adapt",          # ← change to your project name
-        name=run_name,
-        config=vars(args),
-    )
-
-    algorithm_class = alg.get_algorithm_class(args.algorithm)
-    algorithm = algorithm_class(args)
-    algorithm.train()
-    algorithm = load_ckpt(algorithm, pretrain_model_path)
-
-    dataloader = adapt_loader(args)
-
-    # set adapt model and optimizer
+def configure_model_and_optimizer(args, algorithm):
+ # set adapt model and optimizer
     if args.adapt_alg == "Tent":
         algorithm = configure_model(algorithm)
         params, _ = collect_params(algorithm)
@@ -335,6 +311,7 @@ if __name__ == "__main__":
             optimizer,
             steps=args.steps,
             episodic=args.episodic,
+            #episodic=True,
             lambda1=args.lambda1,
             lambda2=args.lambda2,
             lambda3=args.lambda3,
@@ -342,128 +319,84 @@ if __name__ == "__main__":
             cr_type = args.cr_type,
             r=args.eps,
         )
-
-    adapt_model.cuda()
-    total, correct = 0, 0
-    acc_arr = []
-    time1 = time.time()
-    outputs_arr, labels_arr = [], []
-    for idx, sample in enumerate(dataloader):
-        #print(sample[0].shape)
-        image, label = sample
-        image = image.cuda()
-        logits = adapt_model(image)
-        outputs_arr.append(logits.detach().cpu())
-        labels_arr.append(label)
-
-    outputs_arr = torch.cat(outputs_arr, 0).numpy()
-    labels_arr = torch.cat(labels_arr).numpy()
-    outputs_arr = outputs_arr.argmax(1)
-    matrix = confusion_matrix(labels_arr, outputs_arr)
-    acc_per_class = (matrix.diagonal() / matrix.sum(axis=1) * 100.0).round(2)
-    time2 = time.time()
-    print(matrix)
-    print("Accuracy of per class:")
-    print(acc_per_class)
-
-    avg_acc = 100.0 * np.sum(matrix.diagonal()) / matrix.sum()
-    print("\t Hyper-parameter")
-    print("\t Dataset: {}".format(args.dataset))
-    print("\t Net: {}".format(args.net))
-    print("\t Test domain: {}".format(args.test_envs[0]))
-    print("\t Algorithm: {}".format(args.adapt_alg))
-    print("\t Accuracy: %f" % float(avg_acc))
-    print("\t Cost time: %f s" % (time2 - time1))
-
-    wandb.log({
-        "final_target_acc": avg_acc,
-        "time_taken_s": time2 - time1,
-        "adapt_algorithm": args.adapt_alg,
-        "attack_rate": args.attack_rate,
-    }, commit=False)
-
-    # Log per-class accuracy as separate metrics
-    for cls_idx, cls_acc in enumerate(acc_per_class):
-        wandb.log({f"acc_class_{cls_idx}": float(cls_acc)}, commit=False)
-
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(6, 6))
-    cax = ax.matshow(matrix, cmap="Blues")
-    plt.title("Confusion Matrix")
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
-    fig.colorbar(cax)
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            ax.text(j, i, matrix[i, j], ha='center', va='center', color='yellow')
-    plt.tight_layout()
-    # This will send the figure to wandb
-    wandb.log({"confusion_matrix": wandb.Image(fig)})
-    
-    wandb.finish()
-
-
-
-
-def run_once(args, domain:int, rate:int, mask_id:int=0) -> float:
-    """
-    Adapt on *one* (domain, attack_rate, mask_id) triple and
-    return the scalar accuracy in %.
-    """
-    args.test_envs = [domain]
-    args.attack_rate = rate
-    args.mask_id = mask_id
-    dataloader = adapt_loader(args)          # unchanged
-    acc = evaluate_on_loader(adapt_model, dataloader, args.steps)  # helper below
-    return acc
-
-def evaluate_on_loader(model, loader, steps):
-    """Iterate once and record acc after each adaptation step (0 … steps)."""
-    totals = torch.zeros(steps+1)
-    counts = torch.zeros(steps+1)
-    for images, labels in loader:
-        images, labels = images.cuda(), labels.cuda()
-        # step 0 (before adaptation)
-        logits = model.model.predict(images)         # bare backbone
-        totals[0]  += (logits.argmax(1)==labels).sum().item()
-        counts[0]  += len(labels)
-        # steps 1…N
-        for s in range(1, steps+1):
-            logits = model(images)                   # triggers adaptation
-            totals[s] += (logits.argmax(1)==labels).sum().item()
-            counts[s] += len(labels)
-    step_acc = (totals / counts * 100).tolist()
-    # log the whole curve once – one W&B plot per domain/rate
-    wandb.log({f"acc_curve/domain_{args.test_envs[0]}/rate_{args.attack_rate}": step_acc})
-    return step_acc[-1]                              # final step accuracy
-
-
-def adapt_loop(args):
-    domains = list(range(len(args.img_dataset[args.dataset])))
-    ATTACK_RATES = [0,10,20,30,40,50,60,70,80,90,100]   # configurable
-
-    # containers for aggregated stats
-    dom_acc   = {d:[] for d in domains}
-    rate_acc  = {r:[] for r in ATTACK_RATES}
-    overall_total, overall_correct = 0, 0
-
-    for d in domains:
-        for r in ATTACK_RATES:
-            # choose 1 mask only when r in {0,100}
-            mask_choice = 0 if r in {0,100} else args.mask_id
-            acc = run_once(args, d, r, mask_choice)
-            dom_acc[d].append(acc)
-            rate_acc[r].append(acc)
-
-    # --- aggregation ---
-    domain_avg = {f"acc_domain/{d}": float(np.mean(v)) for d,v in dom_acc.items()}
-    rate_avg   = {f"acc_rate/{r}":  float(np.mean(v)) for r,v in rate_acc.items()}
-    acc_overall = float(np.mean([a for v in dom_acc.values() for a in v]))
-
-    wandb.log({"acc_overall": acc_overall, **domain_avg, **rate_avg})
+    return adapt_model
 
 if __name__ == "__main__":
     args = get_args()
-    wandb.init(project="tta3_batch", config=vars(args), name="batch_run")
-    adapt_loop(args)
+    set_random_seed(args.seed)
+
+    run_name = f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}"
+
+    if args.adapt_alg == "TTA3":
+        cr_modifier = ""
+        if args.lambda3 >= 1e-8:
+            cr_modifier = f"-{args.cr_type}"
+        run_name = f"{args.dataset}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
+        
+    wandb.init(
+        project="tta3_grid",    
+        name=run_name,
+        config=vars(args),
+    )
+
+    labels_arr = []
+    outputs_arr = []
+    time_global_start = time.time()
+
+
+    data_dir_outer = args.data_dir
+    #for dataset in ["PACS", "VLCS", "office-home"]:
+    #print(dataset)
+    #args.dataset = dataset
+    args = img_param_init(args)
+    args.data_dir = os.path.join(data_dir_outer, args.dataset)
+    time1 = time.time()
+    for dom_id, domain in enumerate(args.domains):
+        args.test_envs = [dom_id]
+        pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, str(args.test_envs[0]), "model.pkl")
+        #print(dom_id, domain)
+
+        algorithm_class = alg.get_algorithm_class(args.algorithm)
+        algorithm = algorithm_class(args)
+        algorithm.train()
+        algorithm = load_ckpt(algorithm, pretrain_model_path)
+
+        dataloader = adapt_loader(args)
+
+        adapt_model = configure_model_and_optimizer(args, algorithm)
+        adapt_model.cuda()
+        #total, correct = 0, 0
+        #acc_arr = []
+        #print(len(dataloader))
+        for idx, sample in enumerate(dataloader):
+            
+            #print(sample[0].shape)
+            #print(idx)
+            image, label = sample
+            image = image.cuda()
+            logits = adapt_model(image)
+            outputs_arr.append(logits.detach().cpu())
+            labels_arr.append(label)
+
+    total_time = time.time() - time_global_start
+    labels_np = torch.cat(labels_arr).numpy()
+    logits_np = torch.cat(outputs_arr).numpy()
+    preds     = logits_np.argmax(1)
+    acc = 100.0 * (preds == labels_np).mean()
+
+    wandb.log({
+        "acc_overall" : round(acc, 2),
+        "time_taken_s": total_time,
+        "lambda1": args.lambda1,
+        "lambda2": args.lambda2,
+        "lambda3": args.lambda3,
+        "l_adv_iter": args.l_adv_iter,
+        "cr_type": args.cr_type,
+        "r": args.eps,
+    })
+
     wandb.finish()
+
+
+
+    #wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/m21c4mcw

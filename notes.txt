@@ -30,40 +30,23 @@ CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
 python adv/generate_masks.py --dataset VLCS
 
 
-  0 0 0
-  0 1 0
-
-cuda0
-
-cuda1
-
-cuda2
-
-cuda3
 
 
-
-  1 1 1 'cosine'
-  1 1 1 'l2'
-  1 0 0
-  0 0 1 'l2'
-  0 0 1 'cosine'
-  0 1 1 'cosine'
-
-  0 1 1 'l2'
-  1 1 0
-  1 0 1 'cosine'
-  1 0 1 'l2'
+hyperparam sweep on each lambda and cr type. maybe get unified accuracy over domains/datasets as signal to optimize
 
 
-
-
+online vs offline (toggle episodic)
+  sweep both
+  adapt on both
+  
 
 
 unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ideally SOTA)
+  *online specifically, make sure setting is consistent
+  define online, are we doing it? do we want to?
+    episodic set to true for sweep, attack rate 100, average over all domains and datasets.
+
 
 add stddev in results
-
-look at t3a, why is it robust
 
 ablation on loss terms
