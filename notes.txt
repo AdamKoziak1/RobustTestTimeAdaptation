@@ -50,3 +50,7 @@ unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ide
 add stddev in results
 
 ablation on loss terms
+
+
+
+episodic=False: PseudoLabel, SHOTIM, TSD

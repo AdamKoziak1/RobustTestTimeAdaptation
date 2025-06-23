@@ -631,7 +631,7 @@ class TTA3(nn.Module):
             return torch.tensor(0.0, device=x.device)
 
         logits_perturb = adversarial_weight_perturb_predict(model, x, logits.detach())
-        log_prob = F.softmax(logits, dim=1)
+        log_prob = F.log_softmax(logits, dim=1)
         prob_perturb = F.softmax(logits_perturb, dim=1)
         return F.kl_div(log_prob, prob_perturb, reduction='batchmean')
 
@@ -650,7 +650,9 @@ class TTA3(nn.Module):
             logp_hat = F.log_softmax(pred_hat, dim=1)
             adv_distance = F.kl_div(logp_hat, prob.detach(), reduction='batchmean')
             adv_distance.backward()
-            epsilon = _normalize(epsilon.grad)
+            
+            #epsilon = _normalize(epsilon.grad)
+            epsilon = F.normalize(epsilon.grad, dim=1)
             model.zero_grad()
         r_adv = epsilon * bound 
         pred_hat = model.predict(x + r_adv)
@@ -707,11 +709,11 @@ class TTA3(nn.Module):
 
         # --- Overall Loss ---
         loss = L_MI + self.lambda1 * L_Flat + self.lambda2 * L_Adv + self.lambda3 * L_CR
-        wandb.log({"Loss": loss,
-                   "L_MI": L_MI,
-                   "L_Flat": L_Flat,
-                   "L_Adv": L_Adv,
-                   "L_CR": L_CR})
+        wandb.log({"Loss": loss.item(),
+                   "L_MI": L_MI.item(),
+                   "L_Flat": L_Flat.item(),
+                   "L_Adv": L_Adv.item(),
+                   "L_CR": L_CR.item()})
         #print(f"L_MI: {round(L_MI.item(), 4)} | L_Flat: {round(L_Flat, 4)} | L_Adv: {round(L_Adv, 4)} | L_CR: {round(L_CR, 4)} ")
 
         optimizer.zero_grad()

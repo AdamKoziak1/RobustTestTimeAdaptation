@@ -6,20 +6,20 @@ metric:
 
 parameters:
   # ——— adversarial budget ———
-  eps:
-    values: [2,4,8]
+  # eps:
+  #   values: [2,4,8]
 
   # ——— loss weights ———
   lambda1:
-    values: [0,0.001,0.01,0.1,1]
+    values: [0,0.001,0.01,0.1,1] # 0.1
   lambda2:
     values: [0,0.001,0.01,0.1,1]
   lambda3:
     values: [0,0.001,0.01,0.1,1]
 
   # ——— adaptation hyper-params ———
-  l_adv_iter:
-    values: [1,3]
+  # l_adv_iter:
+  #   values: [1,3]
   # steps:
   #   values: [1,3,5]
   cr_type:
