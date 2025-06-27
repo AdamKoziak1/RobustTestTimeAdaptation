@@ -1,4 +1,0 @@
-done
-total cost time:2719.7400591373444
-valid acc:0.9797
-target acc:0.8213

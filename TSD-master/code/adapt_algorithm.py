@@ -651,8 +651,8 @@ class TTA3(nn.Module):
             adv_distance = F.kl_div(logp_hat, prob.detach(), reduction='batchmean')
             adv_distance.backward()
             
-            #epsilon = _normalize(epsilon.grad)
-            epsilon = F.normalize(epsilon.grad, dim=1)
+            epsilon = _normalize(epsilon.grad)
+            #epsilon = F.normalize(epsilon.grad, dim=1)
             model.zero_grad()
         r_adv = epsilon * bound 
         pred_hat = model.predict(x + r_adv)
@@ -665,12 +665,12 @@ class TTA3(nn.Module):
         return x @ x.t()
     
     def similarity_loss(self, S1, S2):
-        if self.cr_type == 'l2': # eq 8 + 12
+        if self.cr_type == 'l2': # (eq 7 + 11)
             # Frobenius inner product normalised by L2 norms
             return (S1 * S2).sum() / (
                 torch.norm(S1) * torch.norm(S2) + 1e-8
             )
-        else:  # 'l2'   (eq 7 + 11)
+        else:  # 'cosine'  eq  8 + 12
             return torch.norm(S1 - S2, p=2) / S1.numel()
 
 # --- Consistency Regularization Loss (L_CR) ---
@@ -708,7 +708,7 @@ class TTA3(nn.Module):
         L_CR = self.cr_loss(x, prob)
 
         # --- Overall Loss ---
-        loss = L_MI + self.lambda1 * L_Flat + self.lambda2 * L_Adv + self.lambda3 * L_CR
+        loss = L_MI + (self.lambda1 * L_Flat) + (self.lambda2 * L_Adv) + (self.lambda3 * L_CR)
         wandb.log({"Loss": loss.item(),
                    "L_MI": L_MI.item(),
                    "L_Flat": L_Flat.item(),

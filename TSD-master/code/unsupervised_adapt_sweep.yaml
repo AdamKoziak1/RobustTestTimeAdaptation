@@ -1,5 +1,5 @@
-program: unsupervised_adapt_dataset.py       # or whatever entry point you saved
-method: grid                        # Bayesian optimisation over the space
+program: unsupervised_adapt_dataset.py       
+method: grid                        
 metric:
   name: acc_overall                  
   goal: maximize
@@ -11,11 +11,11 @@ parameters:
 
   # ——— loss weights ———
   lambda1:
-    values: [0,0.001,0.01,0.1,1] # 0.1
+    values: [0,0.001,0.01,0.1,1,10] # 0.1
   lambda2:
-    values: [0,0.001,0.01,0.1,1]
+    values: [0,0.00001,0.0001,0.001,0.01]
   lambda3:
-    values: [0,0.001,0.01,0.1,1]
+    values: [0,0.001,0.01,0.1,1,10]
 
   # ——— adaptation hyper-params ———
   # l_adv_iter:

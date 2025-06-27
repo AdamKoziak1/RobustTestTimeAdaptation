@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument('--anneal_iters', type=int,
                         default=500, help='Penalty anneal iters used in VREx')
     parser.add_argument('--batch_size', type=int,
-                        default=108, help='batch_size')
+                        default=32, help='batch_size')
     parser.add_argument('--beta1', type=float, default=0.9,
                         help='Adam hyper-param')
     parser.add_argument('--checkpoint_freq', type=int,
@@ -45,7 +45,7 @@ def get_args():
                         default=1e-2, help="learning rate used in MLDG")
     parser.add_argument('--lam', type=float,
                         default=1, help="tradeoff hyperparameter used in VREx")
-    parser.add_argument('--lr', type=float, default=1e-2, help="learning rate")
+    parser.add_argument('--lr', type=float, default=5e-5, help="learning rate")
     parser.add_argument('--lr_decay', type=float, default=0.75, help='for sgd')
     parser.add_argument('--lr_decay1', type=float,
                         default=1.0, help='for pretrained featurizer')
@@ -54,7 +54,7 @@ def get_args():
     parser.add_argument('--lr_gamma', type=float,
                         default=0.0003, help='for optimizer')
     parser.add_argument('--max_epoch', type=int,
-                        default=120, help="max iterations")
+                        default=50, help="max iterations")
     parser.add_argument('--mixupalpha', type=float,
                         default=0.2, help='mixup hyper-param')
     parser.add_argument('--mldg_beta', type=float,
@@ -84,12 +84,12 @@ def get_args():
     parser.add_argument('--opt_type',type=str,default='Adam')  #if want to use Adam, please set Adam
     parser.add_argument('--output', type=str,
                         default="train_output", help='result output path')
-    parser.add_argument('--weight_decay', type=float, default=5e-4)
+    parser.add_argument('--weight_decay', type=float, default=0)
     args = parser.parse_args()
     args.steps_per_epoch = 100
     args.data_dir = os.path.join(args.data_file,args.data_dir,args.dataset)
-    os.environ['CUDA_VISIBLE_DEVICS'] = args.gpu_id
-    args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]))
+    #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
+    args.output = os.path.join(args.output, args.dataset, f"test_{str(args.test_envs[0])}", f"seed_{str(args.seed)}")
     os.makedirs(args.output, exist_ok=True)
     sys.stdout = Tee(os.path.join(args.output, 'out.txt'))
     sys.stderr = Tee(os.path.join(args.output, 'err.txt'))
@@ -103,8 +103,8 @@ if __name__ == '__main__':
     set_random_seed(args.seed)
 
     wandb.init(
-        project="tta3",         # ← change to your project
-        name=f"TRAIN_{args.algorithm}_{args.dataset}_excl-dom-{args.test_envs[0]}",  # run name in W&B
+        project="tta3_train",         # ← change to your project
+        name=f"{args.dataset}_test-env-{args.test_envs[0]}_s{args.seed}",  # run name in W&B
         config=vars(args),                   # log all hyperparameters
     )
 

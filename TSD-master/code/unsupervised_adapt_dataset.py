@@ -186,6 +186,7 @@ def get_args():
 
     #args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate), str(args.mask_id))
     os.environ["CUDA_VISIBLE_DEVICS"] = args.gpu_id
+    #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     #os.makedirs(args.output, exist_ok=True)
     #sys.stdout = Tee(os.path.join(args.output, "out.txt"))
     #sys.stderr = Tee(os.path.join(args.output, "err.txt"))

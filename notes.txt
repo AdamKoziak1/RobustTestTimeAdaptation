@@ -1,56 +1,51 @@
 
-
-TRAIN: python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
-
-**** CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 4 --batch_size 64
-
-
-
-ADAPT: python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TENT --batch_size 1 --attack_rate 50 --mask_id 0
-./run_domain.sh 
-
 resnet18 first, then resnet50. insufficient VRAM for VIT (at default batch size at least)
 
+TRAIN: 
+  python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
+  **** CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 4 --batch_size 64
+
+ADAPT: python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TENT --batch_size 1 --attack_rate 50 --mask_id 0
+  ./run_domain.sh 
+
+MASKS:
+  CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset PACS
+  python adv/generate_masks.py --dataset PACS
+  CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset office-home
+  python adv/generate_masks.py --dataset office-home
+  CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
+  python adv/generate_masks.py --dataset VLCS
+
+how to approach sweep? 
+  grid sweep and pick best
+  analyze trends somehow 
+    what would be anchor values for the rest?
+      how to find them?
 
 TODO:
-implement lambda1 loss
-implement lambda2 loss
-  make L_0 (stop gradient) a hyperparameter
+  ****make L_0 (stop gradient) a hyperparameter (implement multilayer feature pulling)
+  LoRA
+
+  check adv data gen again (int vs vec for labels in CE loss)
 
 
-finish train on officehome 3
- (hold off on domainnet 4,5)
-run data_generation on officenet
+  online vs offline (toggle episodic)
+    sweep both
+    adapt on both
+    episodic=False: Tent, PL, SHOT-IM, TSD
+    episodic: T3A, ..., (episodic=True: Tent, PL, SHOT-IM, TSD)
 
-CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset PACS
-python adv/generate_masks.py --dataset PACS
-CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset office-home
-python adv/generate_masks.py --dataset office-home
-CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
-python adv/generate_masks.py --dataset VLCS
-
-
+  unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ideally SOTA)
+    *online specifically, make sure setting is consistent
+    define online, are we doing it? do we want to?
+      online means continual learning, parameter updates persist to next batch.
 
 
-hyperparam sweep on each lambda and cr type. maybe get unified accuracy over domains/datasets as signal to optimize
-
-
-online vs offline (toggle episodic)
-  sweep both
-  adapt on both
-  
-
-
-unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ideally SOTA)
-  *online specifically, make sure setting is consistent
-  define online, are we doing it? do we want to?
-    episodic set to true for sweep, attack rate 100, average over all domains and datasets.
-
-
-add stddev in results
-
-ablation on loss terms
+  add stddev in results
+    add seed to unsupervise_adapt
+    add seed to generate_adv_data
+    train on seed=1,2
 
 
 
-episodic=False: PseudoLabel, SHOTIM, TSD
+implement reset in TSD (and any other where it's missing) for episodic adaptation

@@ -13,31 +13,85 @@ BATCH=64                           # test-time batch size
 
 export CUDA_VISIBLE_DEVICES=$GPU
 
-for ALG in TTA3; do #TTA3 (TSD BN, PL)?
-  for DATASET in PACS VLCS office-home; do
-    for DOMAIN_IDX in 0 1 2 3; do
-      for RATE in 0 20 40 60 80 100; do
-        for MASK in 0 1 2 3 4; do
-          echo "▶︎  Rate=$RATE  Mask=$MASK"
-          CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
-              --adapt_alg "$ALG" \
-              --dataset  "$DATASET" \
-              --attack_rate $RATE \
-              --mask_id $MASK \
-              --test_envs $DOMAIN_IDX \
-              --batch_size $BATCH \
-              --lambda1 0.0 \
-              --lambda2 0.0 \
-              --lambda3 1.0 \
-              --cr_type cosine
-        done
-      done
-    done
-  done
-done
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset PACS --test_envs $GPU
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset VLCS --test_envs $GPU
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset office-home --test_envs $GPU
 
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset PACS --test_envs $GPU --seed 1
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset VLCS --test_envs $GPU --seed 1
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset office-home --test_envs $GPU --seed 1
 
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset PACS --test_envs $GPU --seed 2
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset VLCS --test_envs $GPU --seed 2
+CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset office-home --test_envs $GPU --seed 2
 
+# for DATASET in office-home; do
+#   for ALG in PL; do #TTA3 (TSD BN, PL)?
+#     for DOMAIN_IDX in 0 1 2 3; do
+#       for RATE in 0 100; do
+#         for MASK in 0; do
+#           echo "▶︎  Rate=$RATE  Mask=$MASK"
+#           CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
+#               --adapt_alg "$ALG" \
+#               --dataset  "$DATASET" \
+#               --attack_rate $RATE \
+#               --mask_id $MASK \
+#               --test_envs $DOMAIN_IDX \
+#               --batch_size $BATCH \
+#               --episodic
+#         done
+#       done
+#       for RATE in 20 40 60 80; do
+#         for MASK in 0 1 2 3 4; do
+#           echo "▶︎  Rate=$RATE  Mask=$MASK"
+#           CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
+#               --adapt_alg "$ALG" \
+#               --dataset  "$DATASET" \
+#               --attack_rate $RATE \
+#               --mask_id $MASK \
+#               --test_envs $DOMAIN_IDX \
+#               --batch_size $BATCH \
+#               --episodic
+#         done
+#       done
+#     done
+#   done
+# done
+
+# for DATASET in PACS VLCS office-home; do
+#   for ALG in SHOT-IM; do #TTA3 (TSD BN, PL)?
+#     for DOMAIN_IDX in 0 1 2 3; do
+#       for RATE in 0 100; do
+#         for MASK in 0; do
+#           echo "▶︎  Rate=$RATE  Mask=$MASK"
+#           CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
+#               --adapt_alg "$ALG" \
+#               --dataset  "$DATASET" \
+#               --attack_rate $RATE \
+#               --mask_id $MASK \
+#               --test_envs $DOMAIN_IDX \
+#               --batch_size $BATCH \
+#               --steps 3 \
+#               --episodic
+#         done
+#       done
+#       for RATE in 20 40 60 80; do
+#         for MASK in 0 1 2 3 4; do
+#           echo "▶︎  Rate=$RATE  Mask=$MASK"
+#           CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
+#               --adapt_alg "$ALG" \
+#               --dataset  "$DATASET" \
+#               --attack_rate $RATE \
+#               --mask_id $MASK \
+#               --test_envs $DOMAIN_IDX \
+#               --batch_size $BATCH \
+#               --steps 3 \
+#               --episodic
+#         done
+#       done
+#     done
+#   done
+# done
 
 
 # for ALG in TTA3; do #TTA3 (TSD BN, PL)?

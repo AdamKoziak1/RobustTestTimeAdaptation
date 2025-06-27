@@ -169,15 +169,15 @@ def get_args():
         default=0.05,
         help="\epsilon in Eqn. (5) for filtering redundant samples",
     )
-    parser.add_argument("--lambda1", type=float, default=1.0, help="Coefficient for Flatness Loss")
-    parser.add_argument("--lambda2", type=float, default=1.0, help="Coefficient for Adversarial Loss")
+    parser.add_argument("--lambda1", type=float, default=10.0, help="Coefficient for Flatness Loss")
+    parser.add_argument("--lambda2", type=float, default=0.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lambda3", type=float, default=1.0, help="Coefficient for Consistency Regularization Loss")
     parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=8)  
     parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
     parser.add_argument("--mask_id", type=int, choices=[0,1,2,3,4], default=0)   
-    parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='l2')   
+    parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
 
 
     args = parser.parse_args()
@@ -186,6 +186,7 @@ def get_args():
 
     args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate), str(args.mask_id))
     os.environ["CUDA_VISIBLE_DEVICS"] = args.gpu_id
+    #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
     os.makedirs(args.output, exist_ok=True)
     sys.stdout = Tee(os.path.join(args.output, "out.txt"))
     sys.stderr = Tee(os.path.join(args.output, "err.txt"))
