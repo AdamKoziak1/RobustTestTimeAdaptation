@@ -7,7 +7,6 @@ import datautil.imgdata.util as imgutil
 from datautil.imgdata.imgdataload import ImageDataset
 from datautil.mydataloader import InfiniteDataLoader
 
-
 def get_img_dataloader(args):
     rate = 0.2
     trdatalist, tedatalist = [], []
@@ -57,29 +56,118 @@ def get_img_dataloader(args):
 
     return train_loaders, eval_loaders
 
+
 def get_img_dataloader_adv(args):
-    names = args.img_dataset[args.dataset]
-    args.domain_num = len(names)
-    for i in range(len(names)):
-        if i in args.test_envs:
-            print(i, args.test_envs)
-            train_dataset = ImageDataset(args.dataset, args.task, args.data_dir,
-                names[i], i, transform=imgutil.image_train(args.dataset), test_envs=args.test_envs)
-           
-            test_dataset = ImageDataset(args.dataset, args.task, args.data_dir,
-                names[i], i, transform=imgutil.image_test(args.dataset), test_envs=args.test_envs)
+    """
+    Builds three loaders for the held-out test domain:
+        • train_loader – stratified split, image_train transform
+        • val_loader   – complementary split, image_test transform
+        • test_loader  – full domain,  image_test transform
+    """
+    # --- domain metadata ----------------------------------------------------
+    dom_id   = args.test_envs[0]                        # single held-out env
+    dom_name = args.img_dataset[args.dataset][dom_id]
 
-            train_loader = DataLoader(
-                dataset=train_dataset,
-                batch_size=args.batch_size,
-                num_workers=args.N_WORKERS,
-                shuffle=True)
+    # --- full dataset (image_train transform only for label collection) -----
+    full_ds = ImageDataset(                    
+        args.dataset, args.task, args.data_dir,
+        dom_name, dom_id,
+        transform=imgutil.image_test(args.dataset),
+        test_envs=args.test_envs
+    )
 
-            eval_loader = DataLoader(
-                dataset=test_dataset,
-                batch_size=args.batch_size,
-                num_workers=args.N_WORKERS,
-                drop_last=False,
-                shuffle=False)
+    labels = full_ds.labels
+    n      = len(labels)
+    idx    = np.arange(n)
 
-            return train_loader, eval_loader
+    # --- stratified split ----------------------------------------------------
+    
+    rate = 0.2
+    splitter  = ms.StratifiedShuffleSplit(
+        n_splits=1,
+        test_size=rate,
+        train_size=1 - rate,
+        random_state=args.seed
+    )
+    train_idx, val_idx = next(splitter.split(idx, labels))
+
+    # --- dataset objects -----------------------------------------------------
+    train_ds = ImageDataset(
+        args.dataset, args.task, args.data_dir,
+        dom_name, dom_id,
+        transform=imgutil.image_train(args.dataset),
+        indices=train_idx,
+        test_envs=args.test_envs
+    )
+
+    val_ds = ImageDataset(
+        args.dataset, args.task, args.data_dir,
+        dom_name, dom_id,
+        transform=imgutil.image_test(args.dataset),
+        indices=val_idx,
+        test_envs=args.test_envs
+    )
+
+
+    # --- loaders -------------------------------------------------------------
+    train_loader = [InfiniteDataLoader(
+        dataset=train_ds,
+        weights=None,
+        batch_size=args.batch_size,
+        num_workers=args.N_WORKERS)]
+
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=args.batch_size,
+        num_workers=args.N_WORKERS,
+        shuffle=False,
+        drop_last=False
+    )
+
+    attack_loader = DataLoader(
+        full_ds,
+        batch_size=args.batch_size,
+        num_workers=args.N_WORKERS,
+        shuffle=False,
+        drop_last=False
+    )
+
+    return train_loader, val_loader, attack_loader
+
+
+
+# def get_img_dataloader_adv(args):
+#     dom_id = args.test_envs[0]
+#     dom_name = args.img_dataset[args.dataset][dom_id]
+
+#     train_dataset = ImageDataset(args.dataset, args.task, args.data_dir,
+#         dom_name, dom_id, transform=imgutil.image_train(args.dataset), test_envs=args.test_envs)
+    
+#     test_dataset = ImageDataset(args.dataset, args.task, args.data_dir,
+#         dom_name, dom_id, transform=imgutil.image_test(args.dataset), test_envs=args.test_envs)
+
+
+
+#     train_loader = InfiniteDataLoader(
+#         dataset=train_dataset,
+#         weights=None,
+#         batch_size=args.batch_size,
+#         num_workers=args.N_WORKERS)
+    
+#     val_loader = DataLoader(
+#         dataset=train_dataset,
+#         batch_size=args.batch_size,
+#         num_workers=args.N_WORKERS,
+#         shuffle=True)
+
+#     attack_loader = DataLoader(
+#         dataset=test_dataset,
+#         batch_size=args.batch_size,
+#         num_workers=args.N_WORKERS,
+#         drop_last=False,
+#         shuffle=False)
+
+#     return train_loader, val_loader, attack_loader
+
+
+

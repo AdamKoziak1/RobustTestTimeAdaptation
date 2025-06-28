@@ -27,25 +27,14 @@ TODO:
   LoRA
 
   check adv data gen again (int vs vec for labels in CE loss)
-
-
-  online vs offline (toggle episodic)
-    sweep both
-    adapt on both
-    episodic=False: Tent, PL, SHOT-IM, TSD
-    episodic: T3A, ..., (episodic=True: Tent, PL, SHOT-IM, TSD)
+  
 
   unsupervise_adapt on all dataset/mask/alg combs (compare against 5+ methods, ideally SOTA)
-    *online specifically, make sure setting is consistent
-    define online, are we doing it? do we want to?
-      online means continual learning, parameter updates persist to next batch.
+    episodic=False: Tent, PL, SHOT-IM, TSD
 
 
   add stddev in results
     add seed to unsupervise_adapt
-    add seed to generate_adv_data
-    train on seed=1,2
-
 
 
 implement reset in TSD (and any other where it's missing) for episodic adaptation

@@ -18,7 +18,7 @@ from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD
-from adv.attack_dataset import AttackAwareDataset
+from adv.attacked_imagefolder import AttackedImageFolder
 
 import wandb
 
@@ -217,17 +217,18 @@ def adapt_loader(args):
     )
     # data
     test_envs = args.test_envs[0]
+    domain_name = args.img_dataset[args.dataset][test_envs]
     data_root = os.path.join(args.data_dir, args.img_dataset[args.dataset][test_envs])
     if args.attack == "clean":
         testset = ImageFolder(root=data_root, transform=test_transform)
     else:
-        testset = AttackAwareDataset(
+        testset = AttackedImageFolder(
             root=data_root,                      # normal ImageFolder root
             #transform=test_transform,
             transform=None,
             adv_root=args.attack_data_dir,
             dataset=args.dataset,
-            domain=test_envs,
+            domain=domain_name,
             config=f"{args.net}_{args.attack}",
             rate=args.attack_rate,                            
             mask_idx=args.mask_id)   
@@ -244,16 +245,17 @@ def adapt_loader(args):
 
 if __name__ == "__main__":
     args = get_args()
-    pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, str(args.test_envs[0]), "model.pkl")
+    dom_id = args.test_envs[0]
+    pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, f"test_{str(dom_id)}", f"seed_{str(args.seed)}", "model.pkl")
     set_random_seed(args.seed)
 
-    run_name = f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}"
+    run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}"
 
     if args.adapt_alg == "TTA3":
         cr_modifier = ""
         if args.lambda3 >= 1e-8:
             cr_modifier = f"-{args.cr_type}"
-        run_name = f"{args.dataset}_dom_{args.test_envs[0]}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}_mask_{args.mask_id}"
+        run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}_mask_{args.mask_id}"
     wandb.init(
         project="tta3_adapt",          # ← change to your project name
         name=run_name,
@@ -371,7 +373,7 @@ if __name__ == "__main__":
     print("\t Hyper-parameter")
     print("\t Dataset: {}".format(args.dataset))
     print("\t Net: {}".format(args.net))
-    print("\t Test domain: {}".format(args.test_envs[0]))
+    print("\t Test domain: {}".format(dom_id))
     print("\t Algorithm: {}".format(args.adapt_alg))
     print("\t Accuracy: %f" % float(avg_acc))
     print("\t Cost time: %f s" % (time2 - time1))

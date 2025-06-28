@@ -14,7 +14,7 @@ ds = AttackAwareDataset(
 from torchvision.datasets import ImageFolder
 import os, torch, numpy as np
 
-class AttackAwareDataset(ImageFolder):
+class AttackedImageFolder(ImageFolder):
     def __init__(self, *,
                  root, transform,
                  adv_root,      # path to datasets_adv
@@ -25,13 +25,6 @@ class AttackAwareDataset(ImageFolder):
                  mask_idx=0):   # which of the 5 random vectors to use
 
         super().__init__(root, transform=transform)
-        if isinstance(domain, int):
-            # lazy import to avoid circular dep
-            from utils.util import img_param_init
-            dom_list = img_param_init(type("tmp", (object,), {"dataset": dataset})).img_dataset[dataset]
-            #print(dom_list)
-            domain = dom_list[domain]
-            #print(domain)
 
         # Absolute locations of clean & adversarial tensors
         self.cln_root = os.path.join(adv_root, dataset, "clean", domain)
@@ -58,6 +51,4 @@ class AttackAwareDataset(ImageFolder):
             tensor_path = os.path.join(self.cln_root, tensor_name)
 
         img = torch.load(tensor_path)
-        if self.transform:
-            img = self.transform(img)
         return img, target

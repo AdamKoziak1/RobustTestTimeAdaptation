@@ -11,7 +11,7 @@ from alg import alg, modelopera
 from utils.util import set_random_seed, save_checkpoint, print_args, train_valid_target_eval_names, alg_loss_dict, Tee, img_param_init, print_environ
 from datautil.getdataloader import get_img_dataloader
 
-# python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
+# python train.py --output train_output --dataset PACS
 
 import wandb
 
@@ -103,9 +103,9 @@ if __name__ == '__main__':
     set_random_seed(args.seed)
 
     wandb.init(
-        project="tta3_train",         # ← change to your project
-        name=f"{args.dataset}_test-env-{args.test_envs[0]}_s{args.seed}",  # run name in W&B
-        config=vars(args),                   # log all hyperparameters
+        project="tta3_train",        
+        name=f"{args.dataset}_test-env-{args.test_envs[0]}_s{args.seed}",  
+        config=vars(args),                  
     )
 
     loss_list = alg_loss_dict(args)

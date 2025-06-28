@@ -18,7 +18,7 @@ from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD
-from adv.attack_dataset import AttackAwareDataset
+from adv.attacked_imagefolder import AttackedImageFolder
 
 import wandb
 
@@ -222,7 +222,7 @@ def adapt_loader(args):
     if args.attack == "clean":
         testset = ImageFolder(root=data_root, transform=test_transform)
     else:
-        testset = AttackAwareDataset(
+        testset = AttackedImageFolder(
             root=data_root,                      # normal ImageFolder root
             #transform=test_transform,
             transform=None,
