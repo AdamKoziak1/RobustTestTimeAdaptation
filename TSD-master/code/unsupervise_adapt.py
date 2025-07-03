@@ -333,7 +333,11 @@ def run_one_seed(args):
         image, label = sample
         image = image.cuda()
         logits = adapt_model(image)
-        outputs_arr.append(logits.detach().cpu())
+        
+        outputs = logits.detach().cpu()
+        batch_acc = 100*accuracy_score(label.numpy(), outputs.argmax(1).numpy())
+        wandb.log({"batch_acc": batch_acc})
+        outputs_arr.append(outputs)
         labels_arr.append(label)
 
     outputs_arr = torch.cat(outputs_arr, 0).numpy()

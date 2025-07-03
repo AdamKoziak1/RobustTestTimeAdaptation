@@ -30,4 +30,6 @@ TODO:
   
   LoRA
   
-  add stddev in results
+  make stop layer a hyperparam
+    verify stop gradient implementation
+  vectorize features, and 

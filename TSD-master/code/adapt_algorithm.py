@@ -690,20 +690,15 @@ class TTA3(nn.Module):
         if self.lambda3 <= 1e-8:
             return l_cr
 
-        with torch.no_grad():
-            #feats = self.model.featurizer(x)
-            feats_dict = self.feat_extractor(x) 
-            feats = [v.flatten(1) for v in feats_dict.values()]  #TODO vectorize, and make stop layer a hyperparam
-            feats.append(prob)
-
-            #[print(feat.shape) for feat in feats]
-        # print("feats: ", feats.shape)
-        # print("probs: ", prob.shape)
-        S_feats = [self.similarity_matrix(feat) for feat in feats]
-        [print(self.similarity_matrix(feat).shape) for feat in feats]
+        feats = self.feat_extractor(x) 
+        feats = [v.flatten(1) for v in feats.values()]  #TODO vectorize, and make stop layer a hyperparam
+        feats.append(prob)
         
-        for i in range(len(S_feats)-1):
-            l_cr += self.similarity_loss(S_feats[i], S_feats[i+1])
+        S_feat_last = self.similarity_matrix(feats[0])
+        for i in range(len(feats)-1):
+            S_feat_next = self.similarity_matrix(feats[i+1])
+            l_cr += self.similarity_loss(S_feat_last.detach(), S_feat_next)
+            S_feat_last = S_feat_next
         return l_cr
 
     def forward_and_adapt(self, x, model, optimizer):
