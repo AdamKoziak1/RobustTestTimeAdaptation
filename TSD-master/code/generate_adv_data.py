@@ -168,7 +168,6 @@ if __name__ == "__main__":
     train_minibatches_iterator = zip(*train_loader)
     for epoch in range(args.max_epoch):
         for iter_num in range(args.steps_per_epoch):
-            print(f"Ep {epoch}: iter {iter_num}")
             minibatches_device = [(data)
                                   for data in next(train_minibatches_iterator)]
             
@@ -204,7 +203,7 @@ if __name__ == "__main__":
     model.eval();   
     ptr = 0
     for img, lab, _ in tqdm(attack_loader, desc="attack"):
-        img, lab = img.to(args.dev), lab.to(args.dev)
+        img, lab = img.to(torch.device('cuda')), lab.to(torch.device('cuda'))
         bsz = img.size(0)
 
         img_adv = pgd(model, img, lab, args.eps/255., args.alpha_adv/255., args.steps, n_classes, args.attack)

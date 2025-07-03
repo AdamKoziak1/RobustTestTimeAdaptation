@@ -11,7 +11,7 @@ from torchvision.datasets import ImageFolder
 from torchvision import transforms
 from torch.utils.data import DataLoader
 import numpy as np
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import accuracy_score
 
 from alg.opt import *
 from alg import alg
@@ -19,6 +19,7 @@ from utils.util import set_random_seed, Tee, img_param_init, print_environ, load
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD
 from adv.attacked_imagefolder import AttackedImageFolder
+import statistics
 
 import wandb
 
@@ -50,7 +51,7 @@ def get_args():
         "--inner_lr", type=float, default=1e-2, help="learning rate used in MLDG"
     )
     parser.add_argument(
-        "--lam", type=float, default=1, help="tradeoff hyperparameter used in VREx"
+        "--lam", type=float, default=0.1, help="tradeoff hyperparameter used in VREx"
     )
 
     parser.add_argument("--lr_decay", type=float, default=0.75, help="for sgd")
@@ -133,7 +134,7 @@ def get_args():
     parser.add_argument(
         "--adapt_alg",
         type=str,
-        default="Tent",
+        default="TTA3",
         help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3]",
     )
     parser.add_argument(
@@ -170,26 +171,22 @@ def get_args():
         help="\epsilon in Eqn. (5) for filtering redundant samples",
     )
     parser.add_argument("--lambda1", type=float, default=10.0, help="Coefficient for Flatness Loss")
-    parser.add_argument("--lambda2", type=float, default=0.0, help="Coefficient for Adversarial Loss")
+    parser.add_argument("--lambda2", type=float, default=69.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lambda3", type=float, default=1.0, help="Coefficient for Consistency Regularization Loss")
     parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=8)  
     parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
-    parser.add_argument("--mask_id", type=int, choices=[0,1,2,3,4], default=0)   
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
-
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
     args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
 
-    args.output = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate), str(args.mask_id))
     os.environ["CUDA_VISIBLE_DEVICS"] = args.gpu_id
     #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
-    os.makedirs(args.output, exist_ok=True)
-    sys.stdout = Tee(os.path.join(args.output, "out.txt"))
-    sys.stderr = Tee(os.path.join(args.output, "err.txt"))
+
+
     args = img_param_init(args)
 
     assert args.filter_K in [
@@ -208,30 +205,29 @@ def adapt_loader(args):
     """
     easy dataloader
     """
-    # transform
-    normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-    )
-    test_transform = transforms.Compose(
-        [transforms.Resize((224, 224)), transforms.ToTensor(), normalize]
-    )
     # data
     test_envs = args.test_envs[0]
     domain_name = args.img_dataset[args.dataset][test_envs]
     data_root = os.path.join(args.data_dir, args.img_dataset[args.dataset][test_envs])
     if args.attack == "clean":
+        # transform
+        normalize = transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        )
+        test_transform = transforms.Compose(
+            [transforms.Resize((224, 224)), transforms.ToTensor(), normalize]
+        )
         testset = ImageFolder(root=data_root, transform=test_transform)
     else:
         testset = AttackedImageFolder(
             root=data_root,                      # normal ImageFolder root
-            #transform=test_transform,
             transform=None,
             adv_root=args.attack_data_dir,
             dataset=args.dataset,
             domain=domain_name,
             config=f"{args.net}_{args.attack}",
             rate=args.attack_rate,                            
-            mask_idx=args.mask_id)   
+            seed=args.seed)   
 
     testloader = DataLoader(
         testset,
@@ -243,25 +239,10 @@ def adapt_loader(args):
     return testloader
 
 
-if __name__ == "__main__":
-    args = get_args()
-    dom_id = args.test_envs[0]
+def run_one_seed(args):
     pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, f"test_{str(dom_id)}", f"seed_{str(args.seed)}", "model.pkl")
     set_random_seed(args.seed)
-
-    run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}_rate-{args.attack_rate}_mask_{args.mask_id}"
-
-    if args.adapt_alg == "TTA3":
-        cr_modifier = ""
-        if args.lambda3 >= 1e-8:
-            cr_modifier = f"-{args.cr_type}"
-        run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}_mask_{args.mask_id}"
-    wandb.init(
-        project="tta3_adapt",          # ← change to your project name
-        name=run_name,
-        config=vars(args),
-    )
-
+    
     algorithm_class = alg.get_algorithm_class(args.algorithm)
     algorithm = algorithm_class(args)
     algorithm.train()
@@ -347,12 +328,8 @@ if __name__ == "__main__":
         )
 
     adapt_model.cuda()
-    total, correct = 0, 0
-    acc_arr = []
-    time1 = time.time()
     outputs_arr, labels_arr = [], []
     for idx, sample in enumerate(dataloader):
-        #print(sample[0].shape)
         image, label = sample
         image = image.cuda()
         logits = adapt_model(image)
@@ -362,45 +339,60 @@ if __name__ == "__main__":
     outputs_arr = torch.cat(outputs_arr, 0).numpy()
     labels_arr = torch.cat(labels_arr).numpy()
     outputs_arr = outputs_arr.argmax(1)
-    matrix = confusion_matrix(labels_arr, outputs_arr)
-    acc_per_class = (matrix.diagonal() / matrix.sum(axis=1) * 100.0).round(2)
-    time2 = time.time()
-    print(matrix)
-    print("Accuracy of per class:")
-    print(acc_per_class)
 
-    avg_acc = 100.0 * np.sum(matrix.diagonal()) / matrix.sum()
+    return 100*accuracy_score(labels_arr, outputs_arr)
+
+if __name__ == "__main__":
+    args = get_args()
+    
+    output_path = os.path.join(args.output, args.dataset, str(args.test_envs[0]), args.adapt_alg, str(args.attack_rate))
+
+
+    dom_id = args.test_envs[0]
+    run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}_rate-{args.attack_rate}"
+
+    if args.adapt_alg == "TTA3":
+        cr_modifier = ""
+        if args.lambda3 >= 1e-8:
+            cr_modifier = f"-{args.cr_type}"
+        run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
+
+    wandb.init(
+        project="tta3_adapt_new",
+        name=run_name,
+        config=vars(args),
+    )
+
+    all_acc   = []
+    time1 = time.time()
+    for s in (0,1,2):
+        args.seed = s   
+        args.output = os.path.join(output_path, f"_s{args.seed}")
+        os.makedirs(args.output, exist_ok=True)
+        sys.stdout = Tee(os.path.join(args.output, "out.txt"))
+        sys.stderr = Tee(os.path.join(args.output, "err.txt"))
+        acc_s = run_one_seed(args)
+        all_acc.append(acc_s)
+
+    time2 = time.time()
+    acc_mean = round(statistics.mean(all_acc), 2)
+    acc_std  = round(statistics.stdev(all_acc), 2)
+
     print("\t Hyper-parameter")
     print("\t Dataset: {}".format(args.dataset))
     print("\t Net: {}".format(args.net))
     print("\t Test domain: {}".format(dom_id))
     print("\t Algorithm: {}".format(args.adapt_alg))
-    print("\t Accuracy: %f" % float(avg_acc))
+    print("\t Accuracy: %f" % float(acc_mean))
+    print("\t Accuracy std: %f" % float(acc_std))
     print("\t Cost time: %f s" % (time2 - time1))
 
     wandb.log({
-        "final_target_acc": avg_acc,
+        "acc_mean": acc_mean,
+        "acc_std": acc_std,
         "time_taken_s": time2 - time1,
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
-    }, commit=False)
+    })
 
-    # Log per-class accuracy as separate metrics
-    for cls_idx, cls_acc in enumerate(acc_per_class):
-        wandb.log({f"acc_class_{cls_idx}": float(cls_acc)}, commit=False)
-
-    import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(6, 6))
-    cax = ax.matshow(matrix, cmap="Blues")
-    plt.title("Confusion Matrix")
-    plt.xlabel("Predicted")
-    plt.ylabel("Actual")
-    fig.colorbar(cax)
-    for i in range(matrix.shape[0]):
-        for j in range(matrix.shape[1]):
-            ax.text(j, i, matrix[i, j], ha='center', va='center', color='yellow')
-    plt.tight_layout()
-    # This will send the figure to wandb
-    wandb.log({"confusion_matrix": wandb.Image(fig)})
-    
     wandb.finish()

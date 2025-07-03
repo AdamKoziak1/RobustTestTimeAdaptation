@@ -640,7 +640,7 @@ class TTA3(nn.Module):
         if self.lambda2 <= 1e-8:
             return torch.tensor(0.0, device=x.device)
 
-        # Initialize a random perturbation within [-r, r]. #TODO check initialization conditions
+        # Initialize a random perturbation within [-r, r]. 
         epsilon = torch.rand(x.shape).sub(0.5).to(x.device)
         epsilon = _normalize(epsilon)
         bound = self.r/255
@@ -720,5 +720,4 @@ class TTA3(nn.Module):
         loss.backward()
         optimizer.step()
 
-        # Return the updated predictions.
-        return model.predict(x)
+        return logits
