@@ -23,10 +23,10 @@ how to approach sweep?
       how to find them?
 
 TODO:
+  log per batch
   verify 10 step choice somehow
-    maybe log per step? per batch?
-      figure out seed issue
-  ****make L_0 (stop gradient) a hyperparameter (implement multilayer feature pulling)
+    maybe log per step
+      figure out seed issue here
   
   LoRA
   

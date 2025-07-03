@@ -557,6 +557,9 @@ def _normalize(d, norm=2):
     return d
 
 import wandb
+
+from torchvision.models.feature_extraction import create_feature_extractor
+
 class TTA3(nn.Module):
     """
     Test-Time Adaptation against Adversarial Attacks (TTA3).
@@ -583,8 +586,8 @@ class TTA3(nn.Module):
                  lambda1=1.0, # flatness weight
                  lambda2=1.0, # adversarial VAT weight
                  lambda3=1.0, # consistency weight
-                 r=8, 
-                 l_adv_iter=3,  cr_type='cosine'):
+                 r=4, 
+                 l_adv_iter=1,  cr_type='cosine'):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -600,6 +603,14 @@ class TTA3(nn.Module):
 
         # Save initial states for episodic adaptation
         self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
+
+        return_nodes = {
+            'layer1': 'feat1',   # after first residual stage
+            'layer2': 'feat2',
+            'layer3': 'feat3',
+            'layer4': 'feat4',   # penultimate conv feature
+        }
+        self.feat_extractor = create_feature_extractor(self.model.featurizer, return_nodes)
 
     def reset(self):
         if self.model_state is None or self.optimizer_state is None:
@@ -674,21 +685,26 @@ class TTA3(nn.Module):
             return torch.norm(S1 - S2, p=2) / S1.numel()
 
 # --- Consistency Regularization Loss (L_CR) ---
-    def cr_loss(self, x, prob):  #TODO check if needs probabilities or logits for output layer
-
+    def cr_loss(self, x, prob): 
+        l_cr = torch.tensor(0.0, device=x.device)
         if self.lambda3 <= 1e-8:
-            return torch.tensor(0.0, device=x.device)
+            return l_cr
 
         with torch.no_grad():
-            feats = self.model.featurizer(x) #TODO pull out all layers, vectorize, and make stop layer a hyperparam
+            #feats = self.model.featurizer(x)
+            feats_dict = self.feat_extractor(x) 
+            feats = [v.flatten(1) for v in feats_dict.values()]  #TODO vectorize, and make stop layer a hyperparam
+            feats.append(prob)
+
+            #[print(feat.shape) for feat in feats]
         # print("feats: ", feats.shape)
         # print("probs: ", prob.shape)
-        S_feat = self.similarity_matrix(feats)
-        S_pred = self.similarity_matrix(prob)
-        # print("S_feat: ", S_feat.shape)
-        # print("S_pred: ", S_pred.shape)
-
-        return self.similarity_loss(S_feat, S_pred)
+        S_feats = [self.similarity_matrix(feat) for feat in feats]
+        [print(self.similarity_matrix(feat).shape) for feat in feats]
+        
+        for i in range(len(S_feats)-1):
+            l_cr += self.similarity_loss(S_feats[i], S_feats[i+1])
+        return l_cr
 
     def forward_and_adapt(self, x, model, optimizer):
         # Forward pass to get logits and probabilities
