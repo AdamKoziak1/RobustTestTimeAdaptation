@@ -8,19 +8,7 @@ TRAIN:
 ADAPT: python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TENT --batch_size 1 --attack_rate 50 --mask_id 0
   ./run_domain.sh 
 
-MASKS:
-  CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset PACS
-  python adv/generate_masks.py --dataset PACS
-  CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset office-home
-  python adv/generate_masks.py --dataset office-home
-  CUDA_VISIBLE_DEVICES=1 python generate_adv_data.py --dataset VLCS
-  python adv/generate_masks.py --dataset VLCS
 
-how to approach sweep? 
-  grid sweep and pick best
-  analyze trends somehow 
-    what would be anchor values for the rest?
-      how to find them?
 
 TODO:
   log per batch

@@ -102,7 +102,7 @@ def get_args():
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--algorithm", type=str, default="ERM")
     parser.add_argument(
-        "--batch_size", type=int, default=108, help="batch_size of **test** time"
+        "--batch_size", type=int, default=64, help="batch_size of **test** time"
     )
     parser.add_argument(
         "--dataset", type=str, default="PACS", help="office-home,PACS,VLCS,DomainNet"
@@ -144,7 +144,7 @@ def get_args():
         "--episodic", action="store_true", help="is episodic or not,default:False"
     )
     parser.add_argument(
-        "--steps", type=int, default=1, help="steps of test time, default:1"
+        "--steps", type=int, default=10, help="steps of test time, default:1"
     )
     parser.add_argument(
         "--filter_K",
@@ -170,14 +170,14 @@ def get_args():
         default=0.05,
         help="\epsilon in Eqn. (5) for filtering redundant samples",
     )
-    parser.add_argument("--lambda1", type=float, default=10.0, help="Coefficient for Flatness Loss")
-    parser.add_argument("--lambda2", type=float, default=69.0, help="Coefficient for Adversarial Loss")
-    parser.add_argument("--lambda3", type=float, default=1.0, help="Coefficient for Consistency Regularization Loss")
+    parser.add_argument("--lambda1", type=float, default=1.0, help="Coefficient for Flatness Loss")
+    parser.add_argument("--lambda2", type=float, default=10.0, help="Coefficient for Adversarial Loss")
+    parser.add_argument("--lambda3", type=float, default=10.0, help="Coefficient for Consistency Regularization Loss")
     parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
-    parser.add_argument("--eps", type=float, default=8)  
+    parser.add_argument("--eps", type=float, default=4)  
     parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
-    parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
+    parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='l2')   
 
     args = parser.parse_args()
     args.steps_per_epoch = 100

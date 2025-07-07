@@ -46,7 +46,24 @@ for DATASET in PACS VLCS office-home; do
             --attack_rate $RATE \
             --test_envs $DOMAIN_IDX \
             --batch_size $BATCH \
-            --steps 10 
+            --steps 5 
+      done
+    done
+  done
+done
+
+for DATASET in PACS VLCS office-home; do
+  for ALG in PL; do #TTA3 (TSD BN, PL)?
+    for DOMAIN_IDX in 0 1 2 3; do
+      for RATE in 0 20 40 60 80 100; do
+        echo "▶︎  Rate=$RATE"
+        CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
+            --adapt_alg "$ALG" \
+            --dataset  "$DATASET" \
+            --attack_rate $RATE \
+            --test_envs $DOMAIN_IDX \
+            --batch_size $BATCH \
+            --steps 5 
       done
     done
   done
