@@ -22,19 +22,13 @@ from sklearn.model_selection import StratifiedShuffleSplit
 
 from alg import alg
 from alg.opt import *
-from utils.util import (set_random_seed,
-                        load_ckpt, Tee)
-from adapt_algorithm import (collect_params, configure_model,
-                             PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD)
+from utils.util import set_random_seed, load_ckpt
 
 from adv.attacked_imagefolder import AttackedImageFolder
 import wandb
-from unsupervise_adapt import get_args
+from unsupervise_adapt import get_args, make_adapt_model
 
 
-# --------------------------------------------------------------------------- #
-#                              Helper utilities                               #
-# --------------------------------------------------------------------------- #
 def build_split_loaders(args, dom_id):
     """Return attacked (train_loader, val_loader) for a single domain."""
     dom_name = args.img_dataset[args.dataset][dom_id]
@@ -101,57 +95,11 @@ def accuracy(model, loader):
     model.train()
     return 100.0 * correct / total
 
-
-def make_adapt_model(args, base_model):
-    """Instantiate the chosen test-time adaptation wrapper."""
-    if args.adapt_alg == "Tent":
-        base_model = configure_model(base_model)
-        params, _ = collect_params(base_model)
-        opt = torch.optim.Adam(params, lr=args.lr)
-        return Tent(base_model, opt, steps=args.steps, episodic=args.episodic)
-    if args.adapt_alg == "ERM":
-        return ERM(base_model)
-    if args.adapt_alg == "PL":
-        opt = torch.optim.Adam(base_model.parameters(), lr=args.lr)
-        return PseudoLabel(base_model, opt, args.beta,
-                           steps=args.steps, episodic=args.episodic)
-    if args.adapt_alg == "SHOT-IM":
-        opt = torch.optim.Adam(base_model.featurizer.parameters(), lr=args.lr)
-        return SHOTIM(base_model, opt, steps=args.steps, episodic=args.episodic)
-    if args.adapt_alg == "T3A":
-        return T3A(base_model, filter_K=args.filter_K,
-                   steps=args.steps, episodic=args.episodic)
-    if args.adapt_alg == "BN":
-        return BN(base_model)
-    if args.adapt_alg == "TSD":
-        opt = torch.optim.Adam(base_model.parameters(), lr=args.lr)
-        return TSD(base_model, opt, filter_K=args.filter_K,
-                   steps=args.steps, episodic=args.episodic)
-    if args.adapt_alg == "TTA3":
-        from adapt_algorithm import TTA3
-        opt = torch.optim.Adam(base_model.parameters(), lr=args.lr)
-        return TTA3(base_model, opt, steps=args.steps, episodic=args.episodic,
-                    lambda1=args.lambda1, lambda2=args.lambda2, lambda3=args.lambda3,
-                    l_adv_iter=args.l_adv_iter, cr_type=args.cr_type, r=args.eps)
-    raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
-
-
-# --------------------------------------------------------------------------- #
-#                                CLI parsing                                  #
-# --------------------------------------------------------------------------- #
-
-
-
-# --------------------------------------------------------------------------- #
-#                                  Main run                                   #
-# --------------------------------------------------------------------------- #
 if __name__ == "__main__":
     args = get_args()
 
-    # --- W&B ---------------------------------------------------------------
-    run_name = (f"{args.dataset}_src-sweep_{args.adapt_alg}_"
-                f"{args.lambda1}-{args.lambda2}-{args.lambda3}_{args.cr_type}")
-    wandb.init(project="tta3_src_sweep", name=run_name, config=vars(args))
+    run_name = (f"{args.adapt_alg}_{args.lambda3}_{args.cr_type}_start-{args.cr_start}_{args.steps}steps")    
+    wandb.init(project="tta3_src", name=run_name, config=vars(args))
 
     global_accs = []          # store mean acc for each seed
     domain_names = [d for i, d in enumerate(args.domains)
@@ -180,7 +128,7 @@ if __name__ == "__main__":
             train_loader, val_loader, n_val = build_split_loaders(args, dom_id)
 
             # 3. Wrap with chosen test-time adaptation algorithm
-            adapt_model = make_adapt_model(args, base_model).cuda()
+            adapt_model = make_adapt_model(args, base_model)
 
             # 4. One pass over train_loader (unsupervised adaptation)
             for xb, _ in train_loader:
@@ -211,6 +159,12 @@ if __name__ == "__main__":
     wandb.log({
         "acc_mean": overall_mean,
         "acc_std":  overall_std,
-        "time_taken_s": elapsed
+        "time_taken_s": elapsed,
+        "adapt_alg": args.adapt_alg,
+        "steps": args.steps,
+        "lr": args.lr,
+        "cr_type": args.cr_type,
+        "cr_start": args.cr_start,
+        "update_param": args.update_param,
     })
     wandb.finish()

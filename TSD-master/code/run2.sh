@@ -46,10 +46,11 @@ for DATASET in PACS VLCS office-home; do
             --attack_rate $RATE \
             --test_envs $DOMAIN_IDX \
             --batch_size $BATCH \
-            --steps 10 
+            --steps 10 \
+            --lr 0.00001
       done
     done
   done
 done
-
+wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/glmg6syc
 

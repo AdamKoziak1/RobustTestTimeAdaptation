@@ -1,0 +1,17 @@
+program: unsupervised_adapt_dataset.py       
+method: grid                        
+metric:
+  name: acc_mean                  
+  goal: maximize
+
+parameters:
+  lr:
+    values: [0.000001, 0.00001, 0.0001, 0.001]
+
+  attack_rate:
+    value: 100
+
+  adapt_alg:
+    values: ["Tent", "PL", "SHOT-IM", "TTA3"]
+  steps:
+    values: [1,2,3,4,5,6,7,8,9,10]

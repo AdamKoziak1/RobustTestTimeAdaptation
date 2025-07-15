@@ -587,7 +587,7 @@ class TTA3(nn.Module):
                  lambda2=1.0, # adversarial VAT weight
                  lambda3=1.0, # consistency weight
                  r=4, 
-                 l_adv_iter=1,  cr_type='cosine'):
+                 l_adv_iter=1,  cr_type='cosine', cr_start=0):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -600,6 +600,10 @@ class TTA3(nn.Module):
         self.l_adv_iter = l_adv_iter
         self.cr_type = cr_type.lower()
         assert self.cr_type in ['cosine', 'l2']
+        # --- Consistency-Reg. start layer ----------------------------------
+        assert 0 <= cr_start <= 3, \
+            f"cr_start ∈ {{0,1,2,3}}, got {cr_start}"
+        self.cr_start = cr_start
 
         # Save initial states for episodic adaptation
         self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
@@ -670,6 +674,7 @@ class TTA3(nn.Module):
         logp_hat = F.log_softmax(pred_hat, dim=1)
         return F.kl_div(logp_hat, prob, reduction='batchmean')
     
+# --- Consistency Regularization Loss (L_CR) ---    
     def similarity_matrix(self, x):
         if self.cr_type == "cosine":
             x = F.normalize(x, dim=1)
@@ -683,16 +688,16 @@ class TTA3(nn.Module):
             )
         else:  # 'cosine'  eq  8 + 12
             return torch.norm(S1 - S2, p=2) / S1.numel()
-
-# --- Consistency Regularization Loss (L_CR) ---
+        
     def cr_loss(self, x, prob): 
         l_cr = torch.tensor(0.0, device=x.device)
         if self.lambda3 <= 1e-8:
             return l_cr
 
         feats = self.feat_extractor(x) 
-        feats = [v.flatten(1) for v in feats.values()]  #TODO vectorize, and make stop layer a hyperparam
+        feats = [v.flatten(1) for v in feats.values()]
         feats.append(prob)
+        feats = feats[self.cr_start:] # keep only from user-chosen layer onwards
         
         S_feat_last = self.similarity_matrix(feats[0])
         for i in range(len(feats)-1):

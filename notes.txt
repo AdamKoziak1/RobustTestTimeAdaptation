@@ -1,23 +1,25 @@
+TODO:
 
 resnet18 first, then resnet50. insufficient VRAM for VIT (at default batch size at least)
+  models other than resnet18 will need change in layer selection for cr_loss
 
-TRAIN: 
-  python train.py --output train_output --dataset PACS --data_file /home/adam/Downloads/RobustTestTimeAdaptation
-  **** CUDA_VISIBLE_DEVICES=1 python train.py --output train_output --dataset DomainNet --test_envs 4 --batch_size 64
+maybe log per step
+  figure out seed issue here
 
-ADAPT: python unsupervise_adapt.py --dataset PACS --data_dir /home/adam/Downloads/RobustTestTimeAdaptation/datasets/PACS --adapt_alg TENT --batch_size 1 --attack_rate 50 --mask_id 0
-  ./run_domain.sh 
+LoRA model updates
+  https://github.com/huggingface/peft
 
+low rank augmentation of image (throw away high rank values - noise)
+  maybe just lower layers
+  SVD, remove lowest values (below threshold) and reconstruct feature maps 
 
+EMV update
 
-TODO:
-  log per batch
-  verify 10 step choice somehow
-    maybe log per step
-      figure out seed issue here
-  
-  LoRA
-  
-  make stop layer a hyperparam
-    verify stop gradient implementation
-  vectorize features, and 
+class prototypes
+  cosine similarity to classify each feature based on mean features 
+
+To run:
+  style transfer (TENT method for params)
+    just MI loss, then sweep lambda3 and stuff
+  maybe just featurizer?
+

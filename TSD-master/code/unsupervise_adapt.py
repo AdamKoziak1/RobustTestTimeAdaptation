@@ -17,7 +17,7 @@ from alg.opt import *
 from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
 from adapt_algorithm import collect_params, configure_model
-from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD
+from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
 from adv.attacked_imagefolder import AttackedImageFolder
 import statistics
 
@@ -170,22 +170,22 @@ def get_args():
         default=0.05,
         help="\epsilon in Eqn. (5) for filtering redundant samples",
     )
-    parser.add_argument("--lambda1", type=float, default=1.0, help="Coefficient for Flatness Loss")
-    parser.add_argument("--lambda2", type=float, default=10.0, help="Coefficient for Adversarial Loss")
+    parser.add_argument("--lambda1", type=float, default=0.0, help="Coefficient for Flatness Loss")
+    parser.add_argument("--lambda2", type=float, default=0.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lambda3", type=float, default=10.0, help="Coefficient for Consistency Regularization Loss")
     parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
     parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='l2')   
+    parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, 
+                        help="Which ResNet block to start consistency-regularization at (0=layer1, …, 3=layer4).")
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
     args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
 
-    os.environ["CUDA_VISIBLE_DEVICS"] = args.gpu_id
     #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
-
 
     args = img_param_init(args)
 
@@ -239,17 +239,7 @@ def adapt_loader(args):
     return testloader
 
 
-def run_one_seed(args):
-    pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, f"test_{str(dom_id)}", f"seed_{str(args.seed)}", "model.pkl")
-    set_random_seed(args.seed)
-    
-    algorithm_class = alg.get_algorithm_class(args.algorithm)
-    algorithm = algorithm_class(args)
-    algorithm.train()
-    algorithm = load_ckpt(algorithm, pretrain_model_path)
-
-    dataloader = adapt_loader(args)
-
+def make_adapt_model(args, algorithm):
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":
         algorithm = configure_model(algorithm)
@@ -311,9 +301,33 @@ def run_one_seed(args):
             steps=args.steps,
             episodic=args.episodic,
         )
+
     elif args.adapt_alg == "TTA3":
-        optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
-        from adapt_algorithm import TTA3
+        if args.update_param == "all":
+            optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
+            sum_params = sum([p.nelement() for p in algorithm.parameters()])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "affine":
+            algorithm.train()
+            algorithm.requires_grad_(False)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            for m in algorithm.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.requires_grad_(True)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "body":
+            # only update encoder
+            optimizer = torch.optim.Adam(algorithm.featurizer.parameters(), lr=args.lr)
+            print("Update encoder")
+        elif args.update_param == "head":
+            # only update classifier
+            optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
+            print("Update classifier")
+        else:
+            raise Exception("Do not support update with %s manner." % args.update_param)
+        
         adapt_model = TTA3(
             algorithm,
             optimizer,
@@ -324,12 +338,30 @@ def run_one_seed(args):
             lambda3=args.lambda3,
             l_adv_iter=args.l_adv_iter,
             cr_type = args.cr_type,
+            cr_start = args.cr_start,
             r=args.eps,
         )
+    else:
+        raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
+    return adapt_model.cuda()
+
+
+def run_one_seed(args):
+    pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, f"test_{str(dom_id)}", f"seed_{str(args.seed)}", "model.pkl")
+    set_random_seed(args.seed)
+    
+    algorithm_class = alg.get_algorithm_class(args.algorithm)
+    algorithm = algorithm_class(args)
+    algorithm.train()
+    algorithm = load_ckpt(algorithm, pretrain_model_path)
+
+    dataloader = adapt_loader(args)
+    adapt_model = make_adapt_model(args, algorithm)
 
     adapt_model.cuda()
     outputs_arr, labels_arr = [], []
-    for idx, sample in enumerate(dataloader):
+
+    for _, sample in enumerate(dataloader):
         image, label = sample
         image = image.cuda()
         logits = adapt_model(image)
@@ -345,6 +377,7 @@ def run_one_seed(args):
     outputs_arr = outputs_arr.argmax(1)
 
     return 100*accuracy_score(labels_arr, outputs_arr)
+
 
 if __name__ == "__main__":
     args = get_args()
