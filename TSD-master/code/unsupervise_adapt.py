@@ -317,6 +317,12 @@ def make_adapt_model(args, algorithm):
                     m.requires_grad_(True)
             sum_params = sum([p.nelement() for p in params])
             wandb.log({"sum_params": sum_params})
+        elif args.update_param == "tent":
+            algorithm = configure_model(algorithm)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
         elif args.update_param == "body":
             # only update encoder
             optimizer = torch.optim.Adam(algorithm.featurizer.parameters(), lr=args.lr)
