@@ -20,7 +20,7 @@ from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
 from adv.attacked_imagefolder import AttackedImageFolder
 import statistics
-
+from peft import LoraConfig, get_peft_model
 import wandb
 
 def get_args():
@@ -180,6 +180,9 @@ def get_args():
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='l2')   
     parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, 
                         help="Which ResNet block to start consistency-regularization at (0=layer1, …, 3=layer4).")
+    parser.add_argument("--lora_r", type=int, default=4)  
+    parser.add_argument("--lora_alpha", type=int, default=8)  
+    parser.add_argument("--lora_dropout", type=float, default=0.0)  
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
@@ -331,6 +334,29 @@ def make_adapt_model(args, algorithm):
             # only update classifier
             optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
             print("Update classifier")
+        elif args.update_param == "lora":
+            def resnet_target_modules(model, depth=(3, 4), include_head=True):
+                print("\n\n\n",dict(model.named_modules()).keys(),"\n\n\n")
+                targets = []
+                for blk in depth:
+                    for n, m in model.named_modules():
+                        if f"layer{blk}" in n and isinstance(m, (nn.Conv2d, nn.Linear)):
+                            targets.append(n)  
+                print(list(set(targets)))
+                return list(set(targets))
+            
+            lora_cfg = LoraConfig(
+                r=args.lora_r,
+                lora_alpha=args.lora_alpha,
+                lora_dropout=args.lora_dropout,
+                target_modules=resnet_target_modules(algorithm.featurizer, depth=(1,2,3,4)),
+                bias="none",
+                task_type="FEATURE_EXTRACTION"
+            )
+            algorithm = get_peft_model(algorithm, lora_cfg)
+            algorithm.print_trainable_parameters()  # sanity‑check
+            
+            optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
         
@@ -401,7 +427,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt_new",
+        project="tta3_adapt",
         name=run_name,
         config=vars(args),
     )

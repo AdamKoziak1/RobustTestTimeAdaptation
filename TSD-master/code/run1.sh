@@ -35,21 +35,29 @@ export CUDA_VISIBLE_DEVICES=$GPU
 # CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset VLCS --test_envs $GPU --seed 2
 # CUDA_VISIBLE_DEVICES=$GPU python train.py --output train_output --dataset office-home --test_envs $GPU --seed 2
 
-for DATASET in PACS VLCS office-home; do
-  for ALG in SHOT-IM; do #TTA3 (TSD BN, PL)?
-    for DOMAIN_IDX in 0 1 2 3; do
-      for RATE in 0 20 40 60 80 100; do
-        echo "▶︎  Rate=$RATE"
-        CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
-            --adapt_alg "$ALG" \
-            --dataset  "$DATASET" \
-            --attack_rate $RATE \
-            --test_envs $DOMAIN_IDX \
-            --batch_size $BATCH \
-            --steps 2 \
-            --lr 0.00001
-      done
-    done
-  done
-done
-wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/glmg6syc
+# for DATASET in PACS VLCS office-home; do
+#   for ALG in TTA3; do #TTA3 (TSD BN, PL)?
+#     for DOMAIN_IDX in 0 1 2 3; do
+#       for RATE in 0 20 40 60 80 100; do
+#         echo "▶︎  Rate=$RATE"
+#         CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt_lora.py \
+#             --adapt_alg "$ALG" \
+#             --dataset  "$DATASET" \
+#             --attack_rate $RATE \
+#             --test_envs $DOMAIN_IDX \
+#             --batch_size $BATCH \
+#             --steps 3 \
+#             --lambda1 0.0 \
+#             --lambda2 0.0 \
+#             --lambda3 0.0 \
+#             --lr 0.0001 \
+#             --cr_start 1 \
+#             --lora_dropout 0.05 \
+#             --update_param "lora"
+#       done
+#     done
+#   done
+# done
+
+wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/vql3gqoz
+wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/5kvfupo7

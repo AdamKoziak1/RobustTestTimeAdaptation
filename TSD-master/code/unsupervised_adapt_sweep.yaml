@@ -1,4 +1,5 @@
-program: unsupervised_adapt_dataset.py       
+program: unsupervised_adapt_dataset.py     
+name: "steps_sweep"  
 method: grid                        
 metric:
   name: acc_mean                  
@@ -6,7 +7,7 @@ metric:
 
 parameters:
   lr:
-    values: [0.000001,0.00001,0.0001,0.001]
+    values: [0.000001, 0.00001, 0.0001, 0.001, 0.01]
     
   # ——— loss weights ———
   lambda1:
@@ -14,13 +15,14 @@ parameters:
   lambda2:
     value: 0
   lambda3:
-    values: [0,0.5,1,5,10,20,50]
+    value: 0
+    # values: [0,0.5,1,5,10,20,50]
 
-  cr_type:
-    values: ["cosine", "l2"]
+  # cr_type:
+  #   values: ["cosine", "l2"]
 
-  cr_start:
-    values: [0,1,2,3]
+  # cr_start:
+  #   values: [0,1,2,3]
 
   attack_rate:
     value: 100
@@ -29,4 +31,4 @@ parameters:
     values: [1,3,5,10]
 
   update_param:
-    value: "affine"
+    value: "all"

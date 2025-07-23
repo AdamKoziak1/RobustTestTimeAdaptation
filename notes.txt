@@ -1,25 +1,45 @@
 TODO:
+  resnet18 first, then resnet50
+    models other than resnet18 will need change in layer selection for cr_loss
 
-resnet18 first, then resnet50. insufficient VRAM for VIT (at default batch size at least)
-  models other than resnet18 will need change in layer selection for cr_loss
+  maybe log per step
+    figure out seed issue here
 
-maybe log per step
-  figure out seed issue here
+  low rank augmentation of image (throw away high rank values - noise)
+    maybe just lower layers
+    SVD, remove lowest values (below threshold) and reconstruct feature maps 
+      threshold ~60 eliminates about 8/255 worth of noise. stronger effect on attacked than regular (verify why?) 
 
-LoRA model updates
-  https://github.com/huggingface/peft
+  EMV update
 
-low rank augmentation of image (throw away high rank values - noise)
-  maybe just lower layers
-  SVD, remove lowest values (below threshold) and reconstruct feature maps 
+  class prototypes
+    cosine similarity to classify each feature based on mean features 
 
-EMV update
+  SVD:
+    implement into model somehow
+    get rid of extra files and push
 
-class prototypes
-  cosine similarity to classify each feature based on mean features 
+  LORA:
+    merge lora and not lora versions
+    update requirements for peft
+    push updates files
 
-To run:
-  style transfer (TENT method for params)
-    just MI loss, then sweep lambda3 and stuff
-  maybe just featurizer?
+use PL loss combined with MI - check SHOT
+
+Running:
+  sweep tent param 
+    mi
+    cr
+
+Add results:
+  pure MI (affine) lam0,0,0 lr0.001, 1step
+  affine CR (lam10,start1, 1step)
+
+  adapt
+    lora cr
+    lora mi
+
+Notes:
+  affine > full on source val
+
 
