@@ -2,44 +2,28 @@ TODO:
   resnet18 first, then resnet50
     models other than resnet18 will need change in layer selection for cr_loss
 
-  maybe log per step
-    figure out seed issue here
-
   low rank augmentation of image (throw away high rank values - noise)
     maybe just lower layers
     SVD, remove lowest values (below threshold) and reconstruct feature maps 
       threshold ~60 eliminates about 8/255 worth of noise. stronger effect on attacked than regular (verify why?) 
+      implement into model somehow
+      get rid of extra files and push
 
   EMV update
 
   class prototypes
     cosine similarity to classify each feature based on mean features 
 
-  SVD:
-    implement into model somehow
-    get rid of extra files and push
-
   LORA:
-    merge lora and not lora versions
     update requirements for peft
     push updates files
 
-use PL loss combined with MI - check SHOT
-
-Running:
-  sweep tent param 
-    mi
-    cr
-
-Add results:
-  pure MI (affine) lam0,0,0 lr0.001, 1step
-  affine CR (lam10,start1, 1step)
-
-  adapt
-    lora cr
-    lora mi
-
-Notes:
-  affine > full on source val
+  use PL loss combined with MI - check SHOT
 
 
+add new results (adapt-new):
+  tent
+  PL
+  SHOT-IM
+
+rerun TSD if params change

@@ -30,7 +30,7 @@ def load_ckpt(algorithm,ckpt_dir):
     """
     load pretrain model to adapt
     """
-    checkpoint = torch.load(ckpt_dir)
+    checkpoint = torch.load(ckpt_dir, weights_only=True)
     algorithm.load_state_dict(checkpoint['model_dict'])
     return algorithm
 

@@ -1,170 +1,129 @@
-# coding=utf-8
+#!/usr/bin/env python3
 """
-Unsupervised hyper-parameter sweep on *source* domains.
+Batch evaluation of test-time adaptation (TTA) across multiple datasets and
+domains.
 
-For each seed ∈ {0,1,2} and each source domain (all domains ≠ test_envs[0])
-    1. load the pretrained source model (seed-specific)
-    2. build attacked train/val splits (stratified 80/20, **no extra transforms**)
-    3. adapt on the train split with the chosen TTA algorithm
-    4. evaluate on the val split
-Finally, print and log mean ± std accuracy across domains and seeds.
+This refactored script iterates over:
+    • Datasets   : PACS, VLCS, office-home
+    • Test-domains: 0 and 1  (dataset-specific order)
+
+For every (dataset, test_env) pair it
+    1. loads the pre-trained ERM source model (seed 0)
+    2. builds a test loader for the held-out domain (clean or attacked)
+    3. wraps the model with the requested adaptation method (Tent, TTA3, …)
+    4. runs adaptation over the entire test set (single pass)
+    5. reports Top-1 accuracy
+
+The logic for argument parsing, loader construction and adaptation wrappers is
+reused from *unsupervise_adapt.py* to avoid duplication.
 
 Example
 -------
 python unsupervised_adapt_dataset.py \
-    --dataset PACS --net resnet18 --adapt_alg TTA3 \
-    --lambda1 10 --lambda2 69 --lambda3 1
+    --adapt_alg TTA3 --steps 10 --lambda3 10 --cr_type l2 --attack clean
 """
-import os, time, statistics
-import numpy as np
-from torch.utils.data import DataLoader, Subset
-from sklearn.model_selection import StratifiedShuffleSplit
 
+import os
+import sys
+import time
+import statistics
+import argparse
+
+import torch
+from sklearn.metrics import accuracy_score
+
+from unsupervise_adapt import (
+    get_args,            # argument parser (provides defaults + CLI)
+    adapt_loader,        # builds DataLoader for the held-out domain
+    make_adapt_model     # wraps a base network with the chosen TTA algorithm
+)
+
+from utils.util import set_random_seed, load_ckpt, img_param_init
 from alg import alg
-from alg.opt import *
-from utils.util import set_random_seed, load_ckpt
-
-from adv.attacked_imagefolder import AttackedImageFolder
 import wandb
-from unsupervise_adapt import get_args, make_adapt_model
 
+# -----------------------------------------------------------------------------
+DATASETS     = ["PACS", "VLCS", "office-home"]
+TEST_DOMAINS = [0, 1]
+SEED         = 0                        # single seed – no sweeps
 
-def build_split_loaders(args, dom_id):
-    """Return attacked (train_loader, val_loader) for a single domain."""
-    dom_name = args.img_dataset[args.dataset][dom_id]
-    dom_root = os.path.join(args.data_dir, dom_name)
+# -----------------------------------------------------------------------------
 
-    # Full attacked dataset (100 % rate, tensors already normalised in file)
-    full_ds = AttackedImageFolder(
-        root=dom_root,
-        transform=None,                 # tensors are already normalised
-        adv_root=args.attack_data_dir,
-        dataset=args.dataset,
-        domain=dom_name,
-        config=f"{args.net}_{args.attack}",
-        rate=args.attack_rate,
-        seed=args.seed,
-    )
+def evaluate_domain(args):
+    """Run adaptation + inference on *one* (dataset, test_domain) pair."""
 
-    labels = np.array([t[1] for t in full_ds.samples])
-    idx_all = np.arange(len(labels))
+    dom_id = args.test_envs[0]
 
-    splitter = StratifiedShuffleSplit(
-        n_splits=1, test_size=0.2, train_size=0.8, random_state=args.seed
-    )
-    idx_tr, idx_val = next(splitter.split(idx_all, labels))
+    # ---- 1.  Load pre-trained ERM model (seed 0) ----------------------------
+    ckpt_path = os.path.join(
+        args.data_file, "TSD-master", "code", "train_output",
+        args.dataset, f"test_{dom_id}", f"seed_{SEED}", "model.pkl")
 
-    train_ds = Subset(full_ds, idx_tr)
-    val_ds   = Subset(full_ds, idx_val)
+    if not os.path.isfile(ckpt_path):
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
-    train_loader = DataLoader(
-        train_ds, batch_size=args.batch_size, shuffle=True,
-        num_workers=args.N_WORKERS, pin_memory=True, drop_last=False
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=64, shuffle=False,
-        num_workers=args.N_WORKERS, pin_memory=True, drop_last=False
-    )
-    return train_loader, val_loader, len(val_ds)
+    erm_class  = alg.get_algorithm_class("ERM")  # training uses ERM
+    base_model = erm_class(args).cuda().train()
+    base_model = load_ckpt(base_model, ckpt_path)
 
-def build_all_source_loaders(args):
-    """
-    Returns
-        train_loaders : list[DataLoader]  – one per *source* domain
-        val_loaders   : dict[dom_id → DataLoader]
-    """
-    train_loaders, val_loaders = [], {}
-    for dom_id in range(len(args.domains)):
-        if dom_id in args.test_envs:
-            continue                        # skip held-out test domain
-        tl, vl, _ = build_split_loaders(args, dom_id)
-        train_loaders.append(tl)
-        val_loaders[dom_id] = vl
-    return train_loaders, val_loaders
+    # ---- 2.  Build test loader & adaptation wrapper ------------------------
+    test_loader = adapt_loader(args)            # DataLoader for held-out domain
+    adapt_model = make_adapt_model(args, base_model)
 
-def accuracy(model, loader):
-    """Simple top-1 accuracy over a loader (no gradient updates)."""
-    model.eval()
-    correct = total = 0
-    with torch.no_grad():
-        for x, y in loader:
-            x, y = x.cuda(), y.cuda()
-            logits = model.predict(x)   # adapt_model returns logits
-            correct += (logits.argmax(1) == y).sum().item()
-            total   += y.size(0)
-    model.train()
-    return 100.0 * correct / total
+    # ---- 3.  One pass through the test set (adapts on-the-fly) -------------
+    preds, gts = [], []
+    for xb, yb in test_loader:
+        logits = adapt_model(xb.cuda())          # forward = adapt
+        preds.append(logits.detach().cpu())
+        gts.append(yb)
 
-if __name__ == "__main__":
+    preds = torch.cat(preds).argmax(1).numpy()
+    gts   = torch.cat(gts).numpy()
+    acc   = 100.0 * accuracy_score(gts, preds)
+    return acc
+
+# -----------------------------------------------------------------------------
+
+def main():
+    # Parse CLI with existing helper – gives us a fully-featured `args` object
     args = get_args()
 
-    run_name = (f"{args.adapt_alg}_{args.lambda3}_{args.cr_type}_start-{args.cr_start}_{args.steps}steps")    
-    wandb.init(project="tta3_src", name=run_name, config=vars(args))
+    # We will override dataset-specific fields inside the loops
+    args.seed = SEED                    # fix random seed
+    set_random_seed(args.seed)
 
-    global_accs = []          # store mean acc for each seed
-    domain_names = [d for i, d in enumerate(args.domains)
-                    if i not in args.test_envs]   # source domains only
+    run_name = f"{args.adapt_alg}_{args.steps}steps_lr{args.lr}"
+    wandb.init(project="tta_batch_eval", name=run_name, config=vars(args))
 
-    overall_start = time.time()
-    for seed in (0, 1, 2):
-        args.seed = seed
-        set_random_seed(seed)
+    start = time.time()
+    accs = []
+    for dataset in DATASETS:
+        for dom in TEST_DOMAINS:
+            # ---- update args for current (dataset, domain) ------------------
+            args.dataset   = dataset
+            args.test_envs = [dom]
+            # refresh derived attributes (domains, num_classes, etc.)
+            args = img_param_init(args)
+            # data_dir depends on dataset – rebuild it
+            args.data_dir = os.path.join(args.data_file, "datasets", dataset)
 
-        seed_accs = []
-        seed_start = time.time()
-        for dom_id in [i for i in range(len(args.domains))
-                       if i not in args.test_envs]:
-            # 1. Load pretrained source model for *this* seed
-            src_ckpt = os.path.join(
-                args.data_file, "TSD-master", "code", "train_output",
-                args.dataset, f"test_{args.test_envs[0]}", f"seed_{seed}",
-                "model.pkl")
-            alg_class = alg.get_algorithm_class("ERM")   # same as training
-            base_model = alg_class(args).cuda()
-            base_model.train()
-            base_model = load_ckpt(base_model, src_ckpt)
+            acc = evaluate_domain(args)
 
-            # 2. Build attacked loaders
-            train_loader, val_loader, n_val = build_split_loaders(args, dom_id)
+            print(f"{dataset:12s}  dom {dom}: {acc:6.2f}%")
+            accs.append(acc)
 
-            # 3. Wrap with chosen test-time adaptation algorithm
-            adapt_model = make_adapt_model(args, base_model)
-
-            # 4. One pass over train_loader (unsupervised adaptation)
-            for xb, _ in train_loader:
-                adapt_model(xb.cuda())   # forward = adapt; labels unused
-
-            # 5. Validation accuracy
-            base_model.eval()
-            acc_dom = accuracy(base_model, val_loader)
-            seed_accs.append(acc_dom)
-
-            wandb.log({f"acc_{domain_names[len(seed_accs)-1]}": acc_dom})
-            print(f"[seed {seed}] {args.domains[dom_id]:12s}: {acc_dom:.2f} %")
-
-        seed_mean = round(statistics.mean(seed_accs), 2)
-        global_accs.append(seed_mean)
-        print(f"[seed {seed}] mean over {len(seed_accs)} source domains: "
-              f"{seed_mean:.2f} %  (took {time.time()-seed_start:.1f}s)")
-        wandb.log({f"acc_seed_{seed}": seed_mean})
-
-    overall_mean = round(statistics.mean(global_accs), 2)
-    overall_std  = round(statistics.stdev(global_accs), 2)
-    elapsed      = time.time() - overall_start
-
+    # ---- Summary -----------------------------------------------------------
     print("\n==================  Summary  ==================")
-    print(f"Seeds:      {global_accs}")
-    print(f"Overall:    {overall_mean} ± {overall_std}  %")
-    print(f"Total time: {elapsed/60:.1f} min")
-    wandb.log({
-        "acc_mean": overall_mean,
-        "acc_std":  overall_std,
-        "time_taken_s": elapsed,
-        "adapt_alg": args.adapt_alg,
-        "steps": args.steps,
-        "lr": args.lr,
-        "cr_type": args.cr_type,
-        "cr_start": args.cr_start,
-        "update_param": args.update_param,
-    })
+    mean = round(statistics.mean(accs), 2)
+    dur   = time.time() - start
+
+    wandb.log({"acc_mean": mean, 
+               "time_taken_s": dur,
+               "steps": args.steps,
+               "lr": args.lr,
+               "adapt_alg": args.adapt_alg})
     wandb.finish()
+
+
+if __name__ == "__main__":
+    main()

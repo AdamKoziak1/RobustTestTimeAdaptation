@@ -59,5 +59,25 @@ export CUDA_VISIBLE_DEVICES=$GPU
 #   done
 # done
 
-wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/vql3gqoz
-wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/5kvfupo7
+wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/5txafx1t
+wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/33hjavxk
+wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/1tj8rbpf
+wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/1ma4fx06
+
+for DATASET in PACS VLCS office-home; do
+  for ALG in PL; do #TTA3 (TSD BN, PL)?
+    for DOMAIN_IDX in 0 1 2 3; do
+      for RATE in 0 20 40 60 80 100; do
+        echo "▶︎  Rate=$RATE"
+        CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
+            --adapt_alg "$ALG" \
+            --dataset  "$DATASET" \
+            --attack_rate $RATE \
+            --test_envs $DOMAIN_IDX \
+            --batch_size $BATCH \
+            --steps 3 \
+            --lr 0.00001
+      done
+    done
+  done
+done

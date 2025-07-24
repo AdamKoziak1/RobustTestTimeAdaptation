@@ -45,7 +45,7 @@ class AttackedImageFolder(ImageFolder):
         else:
             tensor_path = os.path.join(self.cln_root, tensor_name)
 
-        img = torch.load(tensor_path)
+        img = torch.load(tensor_path, weights_only=True)
         return img, target
 
 # class AttackedImageFolder(ImageFolder):

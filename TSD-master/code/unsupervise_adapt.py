@@ -335,14 +335,12 @@ def make_adapt_model(args, algorithm):
             optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
             print("Update classifier")
         elif args.update_param == "lora":
-            def resnet_target_modules(model, depth=(3, 4), include_head=True):
-                print("\n\n\n",dict(model.named_modules()).keys(),"\n\n\n")
+            def resnet_target_modules(model, depth=(3, 4)):
                 targets = []
                 for blk in depth:
                     for n, m in model.named_modules():
                         if f"layer{blk}" in n and isinstance(m, (nn.Conv2d, nn.Linear)):
                             targets.append(n)  
-                print(list(set(targets)))
                 return list(set(targets))
             
             lora_cfg = LoraConfig(
@@ -427,7 +425,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt",
+        project="tta3_adapt_new",
         name=run_name,
         config=vars(args),
     )
