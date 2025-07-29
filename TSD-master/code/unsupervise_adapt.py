@@ -183,7 +183,9 @@ def get_args():
     parser.add_argument("--lora_r", type=int, default=4)  
     parser.add_argument("--lora_alpha", type=int, default=8)  
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
-
+    parser.add_argument("--svd_drop_k", type=int, default=0, 
+                        help="Drop the k smallest singular values per channel (0 = disable).")
+    
     args = parser.parse_args()
     args.steps_per_epoch = 100
     args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
