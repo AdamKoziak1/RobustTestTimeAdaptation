@@ -160,3 +160,85 @@ def sum_param(model):
 
 def get_config_id(cfg):
     return f"{cfg.net}_{cfg.attack}_eps-{cfg.eps}_steps-{cfg.steps}"
+
+
+@torch.no_grad()
+def drop_low_singular_values(x: torch.Tensor, k: int) -> torch.Tensor:
+    if k == 0:
+        return x                           
+
+    B, C, H, W = x.shape      
+    x_flat = x.reshape(B * C, H, W)
+    
+
+    # U, S, Vh = torch.linalg.svd(x_flat, full_matrices=False)
+
+    # # Zero‑out the k smallest σ ‑ vectorised
+    # if k > 0:
+    #     S[..., -k:] = 0
+
+    # # Reconstruct   (U · diag(S)) @ Vᵀ   →  (B*C,H,W)
+    # x_recon = (U * S.unsqueeze(-1)) @ Vh
+
+    # x_recon_reshape = x_recon.reshape(B, C, H, W)
+    # svd = time.time() - start
+
+    # print(svd)
+
+
+    # start = time.time()
+    q        = H - k
+    U,S,Vh   = torch.svd_lowrank(x_flat, q=q, niter=2)
+
+    # Reconstruct   (U · diag(S)) @ Vᵀ   →  (B*C,H,W)
+    x_recon_svd = torch.matmul(U * S.unsqueeze(1), torch.transpose(Vh, 1, 2))
+
+    x_recon_reshape_svd = x_recon_svd.reshape(B, C, H, W)
+    # svd = time.time() - start    
+
+    # print(svd, "lowrank")
+
+    # print(torch.dist(x_recon_reshape, x_recon_reshape_svd).item())
+    # print(torch.dist(x, x_recon_reshape_svd).item())
+    # print(torch.dist(x_recon_reshape, x).item())
+    #print(x_recon_reshape.min().item(), x_recon_reshape.mean().item(), x_recon_reshape.max().item())
+    #print(x.min().item(), x.mean().item(),  x.max().item())
+
+    #return x_recon.reshape(B, C, H, W)
+    return x_recon_reshape_svd
+
+class SVDLoader:
+    def __init__(self, dataloader, k, device="cuda"):
+        self.loader, self.k, self.device = dataloader, k, device
+
+    def __iter__(self):
+        for xb, yb in self.loader:
+            xb = xb.to(self.device, non_blocking=True)
+            if self.k:
+                xb = drop_low_singular_values(xb, self.k)
+            yield xb, yb                          
+
+
+@torch.no_grad()
+def drop_low_singular_values_opt(x: torch.Tensor, k: int, full_decomposition=False) -> torch.Tensor:
+    if k == 0:
+        return x                           
+
+    B, C, H, W = x.shape      
+    x_flat = x.reshape(B * C, H, W)
+    
+    if full_decomposition:
+        U, S, Vh = torch.linalg.svd(x_flat, full_matrices=True)
+
+        # Zero‑out the k smallest σ ‑ vectorised
+        if k > 0:
+            S[..., -k:] = 0
+
+        x_recon = (U * S.unsqueeze(-1)) @ Vh
+
+    else:
+        q        = H - k
+        U,S,Vh   = torch.svd_lowrank(x_flat, q=q, niter=2)
+        x_recon = torch.matmul(U * S.unsqueeze(1), torch.transpose(Vh, 1, 2))
+
+    return x_recon.reshape(B, C, H, W)

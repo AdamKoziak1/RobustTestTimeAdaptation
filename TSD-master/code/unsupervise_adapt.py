@@ -15,13 +15,14 @@ from sklearn.metrics import accuracy_score
 
 from alg.opt import *
 from alg import alg
-from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
+from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt, SVDLoader
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
 from adv.attacked_imagefolder import AttackedImageFolder
 import statistics
 from peft import LoraConfig, get_peft_model
 import wandb
+
 
 def get_args():
     parser = argparse.ArgumentParser(description="Test time adaptation")
@@ -241,7 +242,8 @@ def adapt_loader(args):
         num_workers=args.N_WORKERS,
         pin_memory=True,
     )
-    return testloader
+
+    return SVDLoader(testloader, k=args.svd_drop_k, device="cuda")
 
 
 def make_adapt_model(args, algorithm):
@@ -427,7 +429,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt_new",
+        project="tta3_adapt_svd",
         name=run_name,
         config=vars(args),
     )
@@ -462,6 +464,7 @@ if __name__ == "__main__":
         "time_taken_s": time2 - time1,
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
+        "svd_drop_k": args.svd_drop_k
     })
 
     wandb.finish()

@@ -24,10 +24,8 @@ python unsupervised_adapt_dataset.py \
 """
 
 import os
-import sys
 import time
 import statistics
-import argparse
 
 import torch
 from sklearn.metrics import accuracy_score
@@ -62,18 +60,16 @@ def evaluate_domain(args):
     if not os.path.isfile(ckpt_path):
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
-    erm_class  = alg.get_algorithm_class("ERM")  # training uses ERM
+    erm_class  = alg.get_algorithm_class("ERM")
     base_model = erm_class(args).cuda().train()
     base_model = load_ckpt(base_model, ckpt_path)
 
-    # ---- 2.  Build test loader & adaptation wrapper ------------------------
-    test_loader = adapt_loader(args)            # DataLoader for held-out domain
+    test_loader = adapt_loader(args)           
     adapt_model = make_adapt_model(args, base_model)
 
-    # ---- 3.  One pass through the test set (adapts on-the-fly) -------------
     preds, gts = [], []
     for xb, yb in test_loader:
-        logits = adapt_model(xb.cuda())          # forward = adapt
+        logits = adapt_model(xb.cuda())          
         preds.append(logits.detach().cpu())
         gts.append(yb)
 
@@ -91,9 +87,9 @@ def main():
     # We will override dataset-specific fields inside the loops
     args.seed = SEED                    # fix random seed
     set_random_seed(args.seed)
-
-    run_name = f"{args.adapt_alg}_{args.steps}steps_lr{args.lr}"
-    wandb.init(project="tta_batch_eval", name=run_name, config=vars(args))
+    
+    run_name = f"{args.adapt_alg}_drop{args.svd_drop_k}_{args.steps}steps_lr{args.lr}"
+    wandb.init(name=run_name, config=vars(args))
 
     start = time.time()
     accs = []
@@ -121,7 +117,8 @@ def main():
                "time_taken_s": dur,
                "steps": args.steps,
                "lr": args.lr,
-               "adapt_alg": args.adapt_alg})
+               "adapt_alg": args.adapt_alg,
+               "svd_drop_k": args.svd_drop_k})
     wandb.finish()
 
 

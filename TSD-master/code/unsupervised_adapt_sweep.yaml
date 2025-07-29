@@ -1,5 +1,5 @@
 program: unsupervised_adapt_dataset.py     
-name: "TSD_sweep_test"  
+name: "svd_test_TTA3_MI"  
 method: grid                        
 metric:
   name: acc_mean                  
@@ -7,34 +7,40 @@ metric:
 
 parameters:
   lr:
-    values: [0.000001, 0.00001, 0.0001, 0.001, 0.01]
+    value: 0.001
+  #   values: [0.000001, 0.00001, 0.0001, 0.001, 0.01]
     
   # ——— loss weights ———
-  # lambda1:
-  #   value: 0
-  # lambda2:
-  #   value: 0
-  # lambda3:
+  lambda1:
+    value: 0
+  lambda2:
+    value: 0
+  lambda3:
+    value: 20
   #   values: [0.5,1,5,10,20,50]
 
-  # cr_type:
-  #   value: "cosine"
+  cr_type:
+    value: "cosine"
 
-  # cr_start:
-  #   values: [0,1,2]
+  cr_start:
+    value: 0
+    #values: [0,1,2]
 
   attack_rate:
-    value: 100
+    #value: 100
+    values: [0,50,100]
 
-  # steps:
+  steps:
+    value: 1
   #   values: [1,3,5,10]
 
 
-  # update_param:
-  #   values: ["all", "tent", "affine", "lora"]
+  update_param:
+    value: "tent"
+    #values: ["all", "tent", "affine", "lora"]
 
   adapt_alg:
-    value: "TSD"
+    value: "TTA3"
 
-  filter_K:
-    values: [-1, 1, 5, 20, 50, 100]
+  svd_drop_k:
+    values: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180, 185, 190, 195, 200, 205, 210, 215]
