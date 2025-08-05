@@ -21,9 +21,27 @@ TODO:
   use PL loss combined with MI - check SHOT
 
 
-add new results (adapt-new):
-  tent
-  PL
-  SHOT-IM
+svd variations:
+erm     185
+tent    160 185
+PL      130 185
+SHOT-IM 145 185
+T3A     150 185
+TSD     125 190
+TTA3-MI 150 185
+TTA3-CR 160 185
 
-rerun TSD if params change
+ideas:
+lp-bounded attacks could operate in low singular value space
+  what if attacker knows this?
+    consider stronger attacks
+      (AutoAttack‑TTA and DIA; integrate ImageNet‑C subset)
+theory note on spectral filtering + BN; derive error bound
+profile runtime more precisely
+
+
+learnable svd threshold?
+
+do spectral filtering on feature tensor
+
+

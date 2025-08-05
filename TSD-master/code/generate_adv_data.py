@@ -211,7 +211,7 @@ if __name__ == "__main__":
         adv_cursor = 0                   # points into img_adv
         for k in range(bsz):
             gidx = ptr + k               # global index in dataset
-            torch.save(img[k].cpu(), os.path.join(domain_clean_dir, f"{gidx}.pt"))
+            #torch.save(img[k].cpu(), os.path.join(domain_clean_dir, f"{gidx}.pt"))
             torch.save(img_adv[adv_cursor].cpu(), os.path.join(attack_config_dom_dir, f"{gidx}.pt"))
             adv_cursor += 1
 
