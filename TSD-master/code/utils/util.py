@@ -198,3 +198,43 @@ def drop_low_singular_values(x: torch.Tensor, k: int, full_decomposition=False) 
         x_recon = torch.matmul(U * S.unsqueeze(1), torch.transpose(Vh, 1, 2))
 
     return x_recon.reshape(B, C, H, W)
+
+
+# code/utils/svd_layer.py
+import torch, torch.nn as nn
+from utils.util import drop_low_singular_values  # you already have this
+
+class SVDDrop2D(nn.Module):
+    """
+    Apply SVD truncation to feature maps B×C×H×W.
+    mode='per_channel'  : SVD on each (H×W) map independently (uses your util).
+    mode='across_channels': SVD on C×(H*W); drops k smallest σ across channels.
+    """
+    def __init__(self, k: int, mode: str = 'per_channel', full: bool = False):
+        super().__init__()
+        assert mode in ('per_channel', 'across_channels')
+        self.k = int(k)
+        self.mode = mode
+        self.full = full
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.k <= 0: 
+            return x
+        B, C, H, W = x.shape
+        if self.mode == 'per_channel':
+            # your existing fast batched implementation
+            return drop_low_singular_values(x, self.k, full_decomposition=self.full)
+
+        # --- across_channels: project onto top (C-k) left singular vectors ---
+        X = x.reshape(B, C, H * W)                     # B×C×(HW)
+        # Gram matrix per sample (C×C), PSD => eigh is efficient & stable
+        G = torch.bmm(X, X.transpose(1, 2))           # B×C×C
+        # eigenvalues ascending; last columns are top eigvecs
+        evals, U = torch.linalg.eigh(G)                # B×C, B×C×C
+        q = max(C - self.k, 0)
+        if q == 0:
+            return torch.zeros_like(x)
+        Uq = U[:, :, -q:]                              # B×C×q
+        # Project: X_hat = Uq Uq^T X
+        X_hat = torch.bmm(Uq, torch.bmm(Uq.transpose(1, 2), X))   # B×C×(HW)
+        return X_hat.view(B, C, H, W)

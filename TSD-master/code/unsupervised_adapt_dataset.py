@@ -118,7 +118,10 @@ def main():
                "steps": args.steps,
                "lr": args.lr,
                "adapt_alg": args.adapt_alg,
-               "svd_drop_k": args.svd_drop_k})
+               "svd_drop_k": args.svd_drop_k,
+               "svd_feat_mode": args.svd_feat_mode,
+               "svd_feat_k": args.svd_feat_k
+               })
     wandb.finish()
 
 

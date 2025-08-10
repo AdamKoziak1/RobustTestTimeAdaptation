@@ -15,7 +15,7 @@ from sklearn.metrics import accuracy_score
 
 from alg.opt import *
 from alg import alg
-from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt, SVDLoader
+from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt, SVDLoader, SVDDrop2D
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
 from adv.attacked_imagefolder import AttackedImageFolder
@@ -186,6 +186,9 @@ def get_args():
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
     parser.add_argument("--svd_drop_k", type=int, default=0, 
                         help="Drop the k smallest singular values per channel (0 = disable).")
+    parser.add_argument("--svd_feat_k", type=int, default=0,
+                    help="Drop k smallest singular values on feature maps (0=off).")
+    parser.add_argument("--svd_feat_mode", choices=["per_channel","across_channels"], default="per_channel")
     
     args = parser.parse_args()
     args.steps_per_epoch = 100
@@ -247,6 +250,15 @@ def adapt_loader(args):
 
 
 def make_adapt_model(args, algorithm):
+    k_feat = args.svd_feat_k                     # drop k smallest σ
+    if k_feat > 0:
+        mode  = args.svd_feat_mode          # or 'across_channels'
+        svd_block = SVDDrop2D(k=k_feat, mode=mode, full=False)
+
+        # Insert right after layer1 and before layer2
+        feat = algorithm.featurizer    # ERM(args) -> .featurizer is ResBase
+        feat.layer1 = nn.Sequential(feat.layer1, svd_block)
+
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":
         algorithm = configure_model(algorithm)
