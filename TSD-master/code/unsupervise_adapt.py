@@ -189,6 +189,19 @@ def get_args():
     parser.add_argument("--svd_feat_k", type=int, default=0,
                     help="Drop k smallest singular values on feature maps (0=off).")
     parser.add_argument("--svd_feat_mode", choices=["per_channel","across_channels"], default="per_channel")
+    parser.add_argument("--svd_drop_tau", type=float, default=0.0,
+                        help="Value threshold τ: zero σ < τ (overrides svd_drop_k if >0).")
+    parser.add_argument("--svd_thresh_mode", choices=["abs","rel"], default="abs",
+                        help="Interpretation of τ: 'abs' uses σ>=τ, 'rel' uses σ>=τ*σ_max.")
+    parser.add_argument("--svd_full_matrices", action="store_true",
+                        help="Use full_matrices=True in torch.linalg.svd (slower, more memory).")
+
+    # (optional, for feature-map SVD block)
+    # parser.add_argument("--svd_feat_tau", type=float, default=0.0,
+    #                     help="Value threshold τ for feature-map SVD (per_channel).")
+    # parser.add_argument("--svd_feat_thresh_mode", choices=["abs","rel"], default="abs")
+    # parser.add_argument("--svd_feat_full_matrices", action="store_true")
+
     
     args = parser.parse_args()
     args.steps_per_epoch = 100
@@ -245,8 +258,16 @@ def adapt_loader(args):
         num_workers=args.N_WORKERS,
         pin_memory=True,
     )
-
-    return SVDLoader(testloader, k=args.svd_drop_k, device="cuda")
+    full_decomposition = args.svd_drop_tau > 0.0
+    return SVDLoader(
+        testloader,
+        k=args.svd_drop_k,
+        device="cuda",
+        full_decomposition=full_decomposition,                    # use exact SVD path vs lowrank
+        tau=args.svd_drop_tau,
+        thresh_mode=args.svd_thresh_mode,
+        full_matrices=args.svd_full_matrices
+    )
 
 
 def make_adapt_model(args, algorithm):

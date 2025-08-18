@@ -163,14 +163,25 @@ def get_config_id(cfg):
 
 
 class SVDLoader:
-    def __init__(self, dataloader, k, device="cuda", full_decomposition=False):
+    def __init__(self, dataloader, k, device="cuda",
+                    full_decomposition: bool = False,   # kept for backwards compat
+                    tau: float = 0.0,                   # NEW: value threshold (overrides k if >0)
+                    thresh_mode: str = "abs",           # NEW: "abs" or "rel"
+                    full_matrices: bool = False         # NEW: control torch.linalg.svd(full_matrices)):
+                ):
         self.loader, self.k, self.device = dataloader, k, device
         self.full_decomposition = full_decomposition
-
+        self.tau = float(tau)
+        self.thresh_mode = thresh_mode
+        self.full_matrices = bool(full_matrices)
     def __iter__(self):
         for xb, yb in self.loader:
             xb = xb.to(self.device, non_blocking=True)
-            if self.k:
+            if self.tau > 0.0:
+                xb = drop_small_singular_values_threshold(
+                    xb, self.tau, mode=self.thresh_mode, full_matrices=self.full_matrices
+                )
+            elif self.k:
                 xb = drop_low_singular_values(xb, self.k, full_decomposition=self.full_decomposition)
             yield xb, yb                          
 
@@ -206,9 +217,9 @@ from utils.util import drop_low_singular_values  # you already have this
 
 class SVDDrop2D(nn.Module):
     """
-    Apply SVD truncation to feature maps B×C×H×W.
-    mode='per_channel'  : SVD on each (H×W) map independently (uses your util).
-    mode='across_channels': SVD on C×(H*W); drops k smallest σ across channels.
+    Apply SVD truncation to feature maps BxCxHxW.
+    mode='per_channel'  : SVD on each (HxW) map independently (uses your util).
+    mode='across_channels': SVD on Cx(H*W); drops k smallest singular values across channels.
     """
     def __init__(self, k: int, mode: str = 'per_channel', full: bool = False):
         super().__init__()
@@ -238,3 +249,49 @@ class SVDDrop2D(nn.Module):
         # Project: X_hat = Uq Uq^T X
         X_hat = torch.bmm(Uq, torch.bmm(Uq.transpose(1, 2), X))   # B×C×(HW)
         return X_hat.view(B, C, H, W)
+
+
+# ---- Value-thresholded exact SVD --------------------------------------------
+@torch.no_grad()
+def drop_small_singular_values_threshold(
+    x: torch.Tensor,
+    tau: float,
+    mode: str = "abs",           # "abs" = absolute σ threshold, "rel" = σ >= tau * σ_max
+    full_matrices: bool = False  # economy SVD (False) is exact & much faster
+) -> torch.Tensor:
+    """
+    Zero-out singular values below a threshold for each (HxW) channel map.
+
+    Args:
+        x:   BxCxHxW image tensor
+        tau: threshold value; interpretation depends on `mode`
+        mode:
+          - "abs" : keep σ_i >= tau
+          - "rel" : keep σ_i >= tau * σ_max  (0 < tau <= 1 recommended)
+        full_matrices: forwarded to torch.linalg.svd
+
+    Returns:
+        Reconstructed tensor with small singular values zeroed.
+    """
+    if tau <= 0:
+        return x
+
+    B, C, H, W = x.shape
+    X = x.reshape(B * C, H, W)
+
+    # Exact SVD per (H×W) map; economy is typically sufficient & exact
+    U, S, Vh = torch.linalg.svd(X, full_matrices=full_matrices)  # (BC,H,r), (BC,r), (BC,r,W) when full_matrices=False
+    # Build per-sample threshold
+    if mode == "abs":
+        thr = tau
+    elif mode == "rel":
+        sigma_max = S.max(dim=1, keepdim=True).values
+        thr = sigma_max * tau  # (BC,1) -> broadcast
+    else:
+        raise ValueError(f"Unknown threshold mode: {mode}. Use 'abs' or 'rel'.")
+
+    mask = S >= thr     # (BC, r)
+
+    S = S * mask
+    X_hat = (U * S.unsqueeze(-2)) @ Vh  # (BC,H,r) * (BC,1,r) @ (BC,r,W)
+    return X_hat.reshape(B, C, H, W)
