@@ -586,8 +586,9 @@ class TTA3(nn.Module):
                  lambda1=1.0, # flatness weight
                  lambda2=1.0, # adversarial VAT weight
                  lambda3=1.0, # consistency weight
+                 lambda4=1.0, # PL weight
                  r=4, 
-                 l_adv_iter=1,  cr_type='cosine', cr_start=0):
+                 l_adv_iter=1,  cr_type='cosine', cr_start=0, use_mi=False):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -596,6 +597,7 @@ class TTA3(nn.Module):
         self.lambda1 = lambda1
         self.lambda2 = lambda2
         self.lambda3 = lambda3
+        self.lambda4 = lambda4
         self.r = r
         self.l_adv_iter = l_adv_iter
         self.cr_type = cr_type.lower()
@@ -604,6 +606,8 @@ class TTA3(nn.Module):
         assert 0 <= cr_start <= 3, \
             f"cr_start ∈ {{0,1,2,3}}, got {cr_start}"
         self.cr_start = cr_start
+        self.use_mi = use_mi
+        self.beta=0.9
 
         # Save initial states for episodic adaptation
         self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
@@ -705,6 +709,12 @@ class TTA3(nn.Module):
             l_cr += self.similarity_loss(S_feat_last.detach(), S_feat_next)
             S_feat_last = S_feat_next
         return l_cr
+    
+    def pl_loss(self, logits):   
+        scores = F.softmax(logits,1)
+        py,y_prime = torch.max(scores,1)
+        mask = py > self.beta
+        return  F.cross_entropy(logits[mask],y_prime[mask])
 
     def forward_and_adapt(self, x, model, optimizer):
         # Forward pass to get logits and probabilities
@@ -712,7 +722,10 @@ class TTA3(nn.Module):
         prob = F.softmax(logits, dim=1)
 
         # --- Mutual Information Maximization Loss (L_MI) ---
-        L_MI = self.mi_loss(logits, prob)
+        if self.use_mi:
+            base_loss = self.mi_loss(logits, prob)
+        else:
+            base_loss = softmax_entropy(logits).mean()
 
         # --- Flatness Regularization Loss (L_Flat) ---
         L_Flat = self.flat_loss(x, model, logits)
@@ -723,14 +736,18 @@ class TTA3(nn.Module):
         # --- Consistency Regularization Loss (L_CR) ---
         L_CR = self.cr_loss(x, prob)
 
+        # --- Psuedolabel Loss ---
+        L_PL = self.pl_loss(logits)
+
         # --- Overall Loss ---
-        loss = L_MI + (self.lambda1 * L_Flat) + (self.lambda2 * L_Adv) + (self.lambda3 * L_CR)
+        loss = base_loss + (self.lambda1 * L_Flat) + (self.lambda2 * L_Adv) + (self.lambda3 * L_CR) + (self.lambda4 * L_PL)
         wandb.log({"Loss": loss.item(),
-                   "L_MI": L_MI.item(),
+                   "base_loss": base_loss.item(),
                    "L_Flat": L_Flat.item(),
                    "L_Adv": L_Adv.item(),
-                   "L_CR": L_CR.item()})
-        #print(f"L_MI: {round(L_MI.item(), 4)} | L_Flat: {round(L_Flat, 4)} | L_Adv: {round(L_Adv, 4)} | L_CR: {round(L_CR, 4)} ")
+                   "L_CR": L_CR.item(),
+                   "L_PL": L_PL.item()})
+        #print(f"base_loss: {round(base_loss.item(), 4)} | L_Flat: {round(L_Flat, 4)} | L_Adv: {round(L_Adv, 4)} | L_CR: {round(L_CR, 4)} ")
 
         optimizer.zero_grad()
         loss.backward()

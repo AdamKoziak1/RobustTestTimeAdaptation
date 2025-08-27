@@ -121,7 +121,11 @@ def main():
                "svd_drop_k": args.svd_drop_k,
                "svd_feat_mode": args.svd_feat_mode,
                "svd_feat_k": args.svd_feat_k,
-               "svd_drop_tau": args.svd_drop_tau
+               "svd_drop_tau": args.svd_drop_tau,
+               "lambda1": args.lambda1,
+               "lambda2": args.lambda2,
+               "lambda3": args.lambda3,
+               "lambda4": args.lambda4
                })
     wandb.finish()
 

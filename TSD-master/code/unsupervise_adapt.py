@@ -174,6 +174,7 @@ def get_args():
     parser.add_argument("--lambda1", type=float, default=0.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lambda2", type=float, default=0.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lambda3", type=float, default=10.0, help="Coefficient for Consistency Regularization Loss")
+    parser.add_argument("--lambda4", type=float, default=0.0, help="Coefficient for PsuedoLabel Loss")
     parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
     parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean", "l2_eps-8_steps-20"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
@@ -195,6 +196,7 @@ def get_args():
                         help="Interpretation of τ: 'abs' uses σ>=τ, 'rel' uses σ>=τ*σ_max.")
     parser.add_argument("--svd_full_matrices", action="store_true",
                         help="Use full_matrices=True in torch.linalg.svd (slower, more memory).")
+    parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
 
     # (optional, for feature-map SVD block)
     # parser.add_argument("--svd_feat_tau", type=float, default=0.0,
@@ -206,7 +208,8 @@ def get_args():
     args = parser.parse_args()
     args.steps_per_epoch = 100
     args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
-
+    args.use_mi = args.use_mi == 'mi'
+    
     #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
     args = img_param_init(args)
@@ -403,10 +406,12 @@ def make_adapt_model(args, algorithm):
             lambda1=args.lambda1,
             lambda2=args.lambda2,
             lambda3=args.lambda3,
+            lambda4=args.lambda4,
             l_adv_iter=args.l_adv_iter,
             cr_type = args.cr_type,
             cr_start = args.cr_start,
             r=args.eps,
+            use_mi=args.use_mi
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
@@ -462,7 +467,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt_svd",
+        project="tta3_adapt_new",
         name=run_name,
         config=vars(args),
     )

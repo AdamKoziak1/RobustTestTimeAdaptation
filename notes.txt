@@ -34,3 +34,21 @@ profile runtime more precisely
 
 learnable svd threshold?
 
+--steps 3 --lambda1 0.001 --lambda2 0.001 --lambda3 0.1 --lambda4 50 --lr 0.001 
+newvals:
+--steps=5 --lambda1=0.0001 --lambda2=0.1 --lambda3=0.01 --lambda4=100 --lr=0.001
+
+
+ablation on each param (use best combination and vary only the one of interest)
+  -rerun this
+
+
+  separate over datasets
+
+  
+  iclr sept 19 abs paper 24
+
+
+  look into lowrank methods. what is novel
+
+  maybe ensemble as backup
