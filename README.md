@@ -45,7 +45,6 @@ Organize them as follows:
 ## Train source model
 Please use `train.py` to train the source model. For example:
 ```bash
-cd code/
 python train.py --dataset PACS \
                 --data_dir your_data_dir \
                 --opt_type Adam \
@@ -66,16 +65,7 @@ Change `--adapt_alg TSD` to use different methods of test time adaptation, e.g. 
 `--pretrain_dir` denotes the path of source model, e.g. `./train_outputs/model.pkl`.  
 Empirically, set `--lr` to 1e-4 or 1e-5 achieves good performance.
 You can also search it using _training domain validation set_.
-## 📝 Citation
-If this repo is useful for your research, please consider citing our paper:
-```bibtex
-@inproceedings{wang2023feature,
-  title={Feature alignment and uniformity for test time adaptation},
-  author={Wang, Shuai and Zhang, Daoan and Yan, Zipei and Zhang, Jianguo and Li, Rui},
-  booktitle={CVPR},
-  year={2023}
-}
-```
+
 ## ✉️ Contact
-Please contact bit.ybws@gmail.com
+Please contact adamkoziak@cmail.carleton.ca
 
