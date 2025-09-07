@@ -11,7 +11,7 @@
 #     --data_root      /path/to/datasets \
 #     --adv_root       /path/to/datasets_adv \
 #     --net            resnet18 \
-#     --attack_config  linf_eps-8_steps-20 \
+#     --attack_config  linf_eps-8.0_steps-20 \
 #     --seed           0 \
 #     --batch_size     32 \
 #     --device         cuda
@@ -77,7 +77,7 @@ def main():
     pa.add_argument("--adv_root",   default="/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv")
     pa.add_argument("--net",        default="resnet18",
                     help="used only to build <CONFIG> folder names")
-    pa.add_argument("--attack_config", default="linf_eps-8_steps-20", choices=["l2_eps-112.0_steps-100", "linf_eps-8_steps-20"])
+    pa.add_argument("--attack_config", default="linf_eps-8.0_steps-20", choices=["l2_eps-112.0_steps-100", "linf_eps-8.0_steps-20"])
     pa.add_argument("--seed",       type=int, default=0)
     pa.add_argument("--batch_size", type=int, default=64)
     pa.add_argument("--workers",    type=int, default=4)
