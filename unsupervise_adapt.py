@@ -419,7 +419,7 @@ def make_adapt_model(args, algorithm):
 
 
 def run_one_seed(args):
-    pretrain_model_path = os.path.join(args.data_file, "TSD-master", "code", "train_output", args.dataset, f"test_{str(dom_id)}", f"seed_{str(args.seed)}", "model.pkl")
+    pretrain_model_path = os.path.join(args.data_file, "train_output", args.dataset, f"test_{str(dom_id)}", f"seed_{str(args.seed)}", "model.pkl")
     set_random_seed(args.seed)
     
     algorithm_class = alg.get_algorithm_class(args.algorithm)

@@ -177,10 +177,11 @@ cython_debug/
 datasets/*
 datasets_adv/*
 datasets_adv_old/*
-TSD-master/code/train_output/*
-TSD-master/code/tta_output/*
-TSD-master/code/wandb/*
-TSD-master/code/train_output_old/*
-TSD-master/code/tta_output_old/*
+train_output/*
+tta_output/*
+wandb/*
+train_output_old/*
+tta_output_old/*
 svd_files/
 *.png
+*.sh

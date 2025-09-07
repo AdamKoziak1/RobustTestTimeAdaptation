@@ -211,9 +211,8 @@ def drop_low_singular_values(x: torch.Tensor, k: int, full_decomposition=False) 
     return x_recon.reshape(B, C, H, W)
 
 
-# code/utils/svd_layer.py
 import torch, torch.nn as nn
-from utils.util import drop_low_singular_values  # you already have this
+from utils.util import drop_low_singular_values 
 
 class SVDDrop2D(nn.Module):
     """

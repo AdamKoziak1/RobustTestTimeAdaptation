@@ -54,7 +54,7 @@ def evaluate_domain(args):
 
     # ---- 1.  Load pre-trained ERM model (seed 0) ----------------------------
     ckpt_path = os.path.join(
-        args.data_file, "TSD-master", "code", "train_output",
+        args.data_file, "train_output",
         args.dataset, f"test_{dom_id}", f"seed_{SEED}", "model.pkl")
 
     if not os.path.isfile(ckpt_path):
