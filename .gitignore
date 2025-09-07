@@ -183,3 +183,4 @@ TSD-master/code/wandb/*
 TSD-master/code/train_output_old/*
 TSD-master/code/tta_output_old/*
 svd_files/
+*.png

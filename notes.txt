@@ -52,3 +52,16 @@ ablation on each param (use best combination and vary only the one of interest)
   look into lowrank methods. what is novel
 
   maybe ensemble as backup
+
+
+check norm of delta in generate_adv
+
+
+introduce learnable parameter over the local smoothing/"message passing"
+regularize on global frequency
+  *check if fft is differentiable 
+
+minimize nuclear norm
+  -use closed form solution
+
+  convolution with affinity = gnn

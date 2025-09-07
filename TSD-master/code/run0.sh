@@ -156,32 +156,32 @@ export CUDA_VISIBLE_DEVICES=$GPU
 
 # TTA3-CR 160 185 dead
 # TTA3-PL 
-for DATASET in PACS VLCS office-home; do
-  for ALG in TTA3; do #TTA3 (TSD BN, PL)?
-    for RATE in 0 20 40 60 80 100; do
-      for SVD in 0; do
-      echo "▶︎  Rate=$RATE"
-      CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
-          --adapt_alg "$ALG" \
-          --dataset  "$DATASET" \
-          --attack_rate $RATE \
-          --test_envs $GPU \
-          --batch_size $BATCH \
-          --steps 5 \
-          --lambda1 0.0001 \
-          --lambda2 0.1 \
-          --lambda3 0.01 \
-          --lambda4 100 \
-          --lr 0.001 \
-          --cr_start 0 \
-          --update_param "tent" \
-          --use_mi "em" \
-          --svd_drop_k $SVD
-      done
-    done
-  done
-done
-wandb agent bigslav/RobustTestTimeAdaptation-TSD-master_code/jun3kium
+# for DATASET in PACS VLCS office-home; do
+#   for ALG in TTA3; do #TTA3 (TSD BN, PL)?
+#     for RATE in 0 20 40 60 80 100; do
+#       for SVD in 0; do
+#       echo "▶︎  Rate=$RATE"
+#       CUDA_VISIBLE_DEVICES=$GPU python unsupervise_adapt.py \
+#           --adapt_alg "$ALG" \
+#           --dataset  "$DATASET" \
+#           --attack_rate $RATE \
+#           --test_envs $GPU \
+#           --batch_size $BATCH \
+#           --steps 5 \
+#           --lambda1 0.0001 \
+#           --lambda2 0.1 \
+#           --lambda3 0.01 \
+#           --lambda4 100 \
+#           --lr 0.001 \
+#           --cr_start 0 \
+#           --update_param "tent" \
+#           --use_mi "em" \
+#           --svd_drop_k $SVD
+#       done
+#     done
+#   done
+# done
+
 # CUDA_VISIBLE_DEVICES=$GPU python generate_adv_data.py --dataset PACS --test_envs $GPU --seed 0 --attack l2 
 # CUDA_VISIBLE_DEVICES=$GPU python generate_adv_data.py --dataset PACS --test_envs $GPU --seed 1 --attack l2
 # CUDA_VISIBLE_DEVICES=$GPU python generate_adv_data.py --dataset PACS --test_envs $GPU --seed 2 --attack l2

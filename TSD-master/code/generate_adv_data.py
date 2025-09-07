@@ -99,31 +99,53 @@ def get_args_adv():
     print_environ()
     return args
 
+@torch.no_grad()
+def _linf_project(x0, x, eps):
+    # project x back to L_inf ball around x0 and [0,1] box
+    return (x0 + (x - x0).clamp(min=-eps, max=eps))
+
 def pgd(model, x, y, eps, alpha, steps, n_classes, norm="linf"):
-    y_onehot = nn.functional.one_hot(y, num_classes=n_classes).float()
     x_adv = x.clone().detach() 
-    delta = torch.zeros_like(x, requires_grad=True)
-    
-    softmax = nn.Softmax(dim=1)
+    b = x.size(0)
+    delta = torch.zeros_like(x)
+    if norm == "linf":
+        delta.uniform_(-eps, eps)
+    elif norm == "l2":
+        delta = torch.randn_like(x)
+        b = x.size(0)
+        delta_flat = delta.view(b, -1)
+        delta_flat = delta_flat / (delta_flat.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12))
+        r = torch.rand(b, 1, device=x.device)   # <-- match 2D shape for broadcast
+        delta_flat = delta_flat * (r * eps)
+        delta = delta_flat.view_as(x)
+
+    x_adv = (x + delta)
+
+    #print()
     for _ in range(steps):
-        x_adv = x_adv.clone().detach().requires_grad_(True)
-        preds = softmax(model.predict(x_adv))
-        pred  = preds.argmax(1)
-        success = pred.ne(y)  
-        if success.all():
-            break
-        loss = nn.CrossEntropyLoss()(preds, y_onehot)
-        grad = torch.autograd.grad(loss, x_adv)[0]
+        x_in = x_adv
+        x_in.requires_grad_(True)
+
+        logits = model.predict(x_in)
+        loss = F.cross_entropy(logits, y)
+
+        (grad,) = torch.autograd.grad(loss, x_in, only_inputs=True)
+
+        preds = logits.argmax(1)
+        fooled = preds.ne(y) 
+        #print(fooled.float().mean().item()) 
 
         with torch.no_grad():
             if norm == "linf":
-                delta = delta + alpha * grad.sign()
-                delta = torch.clamp(delta, min=-eps, max=eps)
-            else:  # l2
-                grad_norm = grad.view(grad.size(0),-1).norm(2,1).view(-1,1,1,1)
-                delta = delta + alpha * grad/grad_norm
-                delta = delta.renorm(2,0,eps)
-            x_adv = (x + delta).clamp(0,1)
+                step = alpha * grad.sign()
+                x_adv = _linf_project(x, x_adv + step, eps)
+            elif norm == "l2":
+                g = grad
+                g_flat = g.view(b, -1)
+                gnorm = g_flat.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12)
+                g_dir = (g_flat / gnorm).view_as(g)          # unit L2 direction per sample
+                step = alpha * g_dir
+                x_adv = (x_adv + step)
     return x_adv.detach()
 
 # ---------------- CLI --------------------------------------------------------
