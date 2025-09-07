@@ -1,14 +1,9 @@
 # coding=utf‑8
 """
-Visualise a clean image, its adversarial counterpart and the perturbation.
-Print ‖δ‖₂ and ‖δ‖_∞  in pixel space + Top‑5 probabilities.
-
-Example
--------
-python adv/show_adv_compare.py \
-       --clean ../../datasets_adv/seed_0/PACS/clean/art_painting/42.pt \
-       --adv   ../../datasets_adv/seed_0/PACS/resnet18_linf_eps-8_steps-20/art_painting/42.pt   \
-       --model ../../datasets_adv/seed_0/PACS/clean/model_art_painting_best.pt    \
+python show_adv_compare.py \
+       --clean datasets_adv/seed_0/PACS/clean/art_painting/42.pt \
+       --adv   datasets_adv/seed_0/PACS/resnet18_linf_eps-8_steps-20/art_painting/42.pt   \
+       --model datasets_adv/seed_0/PACS/clean/model_art_painting_best.pt    \
        --dataset PACS
 """
 import argparse, os
@@ -18,13 +13,6 @@ from torchvision import models, transforms
 from torchvision.datasets import ImageFolder
 import numpy as np
 
-# ---------- helpers ----------------------------------------------------------
-INV_NORM = transforms.Normalize(mean=[-m/s for m,s in zip([0.485,0.456,0.406],
-                                                          [0.229,0.224,0.225])],
-                                std =[1/s for s in [0.229,0.224,0.225]])
-
-def unnorm(t):                      # C×H×W → H×W×C in [0,1]
-    return INV_NORM(t).mul_(1).clamp_(0,1).permute(1,2,0).cpu().numpy()
 def img_form(t):                      # C×H×W → H×W×C in [0,1]
     return t.mul_(1).clamp_(0,1).permute(1,2,0).cpu().numpy()
 
@@ -50,21 +38,14 @@ if __name__ == "__main__":
     pa.add_argument("--dataset", required=True)
     args = pa.parse_args()
 
-    # tensors are stored *after* normalisation
-    x_clean = torch.load(args.clean)          # shape C×H×W, float32
+    x_clean = torch.load(args.clean) 
     x_adv   = torch.load(args.adv)
 
-    # ---- visual -------------------------------------------------------------
-    # img_c   = unnorm(x_clean)
-    # img_a   = unnorm(x_adv)    
+    # ---- visual -------------------------------------------------------------    
     img_c   = img_form(x_clean)
     img_a   = img_form(x_adv)
     delta   = np.abs(img_a - img_c)           # for display
 
-
-
-    # ---- norms in pixel space ----------------------------------------------
-    #delta_flat = (img_a - img_c).reshape(-1)
     delta_flat = (x_adv - x_clean).reshape(-1)
     l2  = np.linalg.norm(delta_flat, ord=2)
     linf = np.linalg.norm(delta_flat, ord=np.inf)
@@ -73,7 +54,7 @@ if __name__ == "__main__":
     # ---- Top‑5 predictions --------------------------------------------------
     # build label map from the original dataset structure
     domain_dir = os.path.basename(os.path.dirname(args.clean)).replace("_clean","")
-    root_imgs  = os.path.join("..","..","datasets", args.dataset, domain_dir)
+    root_imgs  = os.path.join("datasets", args.dataset, domain_dir)
     idx_to_class = {v:k for k,v in ImageFolder(root_imgs).class_to_idx.items()}
 
     # net = load_net(args.model, "resnet18").eval()

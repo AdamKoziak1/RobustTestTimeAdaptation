@@ -112,8 +112,6 @@ def img_param_init(args):
         domains = ['amazon', 'dslr', 'webcam', 'caltech']
     elif dataset == 'office-home':
         domains = ['Art', 'Clipart', 'Product', 'RealWorld']
-    elif dataset == 'dg5':
-        domains = ['mnist', 'mnist_m', 'svhn', 'syn', 'usps']
     elif dataset == 'PACS':
         domains = ['art_painting', 'cartoon', 'photo', 'sketch']
     elif dataset == 'VLCS':
@@ -128,25 +126,21 @@ def img_param_init(args):
         'office-caltech': ['amazon', 'dslr', 'webcam', 'caltech'],
         'office-home': ['Art', 'Clipart', 'Product', 'RealWorld'],
         'PACS': ['art_painting', 'cartoon', 'photo', 'sketch'],
-        'dg5': ['mnist', 'mnist_m', 'svhn', 'syn', 'usps'],
         'VLCS': ['Caltech101', 'LabelMe', 'SUN09', 'VOC2007'],
         'DomainNet':['clipart','infograph','painting','quickdraw','real','sketch'],
     }
-    if dataset == 'dg5':
-        args.input_shape = (3, 32, 32)
-        args.num_classes = 10
-    else:
-        args.input_shape = (3, 224, 224)
-        if args.dataset == 'office-home':
-            args.num_classes = 65
-        elif args.dataset == 'office':
-            args.num_classes = 31
-        elif args.dataset == 'PACS':
-            args.num_classes = 7
-        elif args.dataset == 'VLCS':
-            args.num_classes = 5
-        elif args.dataset == 'DomainNet':
-            args.num_classes = 345
+
+    args.input_shape = (3, 224, 224)
+    if args.dataset == 'office-home':
+        args.num_classes = 65
+    elif args.dataset == 'office':
+        args.num_classes = 31
+    elif args.dataset == 'PACS':
+        args.num_classes = 7
+    elif args.dataset == 'VLCS':
+        args.num_classes = 5
+    elif args.dataset == 'DomainNet':
+        args.num_classes = 345
     return args
 
 
@@ -212,7 +206,6 @@ def drop_low_singular_values(x: torch.Tensor, k: int, full_decomposition=False) 
 
 
 import torch, torch.nn as nn
-from utils.util import drop_low_singular_values 
 
 class SVDDrop2D(nn.Module):
     """
@@ -294,3 +287,27 @@ def drop_small_singular_values_threshold(
     S = S * mask
     X_hat = (U * S.unsqueeze(-2)) @ Vh  # (BC,H,r) * (BC,1,r) @ (BC,r,W)
     return X_hat.reshape(B, C, H, W)
+
+
+from typing import Sequence
+
+def attach_input_standardization(module: nn.Module,
+                                 mean: Sequence[float],
+                                 std: Sequence[float]) -> nn.Module:
+    """
+    Registers buffers and a forward_pre_hook to apply: (x - mean)/std
+    on the module's first argument. No architecture wrapping, no name changes.
+    """
+    mean_t = torch.tensor(mean).view(1, len(mean), 1, 1)
+    std_t  = torch.tensor(std).view(1, len(std), 1, 1)
+    module.register_buffer("_in_mean", mean_t, persistent=False)
+    module.register_buffer("_in_std", std_t, persistent=False)
+
+    def _pre_norm(mod, inputs):
+        if not inputs:
+            return inputs
+        x, *rest = inputs
+        return ((x - mod._in_mean) / mod._in_std, *rest)
+
+    module.register_forward_pre_hook(_pre_norm, with_kwargs=False)
+    return module

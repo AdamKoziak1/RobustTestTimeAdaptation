@@ -2,16 +2,43 @@ TODO:
   resnet18 first, then resnet50
     models other than resnet18 will need change in layer selection for cr_loss
 
+
+
+
+  introduce learnable parameter over the local smoothing/"message passing"
+  regularize on global frequency
+    *check if fft is differentiable 
+
+  minimize nuclear norm
+    -use closed form solution
+
+    convolution with affinity = gnn
+
+  theory note on spectral filtering + BN; derive error bound
+
+  ablation on each param (use best combination and vary only the one of interest)
+    -rerun this
+
+  separate over datasets
+
+  look into lowrank methods. what is novel
+
+  maybe ensemble as backup
+
+  profile runtime more precisely
+
+
+ideas:
+lp-bounded attacks could operate in low singular value space
+  what if attacker knows this?
+    consider stronger attacks
+      (AutoAttack‑TTA and DIA; RTTDP, integrate ImageNet‑C subset)
+
+
   EMV update
 
   class prototypes
     cosine similarity to classify each feature based on mean features 
-
-  LORA:
-    update requirements for peft
-
-  use PL loss combined with MI - check SHOT
-
 
 svd variations:
 /erm     185
@@ -23,45 +50,4 @@ svd variations:
 TTA3-MI 150 185
 TTA3-CR 160 185
 
-ideas:
-lp-bounded attacks could operate in low singular value space
-  what if attacker knows this?
-    consider stronger attacks
-      (AutoAttack‑TTA and DIA; RTTDP, integrate ImageNet‑C subset)
-theory note on spectral filtering + BN; derive error bound
-profile runtime more precisely
 
-
-learnable svd threshold?
-
---steps 3 --lambda1 0.001 --lambda2 0.001 --lambda3 0.1 --lambda4 50 --lr 0.001 
-newvals:
---steps=5 --lambda1=0.0001 --lambda2=0.1 --lambda3=0.01 --lambda4=100 --lr=0.001
-
-
-ablation on each param (use best combination and vary only the one of interest)
-  -rerun this
-
-
-  separate over datasets
-
-  
-  iclr sept 19 abs paper 24
-
-
-  look into lowrank methods. what is novel
-
-  maybe ensemble as backup
-
-
-check norm of delta in generate_adv
-
-
-introduce learnable parameter over the local smoothing/"message passing"
-regularize on global frequency
-  *check if fft is differentiable 
-
-minimize nuclear norm
-  -use closed form solution
-
-  convolution with affinity = gnn

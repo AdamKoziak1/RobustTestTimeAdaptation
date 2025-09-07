@@ -100,53 +100,61 @@ def get_args_adv():
     return args
 
 @torch.no_grad()
-def _linf_project(x0, x, eps):
-    # project x back to L_inf ball around x0 and [0,1] box
-    return (x0 + (x - x0).clamp(min=-eps, max=eps))
+def _project_linf(x0, x, eps):
+    return (x0 + (x - x0).clamp(min=-eps, max=eps)).clamp(0.0, 1.0)
 
-def pgd(model, x, y, eps, alpha, steps, n_classes, norm="linf"):
-    x_adv = x.clone().detach() 
+@torch.no_grad()
+def _project_l2(x0, x, eps):
     b = x.size(0)
-    delta = torch.zeros_like(x)
+    delta = (x - x0)
+    flat = delta.view(b, -1)
+    nrm = flat.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12)
+    scale = torch.minimum(torch.ones_like(nrm), eps / nrm)
+    delta = (flat * scale).view_as(delta)
+    return (x0 + delta).clamp(0.0, 1.0)
+
+def pgd(model, x_pix, y, eps, alpha, steps, n_classes, norm="linf"):
+    """
+    x_pix: pixel input in [0,1]
+    eps, alpha: pixel units (e.g., 8/255, 2/255)
+    returns: adversarial example in *pixel* space
+    """
+    x0 = x_pix.detach()
+    x = x0.clone()
+
+    b = x.size(0)
     if norm == "linf":
-        delta.uniform_(-eps, eps)
+        delta = torch.empty_like(x).uniform_(-eps, eps)
     elif norm == "l2":
-        delta = torch.randn_like(x)
-        b = x.size(0)
-        delta_flat = delta.view(b, -1)
-        delta_flat = delta_flat / (delta_flat.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12))
-        r = torch.rand(b, 1, device=x.device)   # <-- match 2D shape for broadcast
-        delta_flat = delta_flat * (r * eps)
-        delta = delta_flat.view_as(x)
+        d = torch.randn_like(x).view(b, -1)
+        d = d / d.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12)
+        radius = torch.rand(b, 1, device=x.device) * eps
+        delta  = (d * radius).view_as(x)
+    else:
+        raise ValueError("norm ∈ {'linf','l2'}")
 
-    x_adv = (x + delta)
+    x = (x0 + delta).clamp(0.0, 1.0)
+    x = _project_linf(x0, x, eps) if norm == "linf" else _project_l2(x0, x, eps)
 
-    #print()
     for _ in range(steps):
-        x_in = x_adv
-        x_in.requires_grad_(True)
-
-        logits = model.predict(x_in)
+        x.requires_grad_(True)
+        logits = model.predict(x)  # <-- model handles standardization
         loss = F.cross_entropy(logits, y)
+        (g,) = torch.autograd.grad(loss, x, only_inputs=True)
 
-        (grad,) = torch.autograd.grad(loss, x_in, only_inputs=True)
-
-        preds = logits.argmax(1)
-        fooled = preds.ne(y) 
+        #preds = logits.argmax(1)
+        #fooled = preds.ne(y) 
         #print(fooled.float().mean().item()) 
-
         with torch.no_grad():
             if norm == "linf":
-                step = alpha * grad.sign()
-                x_adv = _linf_project(x, x_adv + step, eps)
-            elif norm == "l2":
-                g = grad
+                x = _project_linf(x0, x + alpha * g.sign(), eps)
+            else:
                 g_flat = g.view(b, -1)
-                gnorm = g_flat.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12)
-                g_dir = (g_flat / gnorm).view_as(g)          # unit L2 direction per sample
-                step = alpha * g_dir
-                x_adv = (x_adv + step)
-    return x_adv.detach()
+                g_dir  = g_flat / g_flat.norm(p=2, dim=1, keepdim=True).clamp_min(1e-12)
+                x = _project_l2(x0, x + alpha * g_dir.view_as(g), eps)
+
+    return x.detach()
+
 
 # ---------------- CLI --------------------------------------------------------
 if __name__ == "__main__":
@@ -233,7 +241,7 @@ if __name__ == "__main__":
         adv_cursor = 0                   # points into img_adv
         for k in range(bsz):
             gidx = ptr + k               # global index in dataset
-            #torch.save(img[k].cpu(), os.path.join(domain_clean_dir, f"{gidx}.pt"))
+            torch.save(img[k].cpu(), os.path.join(domain_clean_dir, f"{gidx}.pt"))
             torch.save(img_adv[adv_cursor].cpu(), os.path.join(attack_config_dom_dir, f"{gidx}.pt"))
             adv_cursor += 1
 

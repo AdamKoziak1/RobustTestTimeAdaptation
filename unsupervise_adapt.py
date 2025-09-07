@@ -18,7 +18,7 @@ from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt, SVDLoader, SVDDrop2D
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
-from adv.attacked_imagefolder import AttackedImageFolder
+from datautil.attacked_imagefolder import AttackedImageFolder
 import statistics
 from peft import LoraConfig, get_peft_model
 import wandb
@@ -176,7 +176,7 @@ def get_args():
     parser.add_argument("--lambda3", type=float, default=10.0, help="Coefficient for Consistency Regularization Loss")
     parser.add_argument("--lambda4", type=float, default=0.0, help="Coefficient for PsuedoLabel Loss")
     parser.add_argument("--l_adv_iter", type=int, default=1, help="Number of iterations for instance-level flatness")
-    parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean", "l2_eps-8_steps-20"], default="linf_eps-8_steps-20")
+    parser.add_argument("--attack", choices=["linf_eps-8_steps-20", "clean", "l2_eps-112.0_steps-100"], default="linf_eps-8_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
     parser.add_argument("--attack_rate", type=int, choices=[0,10,20,30,40,50,60,70,80,90,100], default=0)   
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   

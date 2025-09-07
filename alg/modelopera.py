@@ -1,11 +1,10 @@
 # coding=utf-8
 import torch
 from network import img_network
+from utils.util import attach_input_standardization
 
 def get_fea(args):
-    if args.dataset == 'dg5':
-        net = img_network.DTNBase()
-    elif args.net.startswith('res'):
+    if args.net.startswith('res'):
         net = img_network.ResBase(args.net)
     elif args.net.startswith('vgg'):
         net = img_network.VGGBase(args.net)
@@ -15,8 +14,11 @@ def get_fea(args):
         net = img_network.EfficientBase(args.net)
     elif args.net.startswith('Mix'):
         net = img_network.MLPMixer(args.net)
-    return net
+        
+    mean, std = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225) # imagenet stats
 
+    attach_input_standardization(net, mean, std)
+    return net
 
 def accuracy(network, loader):
     correct = 0
