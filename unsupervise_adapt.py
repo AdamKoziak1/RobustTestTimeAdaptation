@@ -151,10 +151,9 @@ def get_args():
         "--filter_K",
         type=int,
         default=100,
-        help="M in T3A/TSD, \in [1,5,20,50,100,-1],-1 denotes no selectiion",
+        help="M in T3A/TSD, in [1,5,20,50,100,-1],-1 denotes no selectiion",
     )
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--source_seed", type=int, default=0, help="source model seed")
     parser.add_argument(
         "--update_param", type=str, default="all", help="all / affine / body / head"
     )
@@ -169,7 +168,7 @@ def get_args():
         "--d_margin",
         type=float,
         default=0.05,
-        help="\epsilon in Eqn. (5) for filtering redundant samples",
+        help="epsilon in Eqn. (5) for filtering redundant samples",
     )
     parser.add_argument("--lambda1", type=float, default=0.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lambda2", type=float, default=0.0, help="Coefficient for Adversarial Loss")
@@ -467,7 +466,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt_new",
+        project="tta3_adapt",
         name=run_name,
         config=vars(args),
     )
