@@ -197,6 +197,14 @@ def get_args():
                         help="Use full_matrices=True in torch.linalg.svd (slower, more memory).")
     parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
 
+    parser.add_argument('--lam_em', type=float, default=0.0, help='weight on entropy minimization')
+
+    parser.add_argument('--nuc_top', type=int, default=0, help='0..4 stages instrumented (bottom-up)')
+    parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
+    parser.add_argument('--nuc_kernel', type=int, default=3, help='odd kernel size for NuclearConv2d')
+    parser.add_argument('--nuc_lambda', type=float, default=0.0, help='weight on nuclear-norm penalty')
+    
+
     # (optional, for feature-map SVD block)
     # parser.add_argument("--svd_feat_tau", type=float, default=0.0,
     #                     help="Value threshold τ for feature-map SVD (per_channel).")
@@ -394,6 +402,8 @@ def make_adapt_model(args, algorithm):
             algorithm.print_trainable_parameters()  # sanity‑check
             
             optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
+        elif args.update_param == "nuc":
+            optimizer = torch.optim.Adam(algorithm.featurizer.nuc_parameters(), lr=args.lr)
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
         
@@ -410,7 +420,9 @@ def make_adapt_model(args, algorithm):
             cr_type = args.cr_type,
             cr_start = args.cr_start,
             r=args.eps,
-            use_mi=args.use_mi
+            use_mi=args.use_mi,
+            lambda_nuc=args.nuc_lambda,
+            lam_em=args.lam_em
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")

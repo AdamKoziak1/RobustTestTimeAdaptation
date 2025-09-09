@@ -160,22 +160,145 @@ class EfficientBase(nn.Module):
 
 
 
-# mlp_mixer_path = {'Mixer-B16':mlp_mixer_b16_path,
-#                   'Mixer-L16':mlp_mixer_l16_path}
+class NuclearConv2d(nn.Module):
+    """
+    Depthwise 3x3 conv initialized as (near-)identity.
+    A linear, per-channel spatial filter so the nuclear penalty is well-defined.
+    """
+    def __init__(self, channels: int, k: int = 3, bias: bool = False):
+        super().__init__()
+        assert k % 2 == 1, "kernel size should be odd"
+        self.k = k
+        self.conv = nn.Conv2d(channels, channels, kernel_size=k, padding=k//2,
+                              groups=channels, bias=bias)
+        # identity init
+        with torch.no_grad():
+            self.conv.weight.zero_()
+            self.conv.weight[:, :, k//2, k//2] = 1.0
+            if bias:
+                self.conv.bias.zero_()
 
-# class MLPMixer(nn.Module):
-#     KNOWN_MODELS = {
-#         'Mixer-B16': timm.models.mlp_mixer.mixer_b16_224_in21k,
-#         'Mixer-L16': timm.models.mlp_mixer.mixer_l16_224_in21k,
-#     }
-#     def __init__(self,backbone="Mixer-L16"):
-#         super().__init__()
-#         func = self.KNOWN_MODELS[backbone]
-#         self.network = func(pretrained=True)
-#         self.in_features = self.network.norm.normalized_shape[0]
-#         self.network.head = Identity()
+    def forward(self, x):
+        return self.conv(x)
 
-#     def forward(self, x):
-#         """Encode x into a feature vector of size n_outputs."""
-#         return self.network(x)
+import torch.nn.functional as F
+from typing import Iterable, List, Optional, Tuple
+
+class ResBaseNuc(nn.Module):
+    """
+    ResNet backbone + optional NuclearConv2d inserted AFTER layer1..layer4 (and/or after the stem).
+    The 'nuc_top' knob chooses how high (from the bottom) we insert these layers:
+        nuc_top = 0 : none
+        nuc_top = 1 : after layer1
+        nuc_top = 2 : after layer1, layer2
+        nuc_top = 3 : after layer1, layer2, layer3
+        nuc_top = 4 : after layer1, layer2, layer3, layer4
+    Optionally, set nuc_after_stem=True to also insert one after the stem (maxpool).
+
+    During forward() we accumulate a nuclear-norm penalty on the outputs of each inserted conv.
+    The penalty can be consumed via pop_nuc_penalty().
+    """
+    def __init__(self, res_name: str, nuc_top: int = 0, k: int = 3,
+                 nuc_after_stem: bool = False):
+        super().__init__()
+        base = res_dict[res_name](weights=models.ResNet18_Weights.IMAGENET1K_V1
+                                  if res_name == "resnet18" else None)
+        # expose the usual pieces
+        self.conv1, self.bn1, self.relu, self.maxpool = base.conv1, base.bn1, base.relu, base.maxpool
+        self.layer1, self.layer2, self.layer3, self.layer4 = base.layer1, base.layer2, base.layer3, base.layer4
+        self.avgpool = base.avgpool
+        self.in_features = base.fc.in_features
+
+        # figure out channel dims at stage outputs
+        ch = {
+            "stem": base.layer1[0].conv1.in_channels,  # after maxpool (before layer1)
+            "l1":   list(self.layer1.modules())[-1].bn2.num_features if hasattr(self.layer1[0], "bn2") else list(self.layer1.modules())[-1].bn3.num_features,
+            "l2":   list(self.layer2.modules())[-1].bn2.num_features if hasattr(self.layer2[0], "bn2") else list(self.layer2.modules())[-1].bn3.num_features,
+            "l3":   list(self.layer3.modules())[-1].bn2.num_features if hasattr(self.layer3[0], "bn2") else list(self.layer3.modules())[-1].bn3.num_features,
+            "l4":   list(self.layer4.modules())[-1].bn2.num_features if hasattr(self.layer4[0], "bn2") else list(self.layer4.modules())[-1].bn3.num_features,
+        }
+
+        self.nuc_after_stem = nuc_after_stem
+        self.nuc_top = int(nuc_top)
+        assert 0 <= self.nuc_top <= 4, "nuc_top must be in [0,4]"
+
+        # Build convs
+        self.nuc_stem = NuclearConv2d(ch["stem"], k) if self.nuc_after_stem else None
+        self.nuc_l1 = NuclearConv2d(ch["l1"], k) if self.nuc_top >= 1 else None
+        self.nuc_l2 = NuclearConv2d(ch["l2"], k) if self.nuc_top >= 2 else None
+        self.nuc_l3 = NuclearConv2d(ch["l3"], k) if self.nuc_top >= 3 else None
+        self.nuc_l4 = NuclearConv2d(ch["l4"], k) if self.nuc_top >= 4 else None
+
+        # Freeze ALL base params by default; user can optimize only these convs
+        for p in self.parameters():
+            p.requires_grad_(False)
+        for m in self.nuc_modules():
+            for p in m.parameters():
+                p.requires_grad_(True)
+
+        # accumulator for the nuclear penalty (scalar tensor on correct device)
+        self._nuc_penalty = None
+
+    # ----- utilities -----
+    def nuc_modules(self) -> List[nn.Module]:
+        mods = []
+        if self.nuc_after_stem and self.nuc_stem is not None: mods.append(self.nuc_stem)
+        if self.nuc_l1 is not None: mods.append(self.nuc_l1)
+        if self.nuc_l2 is not None: mods.append(self.nuc_l2)
+        if self.nuc_l3 is not None: mods.append(self.nuc_l3)
+        if self.nuc_l4 is not None: mods.append(self.nuc_l4)
+        return mods
+
+    def nuc_parameters(self) -> Iterable[nn.Parameter]:
+        for m in self.nuc_modules():
+            yield from m.parameters()
+
+    @staticmethod
+    def _batch_nuclear_norm(feat: torch.Tensor) -> torch.Tensor:
+        """
+        feat: (B, C, H, W). We compute ||F||_* with matrix F = C x (H*W), batched over B.
+        Returns mean over batch (scalar).
+        """
+        B, C, H, W = feat.shape
+        M = feat.view(B, C, H * W)                    # (B, C, HW)
+        # svdvals is batched over B
+        s = torch.linalg.svdvals(M)                   # (B, min(C, HW))
+        return s.sum(-1).mean()                       # scalar
+
+    def _accumulate(self, x: torch.Tensor):
+        val = self._batch_nuclear_norm(x)
+        if self._nuc_penalty is None:
+            self._nuc_penalty = val
+        else:
+            self._nuc_penalty = self._nuc_penalty + val
+
+    @torch.no_grad()
+    def pop_nuc_penalty(self) -> torch.Tensor:
+        if self._nuc_penalty is None:
+            return torch.zeros((), device=next(self.parameters()).device)
+        v = self._nuc_penalty
+        self._nuc_penalty = None
+        return v
+
+    # ----- forward with taps after each stage -----
+    def forward(self, x):
+        self._nuc_penalty = None
+        x = self.conv1(x); x = self.bn1(x); x = self.relu(x); x = self.maxpool(x)
+        if self.nuc_after_stem:
+            x = self.nuc_stem(x); self._accumulate(x)
+        x = self.layer1(x)
+        if self.nuc_l1 is not None:
+            x = self.nuc_l1(x); self._accumulate(x)
+        x = self.layer2(x)
+        if self.nuc_l2 is not None:
+            x = self.nuc_l2(x); self._accumulate(x)
+        x = self.layer3(x)
+        if self.nuc_l3 is not None:
+            x = self.nuc_l3(x); self._accumulate(x)
+        x = self.layer4(x)
+        if self.nuc_l4 is not None:
+            x = self.nuc_l4(x); self._accumulate(x)
+        x = self.avgpool(x)
+        x = x.view(x.size(0), -1)
+        return x
     

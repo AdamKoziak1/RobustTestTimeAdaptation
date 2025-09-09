@@ -5,7 +5,15 @@ from utils.util import attach_input_standardization
 
 def get_fea(args):
     if args.net.startswith('res'):
-        net = img_network.ResBase(args.net)
+        # Optional nuclear-conv instrumentation
+        nuc_top = getattr(args, 'nuc_top', 0)                  # 0..4
+        nuc_k   = getattr(args, 'nuc_kernel', 3)
+        nuc_stem= getattr(args, 'nuc_after_stem', False)
+        if nuc_top and nuc_top > 0:
+            net = img_network.ResBaseNuc(args.net, nuc_top=nuc_top, k=nuc_k,
+                                         nuc_after_stem=nuc_stem)
+        else:
+            net = img_network.ResBase(args.net)
     elif args.net.startswith('vgg'):
         net = img_network.VGGBase(args.net)
     elif args.net.startswith('ViT'):
