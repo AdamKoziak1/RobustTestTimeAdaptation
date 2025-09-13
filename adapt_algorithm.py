@@ -587,8 +587,9 @@ class TTA3(nn.Module):
                  lambda2=1.0, # adversarial VAT weight
                  lambda3=1.0, # consistency weight
                  lambda4=1.0, # PL weight
+                 lambda_nuc=0.0,  # <— nuclear-norm weight
                  r=4, 
-                 l_adv_iter=1,  cr_type='cosine', cr_start=0, use_mi=False):
+                 l_adv_iter=1,  cr_type='cosine', cr_start=0, use_mi=False, lam_em=0.0, lam_recon=0.0):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -608,6 +609,10 @@ class TTA3(nn.Module):
         self.cr_start = cr_start
         self.use_mi = use_mi
         self.beta=0.9
+        
+        self.lambda_nuc = float(lambda_nuc)
+        self.lam_em = float(lam_em)
+        self.lam_recon = float(lam_recon)
 
         # Save initial states for episodic adaptation
         self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
@@ -739,16 +744,23 @@ class TTA3(nn.Module):
         # --- Psuedolabel Loss ---
         L_PL = self.pl_loss(logits)
 
+        L_NUC = torch.tensor(0.0, device=logits.device)
+        L_RECON = torch.tensor(0.0, device=logits.device)
+        if self.lambda_nuc > 0.0 and hasattr(model.featurizer, "pop_nuc_penalty"):
+            L_NUC, L_RECON = model.featurizer.pop_nuc_penalty()
+
         # --- Overall Loss ---
-        loss = base_loss + (self.lambda1 * L_Flat) + (self.lambda2 * L_Adv) + (self.lambda3 * L_CR) + (self.lambda4 * L_PL)
+        loss = (self.lam_em * base_loss) + (self.lambda1 * L_Flat) + (self.lambda2 * L_Adv) + (self.lambda3 * L_CR) + (self.lambda4 * L_PL) + (self.lambda_nuc * L_NUC)  + (self.lam_recon * L_RECON)
         wandb.log({"Loss": loss.item(),
                    "base_loss": base_loss.item(),
                    "L_Flat": L_Flat.item(),
                    "L_Adv": L_Adv.item(),
                    "L_CR": L_CR.item(),
-                   "L_PL": L_PL.item()})
+                   "L_PL": L_PL.item(),
+                   "L_NUC": L_NUC.item(),
+                   "L_RECON": L_RECON.item()})
         #print(f"base_loss: {round(base_loss.item(), 4)} | L_Flat: {round(L_Flat, 4)} | L_Adv: {round(L_Adv, 4)} | L_CR: {round(L_CR, 4)} ")
-
+        #print(L_NUC)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

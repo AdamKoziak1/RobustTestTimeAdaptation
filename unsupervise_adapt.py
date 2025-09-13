@@ -151,10 +151,9 @@ def get_args():
         "--filter_K",
         type=int,
         default=100,
-        help="M in T3A/TSD, \in [1,5,20,50,100,-1],-1 denotes no selectiion",
+        help="M in T3A/TSD, in [1,5,20,50,100,-1],-1 denotes no selectiion",
     )
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--source_seed", type=int, default=0, help="source model seed")
     parser.add_argument(
         "--update_param", type=str, default="all", help="all / affine / body / head"
     )
@@ -169,7 +168,7 @@ def get_args():
         "--d_margin",
         type=float,
         default=0.05,
-        help="\epsilon in Eqn. (5) for filtering redundant samples",
+        help="epsilon in Eqn. (5) for filtering redundant samples",
     )
     parser.add_argument("--lambda1", type=float, default=0.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lambda2", type=float, default=0.0, help="Coefficient for Adversarial Loss")
@@ -197,6 +196,15 @@ def get_args():
     parser.add_argument("--svd_full_matrices", action="store_true",
                         help="Use full_matrices=True in torch.linalg.svd (slower, more memory).")
     parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
+
+    parser.add_argument('--lam_em', type=float, default=0.0, help='weight on entropy minimization')
+
+    parser.add_argument('--nuc_top', type=int, default=0, help='0..4 stages instrumented (bottom-up)')
+    parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
+    parser.add_argument('--nuc_kernel', type=int, default=3, help='odd kernel size for NuclearConv2d')
+    parser.add_argument('--nuc_lambda', type=float, default=0.0, help='weight on nuclear-norm penalty')
+    parser.add_argument('--lam_recon', type=float, default=0.0, help='weight on feature reconstruction penalty')
+    
 
     # (optional, for feature-map SVD block)
     # parser.add_argument("--svd_feat_tau", type=float, default=0.0,
@@ -395,6 +403,8 @@ def make_adapt_model(args, algorithm):
             algorithm.print_trainable_parameters()  # sanity‑check
             
             optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
+        elif args.update_param == "nuc":
+            optimizer = torch.optim.Adam(algorithm.featurizer.nuc_parameters(), lr=args.lr)
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
         
@@ -411,7 +421,10 @@ def make_adapt_model(args, algorithm):
             cr_type = args.cr_type,
             cr_start = args.cr_start,
             r=args.eps,
-            use_mi=args.use_mi
+            use_mi=args.use_mi,
+            lambda_nuc=args.nuc_lambda,
+            lam_em=args.lam_em,
+            lam_recon=args.lam_recon
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
@@ -467,7 +480,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt_new",
+        project="tta3_adapt",
         name=run_name,
         config=vars(args),
     )

@@ -31,7 +31,8 @@ def load_ckpt(algorithm,ckpt_dir):
     load pretrain model to adapt
     """
     checkpoint = torch.load(ckpt_dir, weights_only=True)
-    algorithm.load_state_dict(checkpoint['model_dict'])
+    missing, unexpected = algorithm.load_state_dict(checkpoint['model_dict'], strict=False)
+    print(f"[load_ckpt] missing: {len(missing)} unexpected: {len(unexpected)}")
     return algorithm
 
 
