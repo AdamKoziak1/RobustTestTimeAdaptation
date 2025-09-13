@@ -1,22 +1,9 @@
 #!/usr/bin/env python3
 """
-Batch evaluation of test-time adaptation (TTA) across multiple datasets and
-domains.
+Batch evaluation of test-time adaptation (TTA) across multiple datasets and domains.
 
-For every (dataset, test_env) pair it
-    1. loads the pre-trained ERM source model (seed 0)
-    2. builds a test loader for the held-out domain (clean or attacked)
-    3. wraps the model with the requested adaptation method (Tent, TTA3, …)
-    4. runs adaptation over the entire test set (single pass)
-    5. reports Top-1 accuracy
-
-The logic for argument parsing, loader construction and adaptation wrappers is
-reused from *unsupervise_adapt.py* to avoid duplication.
-
-Example
--------
 python unsupervised_adapt_dataset.py \
-    --adapt_alg TTA3 --steps 10 --lambda3 10 --cr_type l2 --attack clean
+    --adapt_alg TTA3 --steps 10 --lam_cr 10 --cr_type l2 --attack clean
 """
 
 import os

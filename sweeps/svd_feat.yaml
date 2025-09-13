@@ -31,13 +31,13 @@ parameters:
   attack_rate:
     value: 100
 
-  lambda1:
+  lam_flat:
     value: 0
-  lambda2:
+  lam_adv:
     value: 0
-  lambda3:
+  lam_cr:
     value: 0
-  lambda4:
+  lam_pl:
     value: 0
   lam_em:
     value: 1.0

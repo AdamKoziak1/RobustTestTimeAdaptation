@@ -576,17 +576,17 @@ class TTA3(nn.Module):
         optimizer (torch.optim.Optimizer): Optimizer to update the model parameters.
         steps (int): Number of adaptation steps per forward pass.
         episodic (bool): If True, reset the model to its original state before each batch.
-        lambda1 (float): Weight for the flatness loss.
-        lambda2 (float): Weight for the adversarial loss.
-        lambda3 (float): Weight for the consistency regularization loss.
+        lam_flat (float): Weight for the flatness loss.
+        lam_adv (float): Weight for the adversarial loss.
+        lam_cr (float): Weight for the consistency regularization loss.
         r (float): Maximum perturbation norm (e.g. 8/255 for ℓ∞ attacks).
         eta (float): Step size for adversarial perturbation update.
     """
     def __init__(self, model, optimizer, steps=1, episodic=False, 
-                 lambda1=1.0, # flatness weight
-                 lambda2=1.0, # adversarial VAT weight
-                 lambda3=1.0, # consistency weight
-                 lambda4=1.0, # PL weight
+                 lam_flat=1.0, # flatness weight
+                 lam_adv=1.0, # adversarial VAT weight
+                 lam_cr=1.0, # consistency weight
+                 lam_pl=1.0, # PL weight
                  lambda_nuc=0.0,  # <— nuclear-norm weight
                  r=4, 
                  cr_type='cosine', cr_start=0, use_mi=False, lam_em=0.0, lam_recon=0.0):
@@ -595,10 +595,10 @@ class TTA3(nn.Module):
         self.optimizer = optimizer
         self.steps = steps
         self.episodic = episodic
-        self.lambda1 = lambda1
-        self.lambda2 = lambda2
-        self.lambda3 = lambda3
-        self.lambda4 = lambda4
+        self.lam_flat = lam_flat
+        self.lam_adv = lam_adv
+        self.lam_cr = lam_cr
+        self.lam_pl = lam_pl
         self.r = r
         self.cr_type = cr_type.lower()
         assert self.cr_type in ['cosine', 'l2']
@@ -650,7 +650,7 @@ class TTA3(nn.Module):
 
 # --- Flatness Regularization Loss (L_Flat) ---
     def flat_loss(self, x, model, logits):
-        if self.lambda1 <= 1e-8:
+        if self.lam_flat <= 1e-8:
             return torch.tensor(0.0, device=x.device)
 
         logits_perturb = adversarial_weight_perturb_predict(model, x, logits.detach())
@@ -660,7 +660,7 @@ class TTA3(nn.Module):
 
 # --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
     def adv_loss(self, x, model, prob):
-        if self.lambda2 <= 1e-8:
+        if self.lam_adv <= 1e-8:
             return torch.tensor(0.0, device=x.device)
 
         # Initialize a random perturbation within [-r, r]. 
@@ -697,7 +697,7 @@ class TTA3(nn.Module):
         
     def cr_loss(self, x, prob): 
         l_cr = torch.tensor(0.0, device=x.device)
-        if self.lambda3 <= 1e-8:
+        if self.lam_cr <= 1e-8:
             return l_cr
 
         feats = self.feat_extractor(x) 
@@ -747,7 +747,7 @@ class TTA3(nn.Module):
             L_NUC, L_RECON = model.featurizer.pop_nuc_penalty()
 
         # --- Overall Loss ---
-        loss = (self.lam_em * base_loss) + (self.lambda1 * L_Flat) + (self.lambda2 * L_Adv) + (self.lambda3 * L_CR) + (self.lambda4 * L_PL) + (self.lambda_nuc * L_NUC)  + (self.lam_recon * L_RECON)
+        loss = (self.lam_em * base_loss) + (self.lam_flat * L_Flat) + (self.lam_adv * L_Adv) + (self.lam_cr * L_CR) + (self.lam_pl * L_PL) + (self.lambda_nuc * L_NUC)  + (self.lam_recon * L_RECON)
         wandb.log({"Loss": loss.item(),
                    "base_loss": base_loss.item(),
                    "L_Flat": L_Flat.item(),

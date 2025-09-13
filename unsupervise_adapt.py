@@ -75,21 +75,21 @@ def get_args():
     parser.add_argument("--e_margin",type=float,default=math.log(7) * 0.40,help="entropy margin E_0 in Eqn. (3) for filtering reliable samples",)
     parser.add_argument("--d_margin",type=float,default=0.05,help="epsilon in Eqn. (5) for filtering redundant samples",)
     # TTA3
-    parser.add_argument("--lambda1", type=float, default=0.0, help="Coefficient for Flatness Loss")
-    parser.add_argument("--lambda2", type=float, default=0.0, help="Coefficient for Adversarial Loss")
-    parser.add_argument("--lambda3", type=float, default=0.0, help="Coefficient for Consistency Regularization Loss")
-    parser.add_argument("--lambda4", type=float, default=0.0, help="Coefficient for PsuedoLabel Loss")
+    parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
+    parser.add_argument('--lam_em', type=float, default=0.0, help='weight on entropy minimization')
+    parser.add_argument("--lam_flat", type=float, default=0.0, help="Coefficient for Flatness Loss")
+    parser.add_argument("--lam_adv", type=float, default=0.0, help="Coefficient for Adversarial Loss")
+    parser.add_argument("--lam_cr", type=float, default=0.0, help="Coefficient for Consistency Regularization Loss")
+    parser.add_argument("--lam_pl", type=float, default=0.0, help="Coefficient for PsuedoLabel Loss")
+    parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
+    parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, help="Which ResNet block to start consistency-regularization at (0=layer1, …, 3=layer4).")
+
     parser.add_argument("--attack", choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100"], default="linf_eps-8.0_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
     parser.add_argument("--attack_rate", type=int, choices=[0,50,100], default=0)   
-    parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
-    parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, help="Which ResNet block to start consistency-regularization at (0=layer1, …, 3=layer4).")
     parser.add_argument("--lora_r", type=int, default=4)  
     parser.add_argument("--lora_alpha", type=int, default=8)  
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
-
-    parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
-    parser.add_argument('--lam_em', type=float, default=0.0, help='weight on entropy minimization')
 
     parser.add_argument("--svd_drop_k", type=int, default=0, help="Drop the k smallest singular values per channel (0 = disable).")
     parser.add_argument("--svd_drop_tau", type=float, default=0.0,help="Value threshold τ: zero σ < τ (overrides svd_drop_k if >0).")
@@ -130,10 +130,10 @@ def log_args(args):
         "lr": args.lr,
         "svd_feat_mode": args.svd_feat_mode,
         "svd_drop_tau": args.svd_drop_tau,
-        "lambda1": args.lambda1,
-        "lambda2": args.lambda2,
-        "lambda3": args.lambda3,
-        "lambda4": args.lambda4,
+        "lam_flat": args.lam_flat,
+        "lam_adv": args.lam_adv,
+        "lam_cr": args.lam_cr,
+        "lam_pl": args.lam_pl,
         "lam_em": args.lam_em,
         "lam_nuc": args.nuc_lambda,
         "lam_recon": args.lam_recon,
@@ -314,10 +314,10 @@ def make_adapt_model(args, algorithm):
             optimizer,
             steps=args.steps,
             episodic=args.episodic,
-            lambda1=args.lambda1,
-            lambda2=args.lambda2,
-            lambda3=args.lambda3,
-            lambda4=args.lambda4,
+            lam_flat=args.lam_flat,
+            lam_adv=args.lam_adv,
+            lam_cr=args.lam_cr,
+            lam_pl=args.lam_pl,
             cr_type = args.cr_type,
             cr_start = args.cr_start,
             r=args.eps,
@@ -375,9 +375,9 @@ if __name__ == "__main__":
 
     if args.adapt_alg == "TTA3":
         cr_modifier = ""
-        if args.lambda3 >= 1e-8:
+        if args.lam_cr >= 1e-8:
             cr_modifier = f"-{args.cr_type}"
-        run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lambda1}-{args.lambda2}-{args.lambda3}{cr_modifier}_rate-{args.attack_rate}"
+        run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lam_flat}-{args.lam_adv}-{args.lam_cr}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
         project="tta3_adapt",

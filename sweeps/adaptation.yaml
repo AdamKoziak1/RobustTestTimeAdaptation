@@ -14,19 +14,19 @@ parameters:
     values: [0.00001, 0.0001, 0.001]
 
   # ——— loss weights ———
-  lambda1:
+  lam_flat:
     #value: 0
     #values: [0, 0.0001, 0.001, 0.01]
     value: 0.001
-  lambda2:
+  lam_adv:
     #value: 0
     #values: [0, 0.001, 0.1, 1]
     value: 0.001
-  lambda3:
+  lam_cr:
     #value: 0
     #values: [0, 0.001, 0.01, 0.1]
     value: 0.01
-  lambda4:
+  lam_pl:
     #value: 0
     #values: [0, 1, 10, 20, 50, 100]
     value: 50
