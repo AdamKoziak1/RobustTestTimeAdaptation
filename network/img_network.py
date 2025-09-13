@@ -210,12 +210,25 @@ class ResBaseNuc(nn.Module):
         self.in_features = base.fc.in_features
 
         # figure out channel dims at stage outputs
+        # figure out channel dims at stage outputs (robust for BasicBlock/Bottleneck)
+        def _stage_out_channels(layer: nn.Sequential) -> int:
+            last_block = layer[-1]
+            if hasattr(last_block, "bn3"):       # Bottleneck (50/101/152, resnext)
+                return last_block.bn3.num_features
+            if hasattr(last_block, "bn2"):       # BasicBlock (18/34)
+                return last_block.bn2.num_features
+            # Fallback: scan backwards for the last BN2d inside the block
+            for m in reversed(list(last_block.modules())):
+                if isinstance(m, nn.BatchNorm2d):
+                    return m.num_features
+            raise RuntimeError(f"Could not infer channels for {type(last_block).__name__}")
+
         ch = {
-            "stem": base.layer1[0].conv1.in_channels,  # after maxpool (before layer1)
-            "l1":   list(self.layer1.modules())[-1].bn2.num_features if hasattr(self.layer1[0], "bn2") else list(self.layer1.modules())[-1].bn3.num_features,
-            "l2":   list(self.layer2.modules())[-1].bn2.num_features if hasattr(self.layer2[0], "bn2") else list(self.layer2.modules())[-1].bn3.num_features,
-            "l3":   list(self.layer3.modules())[-1].bn2.num_features if hasattr(self.layer3[0], "bn2") else list(self.layer3.modules())[-1].bn3.num_features,
-            "l4":   list(self.layer4.modules())[-1].bn2.num_features if hasattr(self.layer4[0], "bn2") else list(self.layer4.modules())[-1].bn3.num_features,
+            "stem": self.bn1.num_features,       # channels after stem BN / maxpool
+            "l1":   _stage_out_channels(self.layer1),
+            "l2":   _stage_out_channels(self.layer2),
+            "l3":   _stage_out_channels(self.layer3),
+            "l4":   _stage_out_channels(self.layer4),
         }
 
         self.nuc_after_stem = nuc_after_stem
@@ -238,6 +251,7 @@ class ResBaseNuc(nn.Module):
 
         # accumulator for the nuclear penalty (scalar tensor on correct device)
         self._nuc_penalty = None
+        self._recon_penalty = None
 
     # ----- utilities -----
     def nuc_modules(self) -> List[nn.Module]:
@@ -263,41 +277,53 @@ class ResBaseNuc(nn.Module):
         M = feat.view(B, C, H * W)                    # (B, C, HW)
         # svdvals is batched over B
         s = torch.linalg.svdvals(M)                   # (B, min(C, HW))
-        return s.sum(-1).mean()                       # scalar
+        nuc_norm = (s.sum(-1)/(C*H*W)).mean()   
+        return nuc_norm              
 
-    def _accumulate(self, x: torch.Tensor):
-        val = self._batch_nuclear_norm(x)
+    def _accumulate(self, x: torch.Tensor, x_after: torch.Tensor):
+        nuc= self._batch_nuclear_norm(x)
+        diff = x_after - x
+        recon = torch.sqrt(diff.pow(2).flatten(1).sum(dim=1) + 1e-12).mean()
         if self._nuc_penalty is None:
-            self._nuc_penalty = val
+            self._nuc_penalty = nuc
+            self._recon_penalty = recon
         else:
-            self._nuc_penalty = self._nuc_penalty + val
+            self._nuc_penalty = self._nuc_penalty + nuc
+            self._recon_penalty = self._recon_penalty + recon
 
     @torch.no_grad()
     def pop_nuc_penalty(self) -> torch.Tensor:
         if self._nuc_penalty is None:
             return torch.zeros((), device=next(self.parameters()).device)
-        v = self._nuc_penalty
+        n = self._nuc_penalty
+        r = self._recon_penalty
         self._nuc_penalty = None
-        return v
+        self._recon_penalty = None
+        return n, r
 
     # ----- forward with taps after each stage -----
     def forward(self, x):
         self._nuc_penalty = None
         x = self.conv1(x); x = self.bn1(x); x = self.relu(x); x = self.maxpool(x)
         if self.nuc_after_stem:
-            x = self.nuc_stem(x); self._accumulate(x)
+            x_before = x.detach()
+            x = self.nuc_stem(x); self._accumulate(x_before, x)
         x = self.layer1(x)
         if self.nuc_l1 is not None:
-            x = self.nuc_l1(x); self._accumulate(x)
+            x_before = x.detach()
+            x = self.nuc_l1(x); self._accumulate(x_before, x)
         x = self.layer2(x)
         if self.nuc_l2 is not None:
-            x = self.nuc_l2(x); self._accumulate(x)
+            x_before = x.detach()
+            x = self.nuc_l2(x); self._accumulate(x_before, x)
         x = self.layer3(x)
         if self.nuc_l3 is not None:
-            x = self.nuc_l3(x); self._accumulate(x)
+            x_before = x.detach()
+            x = self.nuc_l3(x); self._accumulate(x_before, x)
         x = self.layer4(x)
         if self.nuc_l4 is not None:
-            x = self.nuc_l4(x); self._accumulate(x)
+            x_before = x.detach()
+            x = self.nuc_l4(x); self._accumulate(x_before, x)
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         return x

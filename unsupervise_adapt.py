@@ -203,6 +203,7 @@ def get_args():
     parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
     parser.add_argument('--nuc_kernel', type=int, default=3, help='odd kernel size for NuclearConv2d')
     parser.add_argument('--nuc_lambda', type=float, default=0.0, help='weight on nuclear-norm penalty')
+    parser.add_argument('--lam_recon', type=float, default=0.0, help='weight on feature reconstruction penalty')
     
 
     # (optional, for feature-map SVD block)
@@ -422,7 +423,8 @@ def make_adapt_model(args, algorithm):
             r=args.eps,
             use_mi=args.use_mi,
             lambda_nuc=args.nuc_lambda,
-            lam_em=args.lam_em
+            lam_em=args.lam_em,
+            lam_recon=args.lam_recon
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")

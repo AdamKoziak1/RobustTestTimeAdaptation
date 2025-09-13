@@ -51,3 +51,5 @@ TTA3-MI 150 185
 TTA3-CR 160 185
 
 
+both passes are through the same model
+teacher-student model

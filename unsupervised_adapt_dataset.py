@@ -127,7 +127,10 @@ def main():
                "lambda3": args.lambda3,
                "lambda4": args.lambda4,
                "lam_em": args.lam_em,
-               "lam_nuc": args.nuc_lambda
+               "lam_nuc": args.nuc_lambda,
+               "lam_recon": args.lam_recon,
+               "nuc_kernel": args.nuc_kernel,
+               "nuc_top": args.nuc_top
                })
     wandb.finish()
 
