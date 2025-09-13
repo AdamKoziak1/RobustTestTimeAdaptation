@@ -3,10 +3,6 @@
 Batch evaluation of test-time adaptation (TTA) across multiple datasets and
 domains.
 
-This refactored script iterates over:
-    • Datasets   : PACS, VLCS, office-home
-    • Test-domains: 0 and 1  (dataset-specific order)
-
 For every (dataset, test_env) pair it
     1. loads the pre-trained ERM source model (seed 0)
     2. builds a test loader for the held-out domain (clean or attacked)
@@ -26,33 +22,25 @@ python unsupervised_adapt_dataset.py \
 import os
 import time
 import statistics
-
 import torch
 from sklearn.metrics import accuracy_score
-
 from unsupervise_adapt import (
-    get_args,            # argument parser (provides defaults + CLI)
-    adapt_loader,        # builds DataLoader for the held-out domain
-    make_adapt_model     # wraps a base network with the chosen TTA algorithm
+    get_args,
+    adapt_loader,
+    make_adapt_model,
+    log_args
 )
-
 from utils.util import set_random_seed, load_ckpt, img_param_init
 from alg import alg
 import wandb
 
-# -----------------------------------------------------------------------------
 DATASETS     = ["PACS", "VLCS", "office-home"]
 TEST_DOMAINS = [0, 1]
-SEED         = 0                        # single seed – no sweeps
-
-# -----------------------------------------------------------------------------
+SEED         = 0 
 
 def evaluate_domain(args):
-    """Run adaptation + inference on *one* (dataset, test_domain) pair."""
-
     dom_id = args.test_envs[0]
 
-    # ---- 1.  Load pre-trained ERM model (seed 0) ----------------------------
     ckpt_path = os.path.join(
         args.data_file, "train_output",
         args.dataset, f"test_{dom_id}", f"seed_{SEED}", "model.pkl")
@@ -78,14 +66,11 @@ def evaluate_domain(args):
     acc   = 100.0 * accuracy_score(gts, preds)
     return acc
 
-# -----------------------------------------------------------------------------
 
 def main():
-    # Parse CLI with existing helper – gives us a fully-featured `args` object
     args = get_args()
 
-    # We will override dataset-specific fields inside the loops
-    args.seed = SEED                    # fix random seed
+    args.seed = SEED 
     set_random_seed(args.seed)
     
     run_name = f"{args.adapt_alg}_drop{args.svd_drop_k}_{args.steps}steps_lr{args.lr}"
@@ -95,43 +80,23 @@ def main():
     accs = []
     for dataset in DATASETS:
         for dom in TEST_DOMAINS:
-            # ---- update args for current (dataset, domain) ------------------
             args.dataset   = dataset
             args.test_envs = [dom]
-            # refresh derived attributes (domains, num_classes, etc.)
             args = img_param_init(args)
-            # data_dir depends on dataset – rebuild it
             args.data_dir = os.path.join(args.data_file, "datasets", dataset)
 
             acc = evaluate_domain(args)
-
             print(f"{dataset:12s}  dom {dom}: {acc:6.2f}%")
             accs.append(acc)
 
-    # ---- Summary -----------------------------------------------------------
     print("\n==================  Summary  ==================")
     mean = round(statistics.mean(accs), 2)
     dur   = time.time() - start
 
+    log_args(args)
+
     wandb.log({"acc_mean": mean, 
-               "time_taken_s": dur,
-               "steps": args.steps,
-               "lr": args.lr,
-               "adapt_alg": args.adapt_alg,
-               "svd_drop_k": args.svd_drop_k,
-               "svd_feat_mode": args.svd_feat_mode,
-               "svd_feat_k": args.svd_feat_k,
-               "svd_drop_tau": args.svd_drop_tau,
-               "lambda1": args.lambda1,
-               "lambda2": args.lambda2,
-               "lambda3": args.lambda3,
-               "lambda4": args.lambda4,
-               "lam_em": args.lam_em,
-               "lam_nuc": args.nuc_lambda,
-               "lam_recon": args.lam_recon,
-               "nuc_kernel": args.nuc_kernel,
-               "nuc_top": args.nuc_top
-               })
+               "time_taken_s": dur})
     wandb.finish()
 
 

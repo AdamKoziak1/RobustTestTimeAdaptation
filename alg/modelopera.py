@@ -1,11 +1,33 @@
 # coding=utf-8
 import torch
 from network import img_network
-from utils.util import attach_input_standardization
+from typing import Sequence
+import torch, torch.nn as nn
+
+def attach_input_standardization(module: nn.Module,
+                                 mean: Sequence[float],
+                                 std: Sequence[float]) -> nn.Module:
+    """
+    Registers buffers and a forward_pre_hook to apply: (x - mean)/std
+    on the module's first argument. No architecture wrapping, no name changes.
+    """
+    mean_t = torch.tensor(mean).view(1, len(mean), 1, 1)
+    std_t  = torch.tensor(std).view(1, len(std), 1, 1)
+    module.register_buffer("_in_mean", mean_t, persistent=False)
+    module.register_buffer("_in_std", std_t, persistent=False)
+
+    def _pre_norm(mod, inputs):
+        if not inputs:
+            return inputs
+        x, *rest = inputs
+        return ((x - mod._in_mean) / mod._in_std, *rest)
+
+    module.register_forward_pre_hook(_pre_norm, with_kwargs=False)
+    return module
+
 
 def get_fea(args):
     if args.net.startswith('res'):
-        # Optional nuclear-conv instrumentation
         nuc_top = getattr(args, 'nuc_top', 0)                  # 0..4
         nuc_k   = getattr(args, 'nuc_kernel', 3)
         nuc_stem= getattr(args, 'nuc_after_stem', False)

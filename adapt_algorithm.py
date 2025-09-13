@@ -589,7 +589,7 @@ class TTA3(nn.Module):
                  lambda4=1.0, # PL weight
                  lambda_nuc=0.0,  # <— nuclear-norm weight
                  r=4, 
-                 l_adv_iter=1,  cr_type='cosine', cr_start=0, use_mi=False, lam_em=0.0, lam_recon=0.0):
+                 cr_type='cosine', cr_start=0, use_mi=False, lam_em=0.0, lam_recon=0.0):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -600,7 +600,6 @@ class TTA3(nn.Module):
         self.lambda3 = lambda3
         self.lambda4 = lambda4
         self.r = r
-        self.l_adv_iter = l_adv_iter
         self.cr_type = cr_type.lower()
         assert self.cr_type in ['cosine', 'l2']
         # --- Consistency-Reg. start layer ----------------------------------
@@ -668,16 +667,14 @@ class TTA3(nn.Module):
         epsilon = torch.rand(x.shape).sub(0.5).to(x.device)
         epsilon = _normalize(epsilon)
         bound = self.r/255
-        for _ in range(self.l_adv_iter): 
-            epsilon.requires_grad_()
-            pred_hat = model.predict(x + bound * epsilon)
-            logp_hat = F.log_softmax(pred_hat, dim=1)
-            adv_distance = F.kl_div(logp_hat, prob.detach(), reduction='batchmean')
-            adv_distance.backward()
-            
-            epsilon = _normalize(epsilon.grad)
-            #epsilon = F.normalize(epsilon.grad, dim=1)
-            model.zero_grad()
+        epsilon.requires_grad_()
+        pred_hat = model.predict(x + bound * epsilon)
+        logp_hat = F.log_softmax(pred_hat, dim=1)
+        adv_distance = F.kl_div(logp_hat, prob.detach(), reduction='batchmean')
+        adv_distance.backward()
+        epsilon = _normalize(epsilon.grad)
+
+        model.zero_grad()
         r_adv = epsilon * bound 
         pred_hat = model.predict(x + r_adv)
         logp_hat = F.log_softmax(pred_hat, dim=1)
