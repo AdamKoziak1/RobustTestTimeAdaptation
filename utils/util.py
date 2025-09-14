@@ -53,17 +53,7 @@ def train_valid_target_eval_names(args):
 
 
 def alg_loss_dict(args):
-    loss_dict = {'ANDMask': ['total'],
-                 'CORAL': ['class', 'coral', 'total'],
-                 'DANN': ['class', 'dis', 'total'],
-                 'ERM': ['class'],
-                 'Mixup': ['class'],
-                 'MLDG': ['total'],
-                 'MMD': ['class', 'mmd', 'total'],
-                 'GroupDRO': ['group'],
-                 'RSC': ['class'],
-                 'VREx': ['loss', 'nll', 'penalty']
-                 }
+    loss_dict = {'ERM': ['class']}
     return loss_dict[args.algorithm]
 
 

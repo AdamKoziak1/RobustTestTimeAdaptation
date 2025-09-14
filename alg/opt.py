@@ -2,25 +2,15 @@
 import torch
 
 
-def get_params(alg, args, inner=False, alias=True):
+def get_params(alg, args, alias=True):
     if args.schuse:
         if args.schusech == 'cos':
             initlr = args.lr
         else:
             initlr = 1.0
     else:
-        if inner:
-            initlr = args.inner_lr
-        else:
-            initlr = args.lr
-    if inner:
-        params = [
-            {'params': alg[0].parameters(), 'lr': args.lr_decay1 *
-             initlr},
-            {'params': alg[1].parameters(), 'lr': args.lr_decay2 *
-             initlr}
-        ]
-    elif alias:
+        initlr = args.lr
+    if alias:
         params = [
             {'params': alg.featurizer.parameters(), 'lr': args.lr_decay1 * initlr},
             {'params': alg.classifier.parameters(), 'lr': args.lr_decay2 * initlr}
@@ -30,17 +20,11 @@ def get_params(alg, args, inner=False, alias=True):
             {'params': alg[0].parameters(), 'lr': args.lr_decay1 * initlr},
             {'params': alg[1].parameters(), 'lr': args.lr_decay2 * initlr}
         ]
-    if ('DANN' in args.algorithm) or ('CDANN' in args.algorithm):
-        params.append({'params': alg.discriminator.parameters(),
-                       'lr': args.lr_decay2 * initlr})
-    if ('CDANN' in args.algorithm):
-        params.append({'params': alg.class_embeddings.parameters(),
-                       'lr': args.lr_decay2 * initlr})
     return params
 
 
-def get_optimizer(alg, args,inner=False, alias=True):
-    params = get_params(alg, args, inner, alias)
+def get_optimizer(alg, args, alias=True):
+    params = get_params(alg, args, alias)
     if args.opt_type=='SGD':
         optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=True)
     elif args.opt_type=='Adam':

@@ -18,10 +18,6 @@ import wandb
 def get_args_adv():
     parser = argparse.ArgumentParser()
     parser.add_argument('--algorithm', type=str, default="ERM")
-    parser.add_argument('--alpha', type=float,
-                        default=1, help='DANN dis alpha')
-    parser.add_argument('--anneal_iters', type=int,
-                        default=500, help='Penalty anneal iters used in VREx')
     parser.add_argument('--batch_size', type=int,
                         default=32, help='batch_size')
     parser.add_argument('--beta1', type=float, default=0.9,
@@ -38,12 +34,6 @@ def get_args_adv():
                         default=256, help='dis hidden dimension')
     parser.add_argument('--gpu_id', type=str, nargs='?',
                         default='1', help="device id to run")
-    parser.add_argument('--groupdro_eta', type=float,
-                        default=1, help="groupdro eta")
-    parser.add_argument('--inner_lr', type=float,
-                        default=1e-2, help="learning rate used in MLDG")
-    parser.add_argument('--lam', type=float,
-                        default=1, help="tradeoff hyperparameter used in VREx")
     parser.add_argument('--lr', type=float, default=5e-5, help="learning rate")
     parser.add_argument('--lr_decay', type=float, default=0.75, help='for sgd')
     parser.add_argument('--lr_decay1', type=float,
@@ -54,21 +44,11 @@ def get_args_adv():
                         default=0.0003, help='for optimizer')
     parser.add_argument('--max_epoch', type=int,
                         default=50, help="max iterations")
-    parser.add_argument('--mixupalpha', type=float,
-                        default=0.2, help='mixup hyper-param')
-    parser.add_argument('--mldg_beta', type=float,
-                        default=1, help="mldg hyper-param")
-    parser.add_argument('--mmd_gamma', type=float,
-                        default=1, help='MMD, CORAL hyper-param')
     parser.add_argument('--momentum', type=float,
                         default=0.9, help='for optimizer')
     parser.add_argument('--net', type=str, default='resnet18',
                         help="featurizer: vgg16, resnet50, resnet101,DTNBase,ViT-B16/32,ViT-L16/32,ViT-H14")
     parser.add_argument('--N_WORKERS', type=int, default=4)
-    parser.add_argument('--rsc_f_drop_factor', type=float,
-                        default=1/3, help='rsc hyper-param')
-    parser.add_argument('--rsc_b_drop_factor', type=float,
-                        default=1/3, help='rsc hyper-param')
     parser.add_argument('--save_model_every_checkpoint', action='store_true')
     parser.add_argument('--schuse', action='store_true')
     parser.add_argument('--schusech', type=str, default='cos')
@@ -77,7 +57,6 @@ def get_args_adv():
                         help="the style to split the train and eval datasets")
     parser.add_argument('--task', type=str, default="img_dg",
                         choices=["img_dg"], help='now only support image tasks')
-    parser.add_argument('--tau', type=float, default=1, help="andmask tau")
     parser.add_argument('--test_envs', type=int, nargs='+',
                         default=[0], help='target domains')
     parser.add_argument('--opt_type',type=str,default='Adam')  #if want to use Adam, please set Adam
