@@ -1,10 +1,9 @@
-import numpy as np
 from copy import deepcopy
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import wandb
+from torchvision.models.feature_extraction import create_feature_extractor
 
 
 @torch.jit.script
@@ -556,38 +555,14 @@ def _normalize(d, norm=2):
     d /= torch.norm(d_reshaped, norm, dim=1, keepdim=True) + 1e-8
     return d
 
-import wandb
-
-from torchvision.models.feature_extraction import create_feature_extractor
 
 class TTA3(nn.Module):
-    """
-    Test-Time Adaptation against Adversarial Attacks (TTA3).
-
-    This method adapts a pretrained model on adversarially perturbed test data by
-    minimizing a composite loss that includes:
-        - Mutual Information Maximization Loss (L_MI)
-        - Flatness Regularization Loss (L_Flat) [placeholder]
-        - Adversarial (Instance-level Flatness) Loss (L_Adv)
-        - Consistency Regularization Loss (L_CR)
-    
-    Args:
-        model (nn.Module): The pretrained model. It must implement a `predict()` method.
-        optimizer (torch.optim.Optimizer): Optimizer to update the model parameters.
-        steps (int): Number of adaptation steps per forward pass.
-        episodic (bool): If True, reset the model to its original state before each batch.
-        lam_flat (float): Weight for the flatness loss.
-        lam_adv (float): Weight for the adversarial loss.
-        lam_cr (float): Weight for the consistency regularization loss.
-        r (float): Maximum perturbation norm (e.g. 8/255 for ℓ∞ attacks).
-        eta (float): Step size for adversarial perturbation update.
-    """
     def __init__(self, model, optimizer, steps=1, episodic=False, 
-                 lam_flat=1.0, # flatness weight
-                 lam_adv=1.0, # adversarial VAT weight
-                 lam_cr=1.0, # consistency weight
-                 lam_pl=1.0, # PL weight
-                 lambda_nuc=0.0,  # <— nuclear-norm weight
+                 lam_flat=1.0, 
+                 lam_adv=1.0, 
+                 lam_cr=1.0, 
+                 lam_pl=1.0, 
+                 lambda_nuc=0.0, 
                  r=4, 
                  cr_type='cosine', cr_start=0, use_mi=False, lam_em=0.0, lam_recon=0.0):
         super().__init__()
@@ -602,7 +577,6 @@ class TTA3(nn.Module):
         self.r = r
         self.cr_type = cr_type.lower()
         assert self.cr_type in ['cosine', 'l2']
-        # --- Consistency-Reg. start layer ----------------------------------
         assert 0 <= cr_start <= 3, \
             f"cr_start ∈ {{0,1,2,3}}, got {cr_start}"
         self.cr_start = cr_start
@@ -614,13 +588,14 @@ class TTA3(nn.Module):
         self.lam_recon = float(lam_recon)
 
         # Save initial states for episodic adaptation
-        self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
+        if self.episodic:
+            self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
 
         return_nodes = {
-            'layer1': 'feat1',   # after first residual stage
+            'layer1': 'feat1',
             'layer2': 'feat2',
             'layer3': 'feat3',
-            'layer4': 'feat4',   # penultimate conv feature
+            'layer4': 'feat4',
         }
         self.feat_extractor = create_feature_extractor(self.model.featurizer, return_nodes)
 
@@ -639,7 +614,6 @@ class TTA3(nn.Module):
             outputs = self.forward_and_adapt(x, self.model, self.optimizer)
         return outputs
 
-    # --- Mutual Information Maximization Loss (L_MI) ---
     def mi_loss(self, logits, prob):
         # Compute the average entropy over the batch.
         ent = softmax_entropy(logits).mean()
@@ -717,47 +691,39 @@ class TTA3(nn.Module):
         py,y_prime = torch.max(scores,1)
         mask = py > self.beta
         return  F.cross_entropy(logits[mask],y_prime[mask])
+    
+    def nuclear_losses(self, model, logits):
+        if self.lambda_nuc > 0.0 and hasattr(model.featurizer, "pop_nuc_penalty"):
+            return model.featurizer.pop_nuc_penalty()
+        return torch.tensor(0.0, device=logits.device), torch.tensor(0.0, device=logits.device)
+
 
     def forward_and_adapt(self, x, model, optimizer):
-        # Forward pass to get logits and probabilities
         logits = model.predict(x)
         prob = F.softmax(logits, dim=1)
 
-        # --- Mutual Information Maximization Loss (L_MI) ---
-        if self.use_mi:
-            base_loss = self.mi_loss(logits, prob)
-        else:
-            base_loss = softmax_entropy(logits).mean()
-
-        # --- Flatness Regularization Loss (L_Flat) ---
+        L_Base = self.mi_loss(logits, prob) if self.use_mi else softmax_entropy(logits).mean()
         L_Flat = self.flat_loss(x, model, logits)
-
-        # --- Adversarial (Instance-level Flatness) Loss (L_Adv) ---
         L_Adv = self.adv_loss(x, model, prob)
-
-        # --- Consistency Regularization Loss (L_CR) ---
         L_CR = self.cr_loss(x, prob)
-
-        # --- Psuedolabel Loss ---
         L_PL = self.pl_loss(logits)
+        L_NUC, L_RECON = self.nuclear_losses(model, logits)
 
-        L_NUC = torch.tensor(0.0, device=logits.device)
-        L_RECON = torch.tensor(0.0, device=logits.device)
-        if self.lambda_nuc > 0.0 and hasattr(model.featurizer, "pop_nuc_penalty"):
-            L_NUC, L_RECON = model.featurizer.pop_nuc_penalty()
-
-        # --- Overall Loss ---
-        loss = (self.lam_em * base_loss) + (self.lam_flat * L_Flat) + (self.lam_adv * L_Adv) + (self.lam_cr * L_CR) + (self.lam_pl * L_PL) + (self.lambda_nuc * L_NUC)  + (self.lam_recon * L_RECON)
+        loss = (self.lam_em * L_Base) \
+                + (self.lam_flat * L_Flat) \
+                + (self.lam_adv * L_Adv) \
+                + (self.lam_cr * L_CR) \
+                + (self.lam_pl * L_PL) \
+                + (self.lambda_nuc * L_NUC)  \
+                + (self.lam_recon * L_RECON)
         wandb.log({"Loss": loss.item(),
-                   "base_loss": base_loss.item(),
+                   "L_Base": L_Base.item(),
                    "L_Flat": L_Flat.item(),
                    "L_Adv": L_Adv.item(),
                    "L_CR": L_CR.item(),
                    "L_PL": L_PL.item(),
                    "L_NUC": L_NUC.item(),
                    "L_RECON": L_RECON.item()})
-        #print(f"base_loss: {round(base_loss.item(), 4)} | L_Flat: {round(L_Flat, 4)} | L_Adv: {round(L_Adv, 4)} | L_CR: {round(L_CR, 4)} ")
-        #print(L_NUC)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
