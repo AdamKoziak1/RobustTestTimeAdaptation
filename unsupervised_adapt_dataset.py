@@ -78,12 +78,11 @@ def main():
 
     print("\n==================  Summary  ==================")
     mean = round(statistics.mean(accs), 2)
+    acc_std  = round(statistics.stdev(accs), 2)
     dur   = time.time() - start
 
-    log_args(args)
+    log_args(args, mean, acc_std, dur)
 
-    wandb.log({"acc_mean": mean, 
-               "time_taken_s": dur})
     wandb.finish()
 
 

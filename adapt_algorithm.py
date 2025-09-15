@@ -558,13 +558,9 @@ def _normalize(d, norm=2):
 
 class TTA3(nn.Module):
     def __init__(self, model, optimizer, steps=1, episodic=False, 
-                 lam_flat=1.0, 
-                 lam_adv=1.0, 
-                 lam_cr=1.0, 
-                 lam_pl=1.0, 
-                 lambda_nuc=0.0, 
-                 r=4, 
-                 cr_type='cosine', cr_start=0, use_mi=False, lam_em=0.0, lam_recon=0.0):
+                 lam_flat=1.0, lam_adv=1.0, lam_cr=1.0, lam_pl=1.0, lambda_nuc=0.0, r=4, 
+                 cr_type='cosine', cr_start=0, use_mi=False, lam_em=0.0, lam_recon=0.0, 
+                 lam_reg=1.0, reg_type='l2logits', ema=0.999, x_lr=1.0/255.0, x_steps=1):
         super().__init__()
         self.model = model
         self.optimizer = optimizer
@@ -598,6 +594,21 @@ class TTA3(nn.Module):
             'layer4': 'feat4',
         }
         self.feat_extractor = create_feature_extractor(self.model.featurizer, return_nodes)
+        
+        self.lam_reg=lam_reg
+        self.reg_type=reg_type
+        self.ema=ema
+        self.x_lr=x_lr
+        self.x_steps=x_steps
+
+        self.teacher = deepcopy(self.model).eval()
+        self.teacher.requires_grad_(False)
+        for m in self.teacher.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.track_running_stats = False
+                m.running_mean = None
+                m.running_var  = None
+        assert reg_type in ('l2logits', 'klprob')
 
     def reset(self):
         if self.model_state is None or self.optimizer_state is None:
@@ -609,7 +620,6 @@ class TTA3(nn.Module):
         if self.episodic:
             self.reset()
 
-        # Perform N_I adaptation steps on the input batch
         for _ in range(self.steps):
             outputs = self.forward_and_adapt(x, self.model, self.optimizer)
         return outputs
@@ -697,25 +707,62 @@ class TTA3(nn.Module):
             return model.featurizer.pop_nuc_penalty()
         return torch.tensor(0.0, device=logits.device), torch.tensor(0.0, device=logits.device)
 
-
+    @torch.no_grad()
+    def _ema_update_teacher(self):
+        s_params, _ = collect_params(self.model)
+        t_params, _ = collect_params(self.teacher)
+        for p_t, p_s in zip(t_params, s_params):
+            p_t.data.mul_(self.ema).add_(p_s.data, alpha=(1.0 - self.ema))
+    
+    def _reg_loss(self, logits_s: torch.Tensor, logits_t: torch.Tensor) -> torch.Tensor:
+        if self.reg_type == 'l2logits':
+            return torch.mean((logits_s - logits_t.detach())**2)
+        else:
+            # KL(student || teacher) over softmax
+            logp_s = F.log_softmax(logits_s, dim=1)
+            p_t    = F.softmax(logits_t.detach(), dim=1)
+            return F.kl_div(logp_s, p_t, reduction='batchmean')
+        
     def forward_and_adapt(self, x, model, optimizer):
-        logits = model.predict(x)
-        prob = F.softmax(logits, dim=1)
+        # 1) Teacher-guided input refinement: x -> x_tilde
+        x_tilde = x.detach()
+        for _ in range(self.x_steps):
+            x_tilde.requires_grad_(True)
+            logits_t = self.teacher.predict(x_tilde)
+            probs_t  = F.softmax(logits_t, dim=1)
 
-        L_Base = self.mi_loss(logits, prob) if self.use_mi else softmax_entropy(logits).mean()
-        L_Flat = self.flat_loss(x, model, logits)
-        L_Adv = self.adv_loss(x, model, prob)
-        L_CR = self.cr_loss(x, prob)
-        L_PL = self.pl_loss(logits)
-        L_NUC, L_RECON = self.nuclear_losses(model, logits)
+            L_t = self.mi_loss(logits_t, probs_t) if self.use_mi else softmax_entropy(logits_t).mean()
+            (g_x,)   = torch.autograd.grad(L_t, x_tilde, only_inputs=True)
+            with torch.no_grad():
+                x_tilde = (x_tilde - self.x_lr * g_x).clamp(0.0, 1.0).detach()
 
-        loss = (self.lam_em * L_Base) \
+
+
+        # 2) Student update on refined input
+        logits_s = self.model.predict(x_tilde)
+        probs_s  = F.softmax(logits_s, dim=1)
+
+        L_Base = self.mi_loss(logits_s, probs_s) if self.use_mi else softmax_entropy(logits_s).mean()
+        L_Flat = self.flat_loss(x, model, logits_s)
+        L_Adv = self.adv_loss(x, model, probs_s)
+        L_CR = self.cr_loss(x, probs_s)
+        L_PL = self.pl_loss(logits_s)
+        L_NUC, L_RECON = self.nuclear_losses(model, logits_s)
+
+        # Teacher consistency regularization
+        with torch.no_grad():
+            logits_t_bar = self.teacher.predict(x_tilde)
+        L_Reg  = self._reg_loss(logits_s, logits_t_bar) 
+
+
+        loss =    (self.lam_em * L_Base) \
                 + (self.lam_flat * L_Flat) \
                 + (self.lam_adv * L_Adv) \
                 + (self.lam_cr * L_CR) \
                 + (self.lam_pl * L_PL) \
                 + (self.lambda_nuc * L_NUC)  \
-                + (self.lam_recon * L_RECON)
+                + (self.lam_recon * L_RECON) \
+                + (self.lam_reg * L_Reg)
         wandb.log({"Loss": loss.item(),
                    "L_Base": L_Base.item(),
                    "L_Flat": L_Flat.item(),
@@ -723,9 +770,13 @@ class TTA3(nn.Module):
                    "L_CR": L_CR.item(),
                    "L_PL": L_PL.item(),
                    "L_NUC": L_NUC.item(),
-                   "L_RECON": L_RECON.item()})
+                   "L_RECON": L_RECON.item(),
+                   "L_Reg": L_Reg.item()})
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        return logits
+        # 3) EMA update of teacher (BN affine only)
+        with torch.no_grad():
+            self._ema_update_teacher()
+        return logits_s

@@ -65,7 +65,7 @@ def get_args():
     parser.add_argument("--d_margin",type=float,default=0.05,help="epsilon in Eqn. (5) for filtering redundant samples",)
     # TTA3
     parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
-    parser.add_argument('--lam_em', type=float, default=0.0, help='weight on entropy minimization')
+    parser.add_argument('--lam_em', type=float, default=1.0, help='weight on entropy minimization')
     parser.add_argument("--lam_flat", type=float, default=0.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lam_adv", type=float, default=0.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lam_cr", type=float, default=0.0, help="Coefficient for Consistency Regularization Loss")
@@ -94,6 +94,12 @@ def get_args():
     parser.add_argument('--nuc_lambda', type=float, default=0.0, help='weight on nuclear-norm penalty')
     parser.add_argument('--lam_recon', type=float, default=0.0, help='weight on feature reconstruction penalty')
 
+    parser.add_argument('--lam_reg', type=float, default=1.0, help='weight on student-teacher regularization')
+    parser.add_argument("--reg_type", choices=["l2logits","klprob"], default="l2logits")
+    parser.add_argument('--ema', type=float, default=0.999, help='EMA coefficient for student-teacher distillation')
+    parser.add_argument('--x_lr', type=float, default=2.0/255.0, help='learning rate for x_tilde update')
+    parser.add_argument('--x_steps', type=int, default=1, help='number of steps for x_tilde update')
+
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
@@ -107,7 +113,7 @@ def get_args():
     return args
 
 
-def log_args(args):
+def log_args(args, acc_mean, acc_std, time_taken_s):
     wandb.log({
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
@@ -127,7 +133,15 @@ def log_args(args):
         "lam_nuc": args.nuc_lambda,
         "lam_recon": args.lam_recon,
         "nuc_kernel": args.nuc_kernel,
-        "nuc_top": args.nuc_top
+        "nuc_top": args.nuc_top,
+        "acc_mean": acc_mean,
+        "acc_std": acc_std,
+        "time_taken_s": time_taken_s,
+        "lam_reg": args.lam_reg,
+        "reg_type": args.reg_type,
+        "ema": args.ema,
+        "x_lr": args.x_lr,
+        "x_steps": args.x_steps
     })
 
 def adapt_loader(args):
@@ -313,7 +327,12 @@ def make_adapt_model(args, algorithm):
             use_mi=args.use_mi,
             lambda_nuc=args.nuc_lambda,
             lam_em=args.lam_em,
-            lam_recon=args.lam_recon
+            lam_recon=args.lam_recon,
+            lam_reg=args.lam_reg,
+            reg_type=args.reg_type,
+            ema=args.ema,
+            x_lr=args.x_lr,
+            x_steps=args.x_steps
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
@@ -398,12 +417,7 @@ if __name__ == "__main__":
     print("\t Accuracy std: %f" % float(acc_std))
     print("\t Cost time: %f s" % (time2 - time1))
 
-    log_args(args)
+    log_args(args, acc_mean, acc_std, time2 - time1)
 
-    wandb.log({
-        "acc_mean": acc_mean,
-        "acc_std": acc_std,
-        "time_taken_s": time2 - time1
-    })
 
     wandb.finish()
