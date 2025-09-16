@@ -97,7 +97,7 @@ def get_args():
     parser.add_argument('--lam_reg', type=float, default=1.0, help='weight on student-teacher regularization')
     parser.add_argument("--reg_type", choices=["l2logits","klprob"], default="l2logits")
     parser.add_argument('--ema', type=float, default=0.999, help='EMA coefficient for student-teacher distillation')
-    parser.add_argument('--x_lr', type=float, default=2.0/255.0, help='learning rate for x_tilde update')
+    parser.add_argument('--x_lr', type=float, default=10.0/255.0, help='learning rate for x_tilde update')
     parser.add_argument('--x_steps', type=int, default=1, help='number of steps for x_tilde update')
 
 
@@ -388,7 +388,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lam_flat}-{args.lam_adv}-{args.lam_cr}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt",
+        project="tta3_adapt_test",
         name=run_name,
         config=vars(args),
     )

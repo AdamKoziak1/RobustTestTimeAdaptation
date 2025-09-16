@@ -715,12 +715,13 @@ class TTA3(nn.Module):
             p_t.data.mul_(self.ema).add_(p_s.data, alpha=(1.0 - self.ema))
     
     def _reg_loss(self, logits_s: torch.Tensor, logits_t: torch.Tensor) -> torch.Tensor:
+        p_t = F.softmax(logits_t.detach(), dim=1)
         if self.reg_type == 'l2logits':
-            return torch.mean((logits_s - logits_t.detach())**2)
+            p_s = F.softmax(logits_s, dim=1)
+            return torch.mean((p_s - p_t)**2)
         else:
             # KL(student || teacher) over softmax
             logp_s = F.log_softmax(logits_s, dim=1)
-            p_t    = F.softmax(logits_t.detach(), dim=1)
             return F.kl_div(logp_s, p_t, reduction='batchmean')
         
     def forward_and_adapt(self, x, model, optimizer):
@@ -735,8 +736,6 @@ class TTA3(nn.Module):
             (g_x,)   = torch.autograd.grad(L_t, x_tilde, only_inputs=True)
             with torch.no_grad():
                 x_tilde = (x_tilde - self.x_lr * g_x).clamp(0.0, 1.0).detach()
-
-
 
         # 2) Student update on refined input
         logits_s = self.model.predict(x_tilde)

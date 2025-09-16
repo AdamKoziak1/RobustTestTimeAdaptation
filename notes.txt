@@ -53,3 +53,33 @@ TTA3-CR 160 185
 
 both passes are through the same model
 teacher-student model
+
+
+
+
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/art_painting/ -type f | wc -l
+2048
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/cartoon/ -type f | wc -l
+2344
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/photo/ -type f | wc -l
+1670
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/sketch/ -type f | wc -l
+3929
+
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/Caltech101/ -type f | wc -l
+1415
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/LabelMe/ -type f | wc -l
+2656
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/SUN09/ -type f | wc -l
+3282
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/VOC2007/ -type f | wc -l
+3376
+
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/Art/ -type f | wc -l
+2427
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/Clipart/ -type f | wc -l
+4365
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/Product/ -type f | wc -l
+4439
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/RealWorld/ -type f | wc -l
+4357

@@ -13,7 +13,7 @@ parameters:
     #values: [0.1, 0.5, 0.9, 1.0]
 
   svd_feat_max_layer:
-    values: [1,2,3]
+    values: [1,2]
     #values: [0,1,2]
 
   svd_feat_mode:
