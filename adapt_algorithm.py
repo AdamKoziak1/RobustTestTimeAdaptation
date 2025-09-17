@@ -697,6 +697,8 @@ class TTA3(nn.Module):
         return l_cr
     
     def pl_loss(self, logits):   
+        if self.lam_pl <= 1e-8:
+            return torch.tensor(0.0, device=logits.device)
         scores = F.softmax(logits,1)
         py,y_prime = torch.max(scores,1)
         mask = py > self.beta
@@ -715,6 +717,8 @@ class TTA3(nn.Module):
             p_t.data.mul_(self.ema).add_(p_s.data, alpha=(1.0 - self.ema))
     
     def _reg_loss(self, logits_s: torch.Tensor, logits_t: torch.Tensor) -> torch.Tensor:
+        if self.lam_reg <= 1e-8:
+            return torch.tensor(0.0, device=logits_s.device)
         p_t = F.softmax(logits_t.detach(), dim=1)
         if self.reg_type == 'l2logits':
             p_s = F.softmax(logits_s, dim=1)
@@ -723,7 +727,10 @@ class TTA3(nn.Module):
             # KL(student || teacher) over softmax
             logp_s = F.log_softmax(logits_s, dim=1)
             return F.kl_div(logp_s, p_t, reduction='batchmean')
-        
+    
+    def base_loss(self, logits_t, probs_t):
+        return self.mi_loss(logits_t, probs_t) if self.use_mi else softmax_entropy(logits_t).mean()
+    
     def forward_and_adapt(self, x, model, optimizer):
         # 1) Teacher-guided input refinement: x -> x_tilde
         x_tilde = x.detach()
@@ -732,7 +739,7 @@ class TTA3(nn.Module):
             logits_t = self.teacher.predict(x_tilde)
             probs_t  = F.softmax(logits_t, dim=1)
 
-            L_t = self.mi_loss(logits_t, probs_t) if self.use_mi else softmax_entropy(logits_t).mean()
+            L_t = self.base_loss(logits_t, probs_t) 
             (g_x,)   = torch.autograd.grad(L_t, x_tilde, only_inputs=True)
             with torch.no_grad():
                 x_tilde = (x_tilde - self.x_lr * g_x).clamp(0.0, 1.0).detach()
@@ -741,7 +748,7 @@ class TTA3(nn.Module):
         logits_s = self.model.predict(x_tilde)
         probs_s  = F.softmax(logits_s, dim=1)
 
-        L_Base = self.mi_loss(logits_s, probs_s) if self.use_mi else softmax_entropy(logits_s).mean()
+        L_Base = self.base_loss(logits_s, probs_s)
         L_Flat = self.flat_loss(x, model, logits_s)
         L_Adv = self.adv_loss(x, model, probs_s)
         L_CR = self.cr_loss(x, probs_s)

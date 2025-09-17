@@ -56,7 +56,7 @@ def get_args():
     parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3]",)
     parser.add_argument("--beta", type=float, default=0.9, help="threshold for pseudo label(PL)")
     parser.add_argument("--episodic", action="store_true", help="is episodic or not,default:False")
-    parser.add_argument("--steps", type=int, default=10, help="steps of test time, default:1")
+    parser.add_argument("--steps", type=int, default=1, help="steps of test time, default:1")
     parser.add_argument("--filter_K",type=int,default=100,help="M in T3A/TSD, in [1,5,20,50,100,-1],-1 denotes no selection",)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--update_param", type=str, default="all", help="all / affine / body / head / lora / tent")
@@ -96,9 +96,9 @@ def get_args():
 
     parser.add_argument('--lam_reg', type=float, default=1.0, help='weight on student-teacher regularization')
     parser.add_argument("--reg_type", choices=["l2logits","klprob"], default="l2logits")
-    parser.add_argument('--ema', type=float, default=0.999, help='EMA coefficient for student-teacher distillation')
-    parser.add_argument('--x_lr', type=float, default=10.0/255.0, help='learning rate for x_tilde update')
-    parser.add_argument('--x_steps', type=int, default=1, help='number of steps for x_tilde update')
+    parser.add_argument('--ema', type=float, default=0.99, help='EMA coefficient for student-teacher distillation')
+    parser.add_argument('--x_lr', type=float, default=0.1, help='learning rate for x_tilde update')
+    parser.add_argument('--x_steps', type=int, default=3, help='number of steps for x_tilde update')
 
 
     args = parser.parse_args()
@@ -113,7 +113,7 @@ def get_args():
     return args
 
 
-def log_args(args, acc_mean, acc_std, time_taken_s):
+def log_args(args, time_taken_s):
     wandb.log({
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
@@ -134,8 +134,6 @@ def log_args(args, acc_mean, acc_std, time_taken_s):
         "lam_recon": args.lam_recon,
         "nuc_kernel": args.nuc_kernel,
         "nuc_top": args.nuc_top,
-        "acc_mean": acc_mean,
-        "acc_std": acc_std,
         "time_taken_s": time_taken_s,
         "lam_reg": args.lam_reg,
         "reg_type": args.reg_type,
@@ -417,7 +415,8 @@ if __name__ == "__main__":
     print("\t Accuracy std: %f" % float(acc_std))
     print("\t Cost time: %f s" % (time2 - time1))
 
-    log_args(args, acc_mean, acc_std, time2 - time1)
-
+    wandb.log({f"acc_mean": acc_mean, f"acc_std": acc_std}, commit=False)
+    log_args(args, time2 - time1)
+    
 
     wandb.finish()
