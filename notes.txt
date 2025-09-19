@@ -1,13 +1,28 @@
 TODO:
-  resnet18 first, then resnet50
-    models other than resnet18 will need change in layer selection for cr_loss
+
+ablate ema params (set to 0 to disable)
+  RUNNING
+
+implement skip connection 
+  -ablate weight
+  -try fixed or learnable
+  -general module for different types of denoising?
+  -add unified block for model input instead of dataloader svd stuff?
+try fft
+    *check if fft is differentiable 
+try DCT
+    * ^^same
 
 
+
+
+
+
+  look into lowrank methods. what is novel
 
 
   introduce learnable parameter over the local smoothing/"message passing"
   regularize on global frequency
-    *check if fft is differentiable 
 
   minimize nuclear norm
     -use closed form solution
@@ -19,14 +34,13 @@ TODO:
   ablation on each param (use best combination and vary only the one of interest)
     -rerun this
 
-  separate over datasets
-
-  look into lowrank methods. what is novel
 
   maybe ensemble as backup
 
   profile runtime more precisely
 
+  resnet18 first, then resnet50
+    models other than resnet18 will need change in layer selection for cr_loss and stuff
 
 ideas:
 lp-bounded attacks could operate in low singular value space
@@ -35,21 +49,36 @@ lp-bounded attacks could operate in low singular value space
       (AutoAttack‑TTA and DIA; RTTDP, integrate ImageNet‑C subset)
 
 
-  EMV update
 
   class prototypes
     cosine similarity to classify each feature based on mean features 
 
-svd variations:
-/erm     185
-/tent    160 185
-/PL      130 185
-/SHOT-IM 145 185
-/T3A     150 185
-/TSD     125 190
-TTA3-MI 150 185
-TTA3-CR 160 185
 
 
-both passes are through the same model
-teacher-student model
+
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/art_painting/ -type f | wc -l
+2048
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/cartoon/ -type f | wc -l
+2344
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/photo/ -type f | wc -l
+1670
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/sketch/ -type f | wc -l
+3929
+
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/Caltech101/ -type f | wc -l
+1415
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/LabelMe/ -type f | wc -l
+2656
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/SUN09/ -type f | wc -l
+3282
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find VLCS/VOC2007/ -type f | wc -l
+3376
+
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/Art/ -type f | wc -l
+2427
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/Clipart/ -type f | wc -l
+4365
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/Product/ -type f | wc -l
+4439
+(base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/RealWorld/ -type f | wc -l
+4357

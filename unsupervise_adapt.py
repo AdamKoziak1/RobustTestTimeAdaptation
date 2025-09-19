@@ -13,11 +13,10 @@ from sklearn.metrics import accuracy_score
 from alg.opt import *
 from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
-from network.img_network import SVDDrop2D
+from utils.svd import SVDDrop2D, SVDLoader
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
 from datautil.attacked_imagefolder import AttackedImageFolder
-from datautil.getdataloader import SVDLoader
 import statistics
 from peft import LoraConfig, get_peft_model
 import wandb
@@ -56,7 +55,7 @@ def get_args():
     parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3]",)
     parser.add_argument("--beta", type=float, default=0.9, help="threshold for pseudo label(PL)")
     parser.add_argument("--episodic", action="store_true", help="is episodic or not,default:False")
-    parser.add_argument("--steps", type=int, default=10, help="steps of test time, default:1")
+    parser.add_argument("--steps", type=int, default=1, help="steps of test time, default:1")
     parser.add_argument("--filter_K",type=int,default=100,help="M in T3A/TSD, in [1,5,20,50,100,-1],-1 denotes no selection",)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--update_param", type=str, default="all", help="all / affine / body / head / lora / tent")
@@ -65,7 +64,7 @@ def get_args():
     parser.add_argument("--d_margin",type=float,default=0.05,help="epsilon in Eqn. (5) for filtering redundant samples",)
     # TTA3
     parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
-    parser.add_argument('--lam_em', type=float, default=0.0, help='weight on entropy minimization')
+    parser.add_argument('--lam_em', type=float, default=1.0, help='weight on entropy minimization')
     parser.add_argument("--lam_flat", type=float, default=0.0, help="Coefficient for Flatness Loss")
     parser.add_argument("--lam_adv", type=float, default=0.0, help="Coefficient for Adversarial Loss")
     parser.add_argument("--lam_cr", type=float, default=0.0, help="Coefficient for Consistency Regularization Loss")
@@ -80,19 +79,23 @@ def get_args():
     parser.add_argument("--lora_alpha", type=int, default=8)  
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
 
-    parser.add_argument("--svd_drop_k", type=int, default=0, help="Drop the k smallest singular values per channel (0 = disable).")
-    parser.add_argument("--svd_drop_tau", type=float, default=0.0,help="Value threshold τ: zero σ < τ (overrides svd_drop_k if >0).")
-    parser.add_argument("--svd_thresh_mode", choices=["abs","rel"], default="abs",help="Interpretation of τ: 'abs' uses σ>=τ, 'rel' uses σ>=τ*σ_max.")
-
+    parser.add_argument("--svd_input_rank_ratio", type=float, default=1.0, help="Rank ratio for input SVD projection (1.0 disables it).")
+    parser.add_argument("--svd_input_mode", choices=["spatial","channel"], default="spatial")
     parser.add_argument("--svd_feat_rank_ratio", type=float, default=1.0, help="proportional rank threshold for feature-map SVD.")
     parser.add_argument('--svd_feat_max_layer', type=int, default=0, choices=[0,1,2,3,4], help="ResNet block at which to end lowrank (0=off)")
-    parser.add_argument("--svd_feat_mode", choices=["spatial","channel"], default="channel")
+    parser.add_argument("--svd_feat_mode", choices=["spatial","channel"], default="spatial")
 
     parser.add_argument('--nuc_top', type=int, default=0, help='0..4 stages instrumented (bottom-up)')
     parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
     parser.add_argument('--nuc_kernel', type=int, default=3, help='odd kernel size for NuclearConv2d')
     parser.add_argument('--nuc_lambda', type=float, default=0.0, help='weight on nuclear-norm penalty')
     parser.add_argument('--lam_recon', type=float, default=0.0, help='weight on feature reconstruction penalty')
+
+    parser.add_argument('--lam_reg', type=float, default=1.0, help='weight on student-teacher regularization')
+    parser.add_argument("--reg_type", choices=["l2logits","klprob"], default="l2logits")
+    parser.add_argument('--ema', type=float, default=0.99, help='EMA coefficient for student-teacher distillation')
+    parser.add_argument('--x_lr', type=float, default=0.1, help='learning rate for x_tilde update')
+    parser.add_argument('--x_steps', type=int, default=3, help='number of steps for x_tilde update')
 
 
     args = parser.parse_args()
@@ -103,22 +106,22 @@ def get_args():
     args = img_param_init(args)
 
     assert args.filter_K in [1,5,20,50,100,-1], "filter_K must be in [1,5,20,50,100,-1]"
+    assert 0.0 <= args.svd_input_rank_ratio <= 1.0, "svd_input_rank_ratio must be in [0,1]"
     print_environ()
     return args
 
 
-def log_args(args):
+def log_args(args, time_taken_s):
     wandb.log({
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
-        "svd_drop_k": args.svd_drop_k,
         "svd_feat_rank_ratio": args.svd_feat_rank_ratio,
         "svd_feat_max_layer": args.svd_feat_max_layer,
         "svd_feat_mode": args.svd_feat_mode,
+        "svd_input_rank_ratio": args.svd_input_rank_ratio,
+        "svd_input_mode": args.svd_input_mode,
         "steps": args.steps,
         "lr": args.lr,
-        "svd_feat_mode": args.svd_feat_mode,
-        "svd_drop_tau": args.svd_drop_tau,
         "lam_flat": args.lam_flat,
         "lam_adv": args.lam_adv,
         "lam_cr": args.lam_cr,
@@ -127,7 +130,13 @@ def log_args(args):
         "lam_nuc": args.nuc_lambda,
         "lam_recon": args.lam_recon,
         "nuc_kernel": args.nuc_kernel,
-        "nuc_top": args.nuc_top
+        "nuc_top": args.nuc_top,
+        "time_taken_s": time_taken_s,
+        "lam_reg": args.lam_reg,
+        "reg_type": args.reg_type,
+        "ema": args.ema,
+        "x_lr": args.x_lr,
+        "x_steps": args.x_steps
     })
 
 def adapt_loader(args):
@@ -160,26 +169,27 @@ def adapt_loader(args):
         num_workers=args.N_WORKERS,
         pin_memory=True,
     )
-    return SVDLoader(
-        testloader,
-        k=args.svd_drop_k,
-        device="cuda",
-        tau=args.svd_drop_tau,
-        thresh_mode=args.svd_thresh_mode
-    )
+
+    if args.svd_input_rank_ratio < 1.0:
+        return SVDLoader(
+            testloader,
+            rank_ratio=args.svd_input_rank_ratio,
+            device="cuda",
+            mode=args.svd_input_mode,
+            use_ste=False,
+        )
+    return testloader
 
 
 def make_adapt_model(args, algorithm):
     if args.svd_feat_max_layer > 0 and args.svd_feat_rank_ratio < 1.0: 
         rank_ratio = args.svd_feat_rank_ratio
         mode = args.svd_feat_mode
-        full = False #TODO test? maybe just check if differentiable
         feat = algorithm.featurizer 
-        feat.layer1 = nn.Sequential(feat.layer1, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 1 else feat.layer1
-        feat.layer2 = nn.Sequential(feat.layer2, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 2 else feat.layer2
-        feat.layer3 = nn.Sequential(feat.layer3, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 3 else feat.layer3
-        feat.layer4 = nn.Sequential(feat.layer4, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 4 else feat.layer4
-
+        feat.layer1 = nn.Sequential(feat.layer1, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 1 else feat.layer1
+        feat.layer2 = nn.Sequential(feat.layer2, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 2 else feat.layer2
+        feat.layer3 = nn.Sequential(feat.layer3, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 3 else feat.layer3
+        feat.layer4 = nn.Sequential(feat.layer4, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 4 else feat.layer4
 
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":
@@ -313,7 +323,12 @@ def make_adapt_model(args, algorithm):
             use_mi=args.use_mi,
             lambda_nuc=args.nuc_lambda,
             lam_em=args.lam_em,
-            lam_recon=args.lam_recon
+            lam_recon=args.lam_recon,
+            lam_reg=args.lam_reg,
+            reg_type=args.reg_type,
+            ema=args.ema,
+            x_lr=args.x_lr,
+            x_steps=args.x_steps
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
@@ -369,7 +384,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lam_flat}-{args.lam_adv}-{args.lam_cr}{cr_modifier}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt",
+        project="tta3_adapt_test",
         name=run_name,
         config=vars(args),
     )
@@ -398,12 +413,8 @@ if __name__ == "__main__":
     print("\t Accuracy std: %f" % float(acc_std))
     print("\t Cost time: %f s" % (time2 - time1))
 
-    log_args(args)
-
-    wandb.log({
-        "acc_mean": acc_mean,
-        "acc_std": acc_std,
-        "time_taken_s": time2 - time1
-    })
+    wandb.log({f"acc_mean": acc_mean, f"acc_std": acc_std}, commit=False)
+    log_args(args, time2 - time1)
+    
 
     wandb.finish()

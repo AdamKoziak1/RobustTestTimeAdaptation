@@ -24,6 +24,7 @@ import wandb
 DATASETS     = ["PACS", "VLCS", "office-home"]
 TEST_DOMAINS = [0, 1]
 SEED         = 0 
+ATTACK_RATES = [0, 50, 100]
 
 def evaluate_domain(args):
     dom_id = args.test_envs[0]
@@ -60,30 +61,34 @@ def main():
     args.seed = SEED 
     set_random_seed(args.seed)
     
-    run_name = f"{args.adapt_alg}_drop{args.svd_drop_k}_{args.steps}steps_lr{args.lr}"
-    wandb.init(name=run_name, config=vars(args))
+    run_name = f"{args.adapt_alg}_steps{args.steps}_lr{args.lr}_input{args.svd_input_rank_ratio}_feat{args.svd_feat_rank_ratio}_svdmode-{args.svd_feat_mode}"
+    wandb.init(name=run_name, config=vars(args), project="tta3_sweeps")
 
     start = time.time()
-    accs = []
-    for dataset in DATASETS:
-        for dom in TEST_DOMAINS:
-            args.dataset   = dataset
-            args.test_envs = [dom]
-            args = img_param_init(args)
-            args.data_dir = os.path.join(args.data_file, "datasets", dataset)
+    results = {}
+    for rate in ATTACK_RATES:
+        args.attack_rate = rate
+        accs = []
+        for dataset in DATASETS:
+            for dom in TEST_DOMAINS:
+                args.dataset   = dataset
+                args.test_envs = [dom]
+                args = img_param_init(args)
+                args.data_dir = os.path.join(args.data_file, "datasets", dataset)
 
-            acc = evaluate_domain(args)
-            print(f"{dataset:12s}  dom {dom}: {acc:6.2f}%")
-            accs.append(acc)
+                acc = evaluate_domain(args)
+                print(f"{dataset:12s}  dom {dom} rate {rate}%: {acc:6.2f}%")
+                accs.append(acc)
+        mean = round(statistics.mean(accs), 2)
+        results[rate] = mean
 
-    print("\n==================  Summary  ==================")
-    mean = round(statistics.mean(accs), 2)
+    for rate in ATTACK_RATES:
+        mean = results[rate]
+        wandb.log({f"acc_{rate}": mean}, commit=False)
+    
     dur   = time.time() - start
+    log_args(args, dur)
 
-    log_args(args)
-
-    wandb.log({"acc_mean": mean, 
-               "time_taken_s": dur})
     wandb.finish()
 
 

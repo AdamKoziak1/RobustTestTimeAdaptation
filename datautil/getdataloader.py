@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 import datautil.imgdata.util as imgutil
 from datautil.imgdata.imgdataload import ImageDataset
 from datautil.mydataloader import InfiniteDataLoader
-import torch
 
 def get_img_dataloader(args):
     rate = 0.2
@@ -136,62 +135,3 @@ def get_img_dataloader_adv(args):
     return train_loader, val_loader, attack_loader
 
 
-class SVDLoader:
-    def __init__(self, dataloader, k, device="cuda",
-                    tau: float = 0.0,
-                    thresh_mode: str = "abs"
-                ):
-        self.loader, self.k, self.device = dataloader, k, device
-        self.tau = float(tau)
-        self.thresh_mode = thresh_mode
-    def __iter__(self):
-        for xb, yb in self.loader:
-            xb = xb.to(self.device, non_blocking=True)
-            if self.tau > 0.0:
-                xb = drop_small_singular_values_threshold(xb, self.tau, mode=self.thresh_mode)
-            elif self.k:
-                xb = drop_low_singular_values(xb, self.k)
-            yield xb, yb                          
-
-
-@torch.no_grad()
-def drop_low_singular_values(x: torch.Tensor, k: int) -> torch.Tensor:
-    if k == 0:
-        return x                           
-
-    B, C, H, W = x.shape      
-    x_flat = x.reshape(B * C, H, W)
-    q        = H - k
-    U,S,Vh   = torch.svd_lowrank(x_flat, q=q, niter=2)
-    x_recon = torch.matmul(U * S.unsqueeze(1), torch.transpose(Vh, 1, 2))
-
-    return x_recon.reshape(B, C, H, W)
-
-
-# ---- Value-thresholded exact SVD --------------------------------------------
-@torch.no_grad()
-def drop_small_singular_values_threshold(
-    x: torch.Tensor,
-    tau: float,
-    mode: str = "abs",
-) -> torch.Tensor:
-    if tau <= 0:
-        return x
-
-    B, C, H, W = x.shape
-    X = x.reshape(B * C, H, W)
-
-    U, S, Vh = torch.linalg.svd(X, full_matrices=False)  # (BC,H,r), (BC,r), (BC,r,W) when full_matrices=False
-    if mode == "abs":
-        thr = tau
-    elif mode == "rel":
-        sigma_max = S.max(dim=1, keepdim=True).values
-        thr = sigma_max * tau  # (BC,1) -> broadcast
-    else:
-        raise ValueError(f"Unknown threshold mode: {mode}. Use 'abs' or 'rel'.")
-
-    mask = S >= thr     # (BC, r)
-
-    S = S * mask
-    X_hat = (U * S.unsqueeze(-2)) @ Vh  # (BC,H,r) * (BC,1,r) @ (BC,r,W)
-    return X_hat.reshape(B, C, H, W)

@@ -5,7 +5,6 @@ import torchvision
 import torch
 import timm  #load ViT or MLP-mixer
 from network.common_network import Identity
-import math
 
 vgg_dict = {"vgg11": models.vgg11, "vgg13": models.vgg13, "vgg16": models.vgg16, "vgg19": models.vgg19,
             "vgg11bn": models.vgg11_bn, "vgg13bn": models.vgg13_bn, "vgg16bn": models.vgg16_bn, "vgg19bn": models.vgg19_bn}
@@ -324,35 +323,3 @@ class ResBaseNuc(nn.Module):
         x = x.view(x.size(0), -1)
         return x
 
-class SVDDrop2D(nn.Module):
-    def __init__(self, rank_ratio: float, mode: str, full: bool = False):
-        super().__init__()
-        assert mode in ('spatial', 'channel')
-        assert rank_ratio >= 0.0 and rank_ratio <= 1.0
-        self.rank_ratio = rank_ratio
-        self.mode = mode
-        self.full = full
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, C, H, W = x.shape
-        if self.mode == 'spatial':
-            x_flat = x.reshape(B * C, H, W)
-            rank = math.ceil(H * self.rank_ratio)
-        if self.mode == 'channel':
-            x_flat = x.reshape(B, C, H * W)
-            rank = math.ceil(C * self.rank_ratio)
-
-        if self.full:
-            U, S, Vh = torch.linalg.svd(x_flat, full_matrices=True)
-            #S[..., -rank:] = 0
-            S[..., :rank] = 0
-            x_recon = (U * S.unsqueeze(-1)) @ Vh
-
-        else:
-            U,S,Vh   = torch.svd_lowrank(x_flat, q=rank, niter=2)
-            x_recon = torch.matmul(U * S.unsqueeze(1), torch.transpose(Vh, 1, 2))
-
-        return x_recon.reshape(B, C, H, W)
-        
-        # RESIDUAL?
-        # HOW TO RECOMBINE: WEIGHTED SUM? LEARNABLE?
