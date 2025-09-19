@@ -61,7 +61,7 @@ def main():
     args.seed = SEED 
     set_random_seed(args.seed)
     
-    run_name = f"{args.adapt_alg}_drop{args.svd_drop_k}_{args.steps}steps_lr{args.lr}_svdratio{args.svd_feat_rank_ratio}_svdfeatmode-{args.svd_feat_mode}"
+    run_name = f"{args.adapt_alg}_steps{args.steps}_lr{args.lr}_input{args.svd_input_rank_ratio}_feat{args.svd_feat_rank_ratio}_svdmode-{args.svd_feat_mode}"
     wandb.init(name=run_name, config=vars(args), project="tta3_sweeps")
 
     start = time.time()
