@@ -57,16 +57,6 @@ parameters:
     value: "TTA3"
     #values: ["ERM", "Tent"]
 
-  # svd_drop_tau:
-  #   values: [0, 0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02, 0.025]
-
-  # svd_thresh_mode:
-  #   value: "rel"
-
-  svd_drop_k:
-    value: 0
-    #values: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180, 185, 190, 195, 200]
-    #values: [0, 160, 185]
 
   # svd_feat_mode:
   #   values: ["spatial","channel"]

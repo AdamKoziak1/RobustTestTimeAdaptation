@@ -1,0 +1,39 @@
+program: unsupervise_adapt.py
+project: tta3_sweeps
+name: svd_input_validation
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    value: "TTA3"
+
+  update_param:
+    value: "tent"
+
+  lr:
+    values: [0.001]
+
+  steps:
+    values: [1]
+
+
+  svd_input_rank_ratio:
+    values: [1.0, 0.85]
+
+  svd_feat_max_layer:
+    values: [1]
+
+  svd_feat_rank_ratio:
+    values: [1.0, 0.75]
+
+  svd_feat_mode:
+    values: ["spatial","channel"]
+
+  svd_input_mode:
+    values: ["spatial","channel"]
+
+  # ema:
+  #   values: [0.99, 1]

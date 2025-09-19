@@ -13,11 +13,10 @@ from sklearn.metrics import accuracy_score
 from alg.opt import *
 from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
-from network.img_network import SVDDrop2D
+from utils.svd import SVDDrop2D, SVDLoader
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
 from datautil.attacked_imagefolder import AttackedImageFolder
-from datautil.getdataloader import SVDLoader
 import statistics
 from peft import LoraConfig, get_peft_model
 import wandb
@@ -80,13 +79,11 @@ def get_args():
     parser.add_argument("--lora_alpha", type=int, default=8)  
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
 
-    parser.add_argument("--svd_drop_k", type=int, default=0, help="Drop the k smallest singular values per channel (0 = disable).")
-    parser.add_argument("--svd_drop_tau", type=float, default=0.0,help="Value threshold τ: zero σ < τ (overrides svd_drop_k if >0).")
-    parser.add_argument("--svd_thresh_mode", choices=["abs","rel"], default="abs",help="Interpretation of τ: 'abs' uses σ>=τ, 'rel' uses σ>=τ*σ_max.")
-
+    parser.add_argument("--svd_input_rank_ratio", type=float, default=1.0, help="Rank ratio for input SVD projection (1.0 disables it).")
+    parser.add_argument("--svd_input_mode", choices=["spatial","channel"], default="spatial")
     parser.add_argument("--svd_feat_rank_ratio", type=float, default=1.0, help="proportional rank threshold for feature-map SVD.")
     parser.add_argument('--svd_feat_max_layer', type=int, default=0, choices=[0,1,2,3,4], help="ResNet block at which to end lowrank (0=off)")
-    parser.add_argument("--svd_feat_mode", choices=["spatial","channel"], default="channel")
+    parser.add_argument("--svd_feat_mode", choices=["spatial","channel"], default="spatial")
 
     parser.add_argument('--nuc_top', type=int, default=0, help='0..4 stages instrumented (bottom-up)')
     parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
@@ -109,6 +106,7 @@ def get_args():
     args = img_param_init(args)
 
     assert args.filter_K in [1,5,20,50,100,-1], "filter_K must be in [1,5,20,50,100,-1]"
+    assert 0.0 <= args.svd_input_rank_ratio <= 1.0, "svd_input_rank_ratio must be in [0,1]"
     print_environ()
     return args
 
@@ -117,14 +115,13 @@ def log_args(args, time_taken_s):
     wandb.log({
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
-        "svd_drop_k": args.svd_drop_k,
         "svd_feat_rank_ratio": args.svd_feat_rank_ratio,
         "svd_feat_max_layer": args.svd_feat_max_layer,
         "svd_feat_mode": args.svd_feat_mode,
+        "svd_input_rank_ratio": args.svd_input_rank_ratio,
+        "svd_input_mode": args.svd_input_mode,
         "steps": args.steps,
         "lr": args.lr,
-        "svd_feat_mode": args.svd_feat_mode,
-        "svd_drop_tau": args.svd_drop_tau,
         "lam_flat": args.lam_flat,
         "lam_adv": args.lam_adv,
         "lam_cr": args.lam_cr,
@@ -172,26 +169,27 @@ def adapt_loader(args):
         num_workers=args.N_WORKERS,
         pin_memory=True,
     )
-    return SVDLoader(
-        testloader,
-        k=args.svd_drop_k,
-        device="cuda",
-        tau=args.svd_drop_tau,
-        thresh_mode=args.svd_thresh_mode
-    )
+
+    if args.svd_input_rank_ratio < 1.0:
+        return SVDLoader(
+            testloader,
+            rank_ratio=args.svd_input_rank_ratio,
+            device="cuda",
+            mode=args.svd_input_mode,
+            use_ste=False,
+        )
+    return testloader
 
 
 def make_adapt_model(args, algorithm):
     if args.svd_feat_max_layer > 0 and args.svd_feat_rank_ratio < 1.0: 
         rank_ratio = args.svd_feat_rank_ratio
         mode = args.svd_feat_mode
-        full = False #TODO test? maybe just check if differentiable
         feat = algorithm.featurizer 
-        feat.layer1 = nn.Sequential(feat.layer1, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 1 else feat.layer1
-        feat.layer2 = nn.Sequential(feat.layer2, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 2 else feat.layer2
-        feat.layer3 = nn.Sequential(feat.layer3, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 3 else feat.layer3
-        feat.layer4 = nn.Sequential(feat.layer4, SVDDrop2D(rank_ratio, mode, full)) if args.svd_feat_max_layer >= 4 else feat.layer4
-
+        feat.layer1 = nn.Sequential(feat.layer1, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 1 else feat.layer1
+        feat.layer2 = nn.Sequential(feat.layer2, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 2 else feat.layer2
+        feat.layer3 = nn.Sequential(feat.layer3, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 3 else feat.layer3
+        feat.layer4 = nn.Sequential(feat.layer4, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 4 else feat.layer4
 
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":

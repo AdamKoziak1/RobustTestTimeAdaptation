@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from torchvision.models.feature_extraction import create_feature_extractor
-
+from utils.svd import SVDDrop2D
 
 @torch.jit.script
 def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
@@ -593,7 +593,9 @@ class TTA3(nn.Module):
             'layer3': 'feat3',
             'layer4': 'feat4',
         }
-        self.feat_extractor = create_feature_extractor(self.model.featurizer, return_nodes)
+        self.feat_extractor = create_feature_extractor(self.model.featurizer, 
+                                                       return_nodes,
+                                                        tracer_kwargs={"leaf_modules": [SVDDrop2D]})
         
         self.lam_reg=lam_reg
         self.reg_type=reg_type
