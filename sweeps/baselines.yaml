@@ -1,0 +1,12 @@
+program: unsupervised_adapt_dataset.py     
+project: tta3_sweeps
+name: baselines
+method: grid
+metric:
+  name: acc_100
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    values: ["ERM", "Tent", "PL", "SHOT-IM", "T3A", "TSD"]
+

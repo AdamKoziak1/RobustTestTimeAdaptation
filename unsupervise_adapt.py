@@ -20,6 +20,7 @@ from datautil.attacked_imagefolder import AttackedImageFolder
 import statistics
 from peft import LoraConfig, get_peft_model
 import wandb
+from adapt_presets import apply_adapt_preset
 
 
 def get_args():
@@ -96,9 +97,14 @@ def get_args():
     parser.add_argument('--ema', type=float, default=0.99, help='EMA coefficient for student-teacher distillation')
     parser.add_argument('--x_lr', type=float, default=0.1, help='learning rate for x_tilde update')
     parser.add_argument('--x_steps', type=int, default=3, help='number of steps for x_tilde update')
+    parser.add_argument('--disable_preset_hparams', type=int, default=0, choices=[0,1], help='Disable auto-selection of preset hyperparameters based on adapt_alg.')
 
-
+    
     args = parser.parse_args()
+    preset_overrides = apply_adapt_preset(args, disable=args.disable_preset_hparams)
+    if preset_overrides:
+        print(f"Applying preset hyperparameters for {args.adapt_alg}: {preset_overrides}")
+    args.preset_overrides = preset_overrides
     args.steps_per_epoch = 100
     args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
     args.use_mi = args.use_mi == 'mi'
