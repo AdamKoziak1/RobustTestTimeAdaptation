@@ -24,17 +24,22 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "filter_K": 100,
         "steps": 10,
     },
-    # "TTA3": {
-    #     "lr": 1e-3,
-    #     "steps": 3,
-    #     "lam_flat": 1e-3,
-    #     "lam_adv": 1e-3,
-    #     "lam_cr": 1e-1,
-    #     "lam_pl": 50,
-    #     "cr_start": 0,
-    #     "update_param": "tent",
-    #     "use_mi": "em",
-    # },
+    "TTA3": {
+        "lr": 1e-3,
+        "steps": 1,
+        "lam_flat": 0,
+        "lam_adv": 0,
+        "lam_cr": 0,
+        "lam_pl": 0,
+        "cr_start": 0,
+        "update_param": "tent",
+        "use_mi": "em",
+        "ema": 0.9,
+        "lam_reg": 0.001,
+        "reg_type": "klprob",
+        "x_lr": 0.0001,
+        "x_steps": 3,
+    },
 }
 
 

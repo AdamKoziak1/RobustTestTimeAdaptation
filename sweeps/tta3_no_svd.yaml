@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py     
 project: tta3_sweeps
-name: ema_pure_em
+name: tta3_no_svd
 method: grid
 metric:
   name: acc_100
@@ -8,7 +8,6 @@ metric:
 
 parameters:
   lr:
-    #values: [0.0001, 0.001]
     values: [0.001]
 
   adapt_alg:
@@ -20,6 +19,12 @@ parameters:
 
 
 # SVD PARAMS:
+  # svd_input_rank_ratio:
+  #   values: [1.0, 0.85]
+
+  # svd_input_mode:
+  #   values: ["spatial","channel"]
+
   # svd_feat_rank_ratio:
   #   values: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 1.0]
 
@@ -33,20 +38,15 @@ parameters:
 
 # STUDENT-TEACHER PARAMS:
   lam_reg:
-    values: [0.0001, 0.001, 0.01, 0.1, 1, 10]
+    values: [0, 0.0001, 0.001, 0.01, 0.1, 1]
   reg_type:
     values: ["l2logits","klprob"]
   ema:
-    values: [0, 0.9, 0.99, 0.995, 0.999]
+    values: [0, 0.9, 0.99, 0.999]
 
 #X UPDATE PARAMS:
   x_lr:
-    #values: [0.0001, 0.001, 0.1, 1, 10]
-    values: [0]
+    values: [0.0001, 0.001, 0.1, 1, 10]
   x_steps:
-    #values: [1, 3, 5]
-    values: [1]
-
-
-
+    values: [0, 1, 3, 5]
 

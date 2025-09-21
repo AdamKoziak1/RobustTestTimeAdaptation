@@ -602,15 +602,19 @@ class TTA3(nn.Module):
         self.ema=ema
         self.x_lr=x_lr
         self.x_steps=x_steps
+        self.use_teacher = (x_steps > 0) or (lam_reg > 1e-8)
 
-        self.teacher = deepcopy(self.model).eval()
-        self.teacher.requires_grad_(False)
-        for m in self.teacher.modules():
-            if isinstance(m, nn.BatchNorm2d):
-                m.track_running_stats = False
-                m.running_mean = None
-                m.running_var  = None
-        assert reg_type in ('l2logits', 'klprob')
+        self.teacher = None
+        if self.use_teacher:
+            self.teacher = deepcopy(self.model).eval()
+            self.teacher.requires_grad_(False)
+            for m in self.teacher.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.track_running_stats = False
+                    m.running_mean = None
+                    m.running_var  = None
+            assert reg_type in ('l2logits', 'klprob')
+        
 
     def reset(self):
         if self.model_state is None or self.optimizer_state is None:
@@ -738,7 +742,7 @@ class TTA3(nn.Module):
         x_tilde = x.detach()
         for _ in range(self.x_steps):
             x_tilde.requires_grad_(True)
-            logits_t = self.teacher.predict(x_tilde)
+            logits_t = self.teacher.predict(x_tilde) if self.use_teacher else self.model.predict(x_tilde) 
             probs_t  = F.softmax(logits_t, dim=1)
 
             L_t = self.base_loss(logits_t, probs_t) 
@@ -758,10 +762,11 @@ class TTA3(nn.Module):
         L_NUC, L_RECON = self.nuclear_losses(model, logits_s)
 
         # Teacher consistency regularization
-        with torch.no_grad():
-            logits_t_bar = self.teacher.predict(x_tilde)
-        L_Reg  = self._reg_loss(logits_s, logits_t_bar) 
-
+        L_Reg = torch.tensor(0.0, device=logits_s.device)
+        if self.use_teacher and self.lam_reg >= 1e-8:
+            with torch.no_grad():
+                logits_t_bar = self.teacher.predict(x_tilde)
+            L_Reg = self._reg_loss(logits_s, logits_t_bar)
 
         loss =    (self.lam_em * L_Base) \
                 + (self.lam_flat * L_Flat) \
@@ -785,6 +790,7 @@ class TTA3(nn.Module):
         optimizer.step()
 
         # 3) EMA update of teacher (BN affine only)
-        with torch.no_grad():
-            self._ema_update_teacher()
+        if self.use_teacher:
+            with torch.no_grad():
+                self._ema_update_teacher()
         return logits_s

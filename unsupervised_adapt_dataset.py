@@ -24,7 +24,7 @@ import wandb
 DATASETS     = ["PACS", "VLCS", "office-home"]
 TEST_DOMAINS = [0, 1]
 SEED         = 0 
-ATTACK_RATES = [0, 50, 100]
+ATTACK_RATES = [0, 100]
 
 def evaluate_domain(args):
     dom_id = args.test_envs[0]
