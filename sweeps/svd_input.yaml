@@ -1,0 +1,52 @@
+program: unsupervised_adapt_dataset.py     
+project: tta3_sweeps
+name: tta3_svd
+method: grid
+metric:
+  name: acc_100
+  goal: maximize
+
+parameters:
+  lr:
+    values: [0.001]
+
+  adapt_alg:
+    value: "TTA3"
+    #values: ["TTA3", "ERM"]
+
+  update_param:
+    value: "tent"
+
+
+# SVD PARAMS:
+  svd_input_rank_ratio:
+    values: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 1.0]
+
+  svd_input_mode:
+    values: ["spatial","channel"]
+
+  # svd_feat_rank_ratio:
+  #   values: [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 1.0]
+
+  svd_feat_max_layer:
+    value: 0
+
+  # svd_feat_mode:
+  #   values: ["spatial","channel"]
+
+
+
+# STUDENT-TEACHER PARAMS:
+#   lam_reg:
+#     values: [0, 0.0001, 0.001, 0.01, 0.1, 1]
+#   reg_type:
+#     values: ["l2logits","klprob"]
+#   ema:
+#     values: [0, 0.9, 0.99, 0.999]
+
+# #X UPDATE PARAMS:
+#   x_lr:
+#     values: [0.0001, 0.001, 0.1, 1, 10]
+#   x_steps:
+#     values: [0, 1, 3, 5]
+

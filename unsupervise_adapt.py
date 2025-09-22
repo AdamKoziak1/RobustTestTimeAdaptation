@@ -101,7 +101,8 @@ def get_args():
 
     
     args = parser.parse_args()
-    args.svd_input_rank_ratio = args.svd_feat_rank_ratio
+    if args.svd_input_rank_ratio >=1:
+        args.svd_input_rank_ratio = args.svd_feat_rank_ratio
     preset_overrides = apply_adapt_preset(args, disable=args.disable_preset_hparams)
     if preset_overrides:
         print(f"Applying preset hyperparameters for {args.adapt_alg}: {preset_overrides}")
