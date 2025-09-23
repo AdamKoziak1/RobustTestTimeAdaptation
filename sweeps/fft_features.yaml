@@ -19,40 +19,17 @@ parameters:
   steps:
     values: [1]
 
-  # Keep input FFT fixed while exploring feature layers
   fft_input_keep_ratio:
     value: 1.0
-  fft_input_mode:
-    value: "spatial"
-  fft_input_use_residual:
-    value: 0
-  fft_input_learn_alpha:
-    value: 0
+    
   fft_input_alpha:
     value: 1.0
 
-  # Feature FFT variations
   fft_feat_keep_ratio:
     values: [0.8, 0.6, 0.4, 0.2]
-  fft_feat_max_layer:
-    values: [1, 2, 3]
-  fft_feat_mode:
-    values: ["spatial", "channel"]
-  fft_feat_use_residual:
-    value: 1
-  fft_feat_learn_alpha:
-    values: [0, 1]
-  fft_feat_alpha:
-    values: [0.4, 0.6, 0.8]
 
-  # Keep SVD disabled to isolate FFT effects
-  svd_input_rank_ratio:
-    value: 1.0
-  svd_input_mode:
-    value: "spatial"
-  svd_feat_rank_ratio:
-    value: 1.0
-  svd_feat_max_layer:
-    value: 0
-  svd_feat_mode:
-    value: "spatial"
+  fft_feat_max_layer:
+    values: [1, 2, 3, 4]
+
+  fft_feat_alpha:
+    values: [0.2, 0.4, 0.6, 0.8, 1.0]

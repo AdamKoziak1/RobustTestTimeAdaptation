@@ -91,13 +91,13 @@ def get_args():
     parser.add_argument("--fft_input_mode", choices=["spatial", "channel"], default="spatial")
     parser.add_argument("--fft_input_alpha", type=float, default=1.0, help="Residual mix weight for FFT input filtering.")
     parser.add_argument("--fft_input_learn_alpha", type=int, default=0, choices=[0,1], help="Learn residual alpha for FFT input filtering (1 enables).")
-    parser.add_argument("--fft_input_use_residual", type=int, default=0, choices=[0,1], help="Enable residual mixing for FFT input filtering (1 enables).")
+    parser.add_argument("--fft_input_use_residual", type=int, default=1, choices=[0,1], help="Enable residual mixing for FFT input filtering (1 enables).")
     parser.add_argument("--fft_feat_keep_ratio", type=float, default=1.0, help="Frequency keep ratio for FFT feature filtering (1.0 disables it).")
-    parser.add_argument('--fft_feat_max_layer', type=int, default=0, choices=[0,1,2,3,4], help="ResNet block at which to end FFT filtering (0=off)")
+    parser.add_argument('--fft_feat_max_layer', type=int, default=1, choices=[0,1,2,3,4], help="ResNet block at which to end FFT filtering (0=off)")
     parser.add_argument("--fft_feat_mode", choices=["spatial", "channel"], default="spatial")
     parser.add_argument("--fft_feat_alpha", type=float, default=1.0, help="Residual mix weight for FFT feature filtering.")
     parser.add_argument("--fft_feat_learn_alpha", type=int, default=0, choices=[0,1], help="Learn residual alpha for FFT feature filtering (1 enables).")
-    parser.add_argument("--fft_feat_use_residual", type=int, default=0, choices=[0,1], help="Enable residual mixing for FFT feature filtering (1 enables).")
+    parser.add_argument("--fft_feat_use_residual", type=int, default=1, choices=[0,1], help="Enable residual mixing for FFT feature filtering (1 enables).")
 
     parser.add_argument('--nuc_top', type=int, default=0, help='0..4 stages instrumented (bottom-up)')
     parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
@@ -444,7 +444,8 @@ if __name__ == "__main__":
         cr_modifier = ""
         if args.lam_cr >= 1e-8:
             cr_modifier = f"-{args.cr_type}"
-        run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lam_flat}-{args.lam_adv}-{args.lam_cr}{cr_modifier}_rate-{args.attack_rate}"
+        #run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lam_flat}-{args.lam_adv}-{args.lam_cr}{cr_modifier}_rate-{args.attack_rate}"
+        run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-fftin-k{args.fft_input_keep_ratio}-a{args.fft_input_alpha}-feat-k{args.fft_feat_keep_ratio}-a{args.fft_feat_alpha}-l{args.fft_feat_max_layer}_rate-{args.attack_rate}"
 
     wandb.init(
         project="tta3_adapt_test",
