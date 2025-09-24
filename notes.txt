@@ -73,17 +73,6 @@ write title and abstract
 
 
 
-
-use rl for choosing trust region in a batch, determining filtration/mixing factor
-replay buffer can be composed as the batches come, maybe lowrank version is stored to reproject and add? woudl that be more efficient?
-  some kind of signal: rate of change of prediction entropy as frequency range is tightened?
-    -perhaps modulated by mutual information type batchwise measure
-
-
-
-
-
-
 (base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/art_painting/ -type f | wc -l
 2048
 (base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/cartoon/ -type f | wc -l
