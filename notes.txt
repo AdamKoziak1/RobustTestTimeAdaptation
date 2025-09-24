@@ -1,17 +1,10 @@
 TODO:
 
-ablate ema params (set to 0 to disable)
-  RUNNING
-
-implement skip connection 
-  -ablate weight
-  -try fixed or learnable
+  -try learnable skip connection 
   -general module for different types of denoising?
   -add unified block for model input instead of dataloader svd stuff?
-try fft
-    *check if fft is differentiable 
-try DCT
-    * ^^same
+
+try DCT?
 
 
 
@@ -56,6 +49,30 @@ lp-bounded attacks could operate in low singular value space
 
 
 
+choose 4 tta method
+  add fft in first block
+  add in input?
+  to show that it's a general framework
+
+
+illustrate fft and hyperparam meaning
+explicitly mathematically formulate it and describe
+
+ablate on input only, feature only, on one domain from each dataset
+
+report 30 and 70 instead of 50
+
+write title and abstract
+
+
+  present approach as a framework
+  equations
+  figures
+
+
+
+
+
 (base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/art_painting/ -type f | wc -l
 2048
 (base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/cartoon/ -type f | wc -l
@@ -82,3 +99,15 @@ lp-bounded attacks could operate in low singular value space
 4439
 (base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find office-home/RealWorld/ -type f | wc -l
 4357
+
+
+to remove:
+svd_input_rank_ratio
+svd_feat_rank_ratio
+svd_feat_max_layer
+fft_input_mode
+fft_input_use_residual
+fft_input_learn_alpha
+fft_feat_mode
+fft_feat_use_residual
+fft_feat_learn_alpha

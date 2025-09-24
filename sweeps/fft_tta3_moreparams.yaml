@@ -1,0 +1,37 @@
+program: unsupervised_adapt_dataset.py
+project: tta3_sweeps
+name: tta3_fft_more_coverage
+method: grid
+metric:
+  name: acc_100
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    value: "TTA3"
+
+  fft_input_alpha:
+    values: [0.5]
+
+  fft_feat_alpha:
+    values: [0.5]
+    
+  fft_input_keep_ratio:
+    values: [1.0, 0.8, 0.6, 0.4, 0.2]
+
+  fft_feat_keep_ratio:
+    values: [1.0, 0.8, 0.6, 0.4, 0.2]
+
+  # STUDENT-TEACHER PARAMS:
+  lam_reg:
+    values: [0, 0.1, 0.5]
+  reg_type:
+    values: ["klprob"]
+  ema:
+    values: [0, 0.95]
+
+#X UPDATE PARAMS:
+  x_lr:
+    values: [0.0001, 0.1]
+  x_steps:
+    values: [0, 3]
