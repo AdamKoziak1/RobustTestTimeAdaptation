@@ -1,0 +1,36 @@
+program: unsupervise_adapt.py
+project: fft_runs
+name: 0-baselines
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    values: ["ERM", "Tent", "PL", "T3A", "TSD"]
+
+  fft_input_alpha:
+    values: [0.0]
+
+  fft_input_keep_ratio:
+    values: [1.0]
+
+  fft_feat_alpha:
+    values: [0.0]
+
+  fft_feat_keep_ratio:
+    values: [1.0]
+
+
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+
+  test_envs:
+    values: [0, 1, 2, 3]
+    
+  attack_rate:
+    values: [0, 25, 50, 75, 100]
+  
+  # attack: 
+  #   value: "l2_eps-112.0_steps-100"

@@ -143,39 +143,33 @@ def log_args(args, time_taken_s):
     wandb.log({
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
-        "svd_feat_rank_ratio": args.svd_feat_rank_ratio,
-        "svd_feat_max_layer": args.svd_feat_max_layer,
-        "svd_feat_mode": args.svd_feat_mode,
-        "svd_input_rank_ratio": args.svd_input_rank_ratio,
-        "svd_input_mode": args.svd_input_mode,
+        # "svd_feat_rank_ratio": args.svd_feat_rank_ratio,
+        # "svd_feat_max_layer": args.svd_feat_max_layer,
+        # "svd_feat_mode": args.svd_feat_mode,
+        # "svd_input_rank_ratio": args.svd_input_rank_ratio,
+        # "svd_input_mode": args.svd_input_mode,
         "fft_feat_keep_ratio": args.fft_feat_keep_ratio,
         "fft_feat_max_layer": args.fft_feat_max_layer,
-        "fft_feat_mode": args.fft_feat_mode,
-        "fft_feat_use_residual": int(args.fft_feat_use_residual),
-        "fft_feat_learn_alpha": int(args.fft_feat_learn_alpha),
         "fft_feat_alpha": args.fft_feat_alpha,
         "fft_input_keep_ratio": args.fft_input_keep_ratio,
-        "fft_input_mode": args.fft_input_mode,
-        "fft_input_use_residual": int(args.fft_input_use_residual),
-        "fft_input_learn_alpha": int(args.fft_input_learn_alpha),
         "fft_input_alpha": args.fft_input_alpha,
         "steps": args.steps,
         "lr": args.lr,
-        "lam_flat": args.lam_flat,
-        "lam_adv": args.lam_adv,
-        "lam_cr": args.lam_cr,
-        "lam_pl": args.lam_pl,
-        "lam_em": args.lam_em,
-        "lam_nuc": args.nuc_lambda,
-        "lam_recon": args.lam_recon,
-        "nuc_kernel": args.nuc_kernel,
-        "nuc_top": args.nuc_top,
+        # "lam_flat": args.lam_flat,
+        # "lam_adv": args.lam_adv,
+        # "lam_cr": args.lam_cr,
+        # "lam_pl": args.lam_pl,
+        # "lam_em": args.lam_em,
+        # "lam_nuc": args.nuc_lambda,
+        # "lam_recon": args.lam_recon,
+        # "nuc_kernel": args.nuc_kernel,
+        # "nuc_top": args.nuc_top,
         "time_taken_s": time_taken_s,
-        "lam_reg": args.lam_reg,
-        "reg_type": args.reg_type,
-        "ema": args.ema,
-        "x_lr": args.x_lr,
-        "x_steps": args.x_steps
+        # "lam_reg": args.lam_reg,
+        # "reg_type": args.reg_type,
+        # "ema": args.ema,
+        # "x_lr": args.x_lr,
+        # "x_steps": args.x_steps
     })
 
 def adapt_loader(args):
@@ -438,7 +432,8 @@ if __name__ == "__main__":
 
 
     dom_id = args.test_envs[0]
-    run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}_rate-{args.attack_rate}"
+    #run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}_rate-{args.attack_rate}"
+    run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-ax{args.fft_input_alpha}-px{args.fft_input_keep_ratio}-az{args.fft_feat_alpha}-pz{args.fft_feat_keep_ratio}_rate-{args.attack_rate}"
 
     if args.adapt_alg == "TTA3":
         cr_modifier = ""
