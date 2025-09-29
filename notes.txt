@@ -1,17 +1,6 @@
 TODO:
-
   -try learnable skip connection 
   -general module for different types of denoising?
-  -add unified block for model input instead of dataloader svd stuff?
-
-try DCT?
-
-
-
-
-
-
-  look into lowrank methods. what is novel
 
 
   introduce learnable parameter over the local smoothing/"message passing"
@@ -49,25 +38,6 @@ lp-bounded attacks could operate in low singular value space
 
 
 
-choose 4 tta method
-  add fft in first block
-  add in input?
-  to show that it's a general framework
-
-
-illustrate fft and hyperparam meaning
-explicitly mathematically formulate it and describe
-
-ablate on input only, feature only, on one domain from each dataset
-
-report 30 and 70 instead of 50
-
-write title and abstract
-
-
-  present approach as a framework
-  equations
-  figures
 
 
 
@@ -101,13 +71,3 @@ write title and abstract
 4357
 
 
-to remove:
-svd_input_rank_ratio
-svd_feat_rank_ratio
-svd_feat_max_layer
-fft_input_mode
-fft_input_use_residual
-fft_input_learn_alpha
-fft_feat_mode
-fft_feat_use_residual
-fft_feat_learn_alpha

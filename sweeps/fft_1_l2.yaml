@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
 project: fft_runs
-name: 1-leastaggro
+name: 1-leastaggro_l2
 method: grid
 metric:
   name: acc_mean
@@ -32,5 +32,5 @@ parameters:
   attack_rate:
     values: [0, 25, 50, 75, 100]
   
-  # attack: 
-  #   value: "l2_eps-112.0_steps-100"
+  attack: 
+    value: "l2_eps-112.0_steps-100"
