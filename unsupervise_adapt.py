@@ -443,7 +443,7 @@ if __name__ == "__main__":
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-fftin-k{args.fft_input_keep_ratio}-a{args.fft_input_alpha}-feat-k{args.fft_feat_keep_ratio}-a{args.fft_feat_alpha}-l{args.fft_feat_max_layer}_rate-{args.attack_rate}"
 
     wandb.init(
-        project="tta3_adapt_test",
+        project="fft_runs",
         name=run_name,
         config=vars(args),
     )

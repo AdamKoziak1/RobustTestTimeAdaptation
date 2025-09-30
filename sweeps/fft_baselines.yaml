@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
 project: fft_runs
-name: 0-baselines_l2
+name: 0-baselines
 method: grid
 metric:
   name: acc_mean
@@ -30,7 +30,7 @@ parameters:
     values: [0, 1, 2, 3]
     
   attack_rate:
-    values: [0, 25, 50, 75, 100]
+    values: [0, 50, 100]
   
   attack: 
-    value: "l2_eps-112.0_steps-100"
+    values: ["linf_eps-8.0_steps-20","l2_eps-112.0_steps-100"]

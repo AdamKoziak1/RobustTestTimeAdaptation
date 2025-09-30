@@ -5,16 +5,15 @@ from typing import Dict, Iterable, Mapping
 
 ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "Tent": {
-        "lr": 1e-3,
-        "steps": 3,
+        #"lr": 1e-3,
+        "lr": 1e-4,
     },
     "PL": {
-        "lr": 1e-5,
-        "steps": 3,
+        #"lr": 1e-5,
+        "lr": 1e-4,
     },
     "SHOT-IM": {
         "lr": 1e-5,
-        "steps": 1,
     },
     "T3A": {
         "filter_K": 100,
@@ -22,11 +21,9 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "TSD": {
         "lr": 1e-4,
         "filter_K": 100,
-        "steps": 10,
     },
     "TTA3": {
         "lr": 1e-3,
-        "steps": 1,
         "lam_flat": 0,
         "lam_adv": 0,
         "lam_cr": 0,
