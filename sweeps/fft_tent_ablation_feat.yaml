@@ -1,0 +1,36 @@
+program: unsupervise_adapt.py     
+project: tta3_sweeps_fft
+name: fft_tent_feat
+method: grid
+metric:
+  name: acc_100
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    values: ["Tent"]
+
+  fft_input_alpha:
+    #values: [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+    values: [0.0]
+  fft_input_keep_ratio:
+    #values: [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+    values: [1.0]
+
+  fft_feat_alpha:
+    values: [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+    #values: [0.0]
+  fft_feat_keep_ratio:
+    values: [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+    #values: [1.0]
+
+
+
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+
+  test_envs:
+    values: [0]
+    
+  attack_rate:
+    values: [0, 100]

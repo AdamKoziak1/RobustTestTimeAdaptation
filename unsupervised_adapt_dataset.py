@@ -21,8 +21,8 @@ from utils.util import set_random_seed, load_ckpt, img_param_init
 from alg import alg
 import wandb
 
-DATASETS     = ["PACS", "VLCS", "office-home"]
-TEST_DOMAINS = [0, 1]
+DATASETS     = ["PACS"]
+TEST_DOMAINS = [0]
 SEED         = 0 
 ATTACK_RATES = [0, 100]
 

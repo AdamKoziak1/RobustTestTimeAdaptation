@@ -33,4 +33,5 @@ parameters:
     values: [0, 50, 100]
   
   attack: 
-    values: ["linf_eps-8.0_steps-20","l2_eps-112.0_steps-100"]
+    values: ["linf_eps-8.0_steps-20"]
+    #values: ["linf_eps-8.0_steps-20","l2_eps-112.0_steps-100"]
