@@ -37,10 +37,17 @@ lp-bounded attacks could operate in low singular value space
 
 
 
+Uncovering Adversarial Risks of Test-Time Adaptation: 
+"Distribution Invading Attack (DIA)" is how we're attacking
+"The risk of TTA stems from its transductive learning
+paradigm, where the predictions on test samples are no
+longer independent of each other. In this section, we
+detail how specific approaches used in TTA expose security
+vulnerabilities."
 
-
-
-
+"We solve the bilevel optimization problems defined in
+the last section via iterative projected gradient descent,
+summarized in Algorithm 1"
 
 
 (base) adam@SCS-GPU-2024-5:~/Downloads/RobustTestTimeAdaptation/datasets$ find PACS/art_painting/ -type f | wc -l
