@@ -143,4 +143,21 @@ def sum_param(model):
 
 
 def get_config_id(cfg):
-    return f"{cfg.net}_{cfg.attack}_eps-{cfg.eps}_steps-{cfg.steps}"
+    #return f"{cfg.net}_{cfg.attack}_eps-{cfg.eps}_steps-{cfg.steps}"
+
+    def _fmt_float(val):
+        val = float(val)
+        if abs(val - round(val)) < 1e-8:
+            return f"{val:.1f}"
+        return f"{val:g}"
+
+    base = f"{cfg.net}_{cfg.attack}_eps-{_fmt_float(cfg.eps)}_steps-{cfg.steps}"
+
+    keep_ratio = getattr(cfg, "fft_rho", 1.0)
+    if keep_ratio < 1.0:
+        parts = [
+            f"rho-{_fmt_float(keep_ratio)}",
+            f"a-{_fmt_float(getattr(cfg, 'fft_alpha', 1.0))}",
+        ]
+        base = f"{base}_" + "_".join(parts)
+    return base

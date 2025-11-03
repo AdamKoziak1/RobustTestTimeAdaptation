@@ -60,6 +60,17 @@ python generate_adv_data.py --dataset PACS \
                             --alpha_adv 0.5 \
                             --steps 20 \
 ```
+To craft attacks against a model that first applies FFT-based filtering, provide the FFT-specific flags:
+```bash
+python generate_adv_data.py --dataset PACS \
+                            --eps 8 \
+                            --alpha_adv 0.5 \
+                            --steps 20 \
+                            --fft_rho 0.6 \
+                            --fft_alpha 1.0
+```
+This saves tensors under a configuration such as `resnet18_linf_eps-8.0_steps-20_fft-spatial_k-0.75_a-0.8`.  
+Supply the suffix after `resnet18_` to evaluation scripts, e.g. `--attack linf_eps-8.0_steps-20_fft-spatial_k-0.75_a-0.8`.
 
 ## Test time adaptation
 ```bash
@@ -74,6 +85,7 @@ python unsupervise_adapt.py --dataset PACS \
 ```
 Change `--adapt_alg TSD` to use different methods of test time adaptation, e.g. `T3A`, `Tent`.  
 Change `--fft*` to adjust the parameters relating to the FFT modules.
+Run once with `--fft_input_keep_ratio 1.0` (FFT disabled) and again with your desired keep ratio to compare TTA performance with/without the input FFT module on the same attacked tensors.
 
 Ensure that you configure the default arguments in these files to match your directory structure.
 

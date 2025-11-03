@@ -74,7 +74,7 @@ def get_args():
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
     parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, help="Which ResNet block to start consistency-regularization at (0=layer1, …, 3=layer4).")
 
-    parser.add_argument("--attack", choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100"], default="linf_eps-8.0_steps-20")
+    parser.add_argument("--attack", choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100", "linf_eps-8.0_steps-20_rho-0.3_a-1.0"], default="linf_eps-8.0_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
     parser.add_argument("--attack_rate", type=int, choices=[0, 25, 50, 75, 100], default=0)   
     parser.add_argument("--lora_r", type=int, default=4)  

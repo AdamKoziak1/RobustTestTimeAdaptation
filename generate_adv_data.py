@@ -13,6 +13,7 @@ from datautil.getdataloader import get_img_dataloader_adv
 import torch.nn.functional as F
 
 from utils.util import set_random_seed, img_param_init, print_environ, img_param_init, get_config_id
+from utils.fft import FFTDrop2D
 import wandb
 
 def get_args_adv():
@@ -43,7 +44,7 @@ def get_args_adv():
     parser.add_argument('--lr_gamma', type=float,
                         default=0.0003, help='for optimizer')
     parser.add_argument('--max_epoch', type=int,
-                        default=50, help="max iterations")
+                        default=0, help="max iterations")
     parser.add_argument('--momentum', type=float,
                         default=0.9, help='for optimizer')
     parser.add_argument('--net', type=str, default='resnet18',
@@ -67,7 +68,11 @@ def get_args_adv():
     parser.add_argument("--attack", choices=["linf","l2"], default="linf")
     parser.add_argument("--eps", type=float, default=8)    
     parser.add_argument("--alpha_adv", type=float, default=2)
-    parser.add_argument("--steps", type=int, default=20)  
+    parser.add_argument("--steps", type=int, default=20)
+    parser.add_argument("--fft_rho", type=float, default=1.0,
+                        help="Frequency keep ratio for FFT input transform (1.0 disables).")
+    parser.add_argument("--fft_alpha", type=float, default=1.0,
+                        help="Residual mixing weight for FFT attack transform.")
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
@@ -75,6 +80,7 @@ def get_args_adv():
     args.data_dir = os.path.join(args.data_file, args.data_dir, args.dataset)
 
     args = img_param_init(args)
+    assert 0.0 <= args.fft_rho <= 1.0, "fft_rho must be in [0, 1]"
     print_environ()
     return args
 
@@ -92,7 +98,7 @@ def _project_l2(x0, x, eps):
     delta = (flat * scale).view_as(delta)
     return (x0 + delta).clamp(0.0, 1.0)
 
-def pgd(model, x_pix, y, eps, alpha, steps, n_classes, norm="linf"):
+def pgd(model, x_pix, y, eps, alpha, steps, n_classes, norm="linf", input_transform=None):
     """
     x_pix: pixel input in [0,1]
     eps, alpha: pixel units (e.g., 8/255, 2/255)
@@ -117,7 +123,8 @@ def pgd(model, x_pix, y, eps, alpha, steps, n_classes, norm="linf"):
 
     for _ in range(steps):
         x.requires_grad_(True)
-        logits = model.predict(x)  # <-- model handles standardization
+        x_in = input_transform(x) if input_transform is not None else x
+        logits = model.predict(x_in)  # <-- model handles standardization
         loss = F.cross_entropy(logits, y)
         (g,) = torch.autograd.grad(loss, x, only_inputs=True)
 
@@ -142,7 +149,7 @@ if __name__ == "__main__":
     
     wandb.init(
         project="tta3_train_attack",         # ← change to your project
-        name=f"{args.dataset}_test-env-{args.test_envs[0]}_s{args.seed}",  # run name in W&B
+        name=f"{args.dataset}_test-env-{args.test_envs[0]}_s{args.seed}_rho{args.fft_rho}_a{args.fft_alpha}",  # run name in W&B
         config=vars(args),                   # log all hyperparameters
     )
 
@@ -209,18 +216,39 @@ if __name__ == "__main__":
 
     # ---------- attacking -------------------------------------------------
     model.load_state_dict(torch.load(best_model_path))
-    model.eval();   
+    model.eval()
+
+    attack_transform = None
+    if args.fft_rho < 1.0:
+        attack_transform = FFTDrop2D(
+            keep_ratio=args.fft_rho,
+            alpha=args.fft_alpha,
+        ).cuda()
+        attack_transform.eval()
+        for param in attack_transform.parameters():
+            param.requires_grad_(False)
+
     ptr = 0
     for img, lab, _ in tqdm(attack_loader, desc="attack"):
         img, lab = img.to(torch.device('cuda')), lab.to(torch.device('cuda'))
         bsz = img.size(0)
 
-        img_adv = pgd(model, img, lab, args.eps/255., args.alpha_adv/255., args.steps, n_classes, args.attack)
+        img_adv = pgd(
+            model,
+            img,
+            lab,
+            args.eps / 255.,
+            args.alpha_adv / 255.,
+            args.steps,
+            n_classes,
+            args.attack,
+            input_transform=attack_transform,
+        )
 
         adv_cursor = 0                   # points into img_adv
         for k in range(bsz):
             gidx = ptr + k               # global index in dataset
-            torch.save(img[k].cpu(), os.path.join(domain_clean_dir, f"{gidx}.pt"))
+            #torch.save(img[k].cpu(), os.path.join(domain_clean_dir, f"{gidx}.pt"))
             torch.save(img_adv[adv_cursor].cpu(), os.path.join(attack_config_dom_dir, f"{gidx}.pt"))
             adv_cursor += 1
 

@@ -25,8 +25,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", default="PACS", help="Dataset name (e.g. PACS, VLCS)")
     parser.add_argument("--test-env", default=0, type=int, help="Held-out domain index")
     parser.add_argument(
-        "--attack", default="linf_eps-8.0_steps-20",
-        choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100"],
+        "--attack",
+        default="linf_eps-8.0_steps-20",
+        type=str,
+        help="Attack configuration (e.g., linf_eps-8.0_steps-20_fft-spatial_k-0.75) or 'clean'.",
     )
     parser.add_argument("--seed", type=int, default=0, help="Seed identifying the saved tensors")
     parser.add_argument("--data-root", default="datasets", help="Root directory of the original datasets")
