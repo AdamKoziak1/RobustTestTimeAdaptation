@@ -1,0 +1,78 @@
+program: unsupervised_adapt_dataset.py
+project: safer_runs2
+#name: safer_aug_grid_baselines
+name: safer_eachaugmentation
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    #values: ["ERM", "Tent", "PL", "T3A", "TSD"]
+    value: "SAFER"
+
+  update_param:
+    value: "tent"
+
+  attack:
+    value: "linf_eps-8.0_steps-20"
+
+
+
+
+  s_num_views:
+    values: [2]
+    #values: [2, 3]
+    #values: [2, 3, 4, 5]
+
+  s_include_original:
+    values: [1]
+
+  s_aug_prob:
+    values: [1]
+    #values: [0.5, 0.8]
+
+  s_aug_list:
+    values: [
+            "gaussian_blur",
+            "gaussian_noise",
+            "fft_low_pass",
+            "fft_high_pass",
+            "autocontrast",
+            "equalize",
+            "invert",
+            "solarize",
+            "posterize",
+            "contrast",
+            "brightness",
+            "color",
+            "sharpness",
+            "shear_x",
+            "shear_y",
+            "translate_x",
+            "translate_y",
+            "rotate",
+        ]
+
+  s_aug_max_ops:
+    #values: [0, 2]
+    values: [0]
+
+  s_js_weight:
+    #values: [0.01, 0.1, 1.0]
+    values: [0.01, 1.0]
+    #value: 0.01
+
+  s_cc_weight:
+    #values: [0.01, 0.1, 1.0]
+    values: [0.01, 1.0]
+    #value: 1
+
+  s_cc_offdiag:
+    #values: [0.01, 0.1, 1.0]
+    values: [1.0]
+
+  s_feat_normalize:
+    #values: [0, 1]
+    values: [0, 1]

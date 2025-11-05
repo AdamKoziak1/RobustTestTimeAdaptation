@@ -1,4 +1,6 @@
 from copy import deepcopy
+from typing import Optional, Sequence
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,6 +8,7 @@ import wandb
 from torchvision.models.feature_extraction import create_feature_extractor
 from utils.svd import SVDDrop2D
 from utils.fft import FFTDrop2D
+from utils.safer_aug import SAFERAugmenter
 
 @torch.jit.script
 def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
@@ -797,3 +800,183 @@ class TTA3(nn.Module):
             with torch.no_grad():
                 self._ema_update_teacher()
         return logits_s
+
+
+def _js_divergence(probs: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    """
+    Jensen–Shannon divergence across augmentation views.
+
+    Args:
+        probs: tensor with shape (B, V, K) containing per-view class probabilities.
+    """
+    mean_prob = probs.mean(dim=1)
+    log_prob = torch.log(probs.clamp_min(eps))
+    entropy_each = -(probs * log_prob).sum(dim=-1)
+    entropy_mean = -(mean_prob * torch.log(mean_prob.clamp_min(eps))).sum(dim=-1)
+    js = entropy_mean - entropy_each.mean(dim=1)
+    return js.mean()
+
+
+def _barlow_twins_loss(
+    features: torch.Tensor,
+    offdiag_weight: float = 1.0,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Barlow Twins style feature cross-correlation penalty.
+
+    Args:
+        features: tensor with shape (B, V, D) where V is the number of views.
+    """
+    bsz, num_views, dim = features.shape
+    if num_views < 2:
+        return torch.tensor(0.0, device=features.device)
+
+    loss = torch.tensor(0.0, device=features.device)
+    pairs = 0
+    for i in range(num_views):
+        zi = features[:, i]
+        zi = (zi - zi.mean(dim=0)) / (zi.std(dim=0) + eps)
+        for j in range(i + 1, num_views):
+            zj = features[:, j]
+            zj = (zj - zj.mean(dim=0)) / (zj.std(dim=0) + eps)
+            cross = torch.matmul(zi.t(), zj) / float(bsz)
+            diag = torch.diagonal(cross)
+            off = cross - torch.diag(diag)
+            loss = loss + ((1.0 - diag) ** 2).sum() + offdiag_weight * (off ** 2).sum()
+            pairs += 1
+    if pairs == 0:
+        return torch.tensor(0.0, device=features.device)
+    return loss / pairs
+
+
+class SAFER(nn.Module):
+    """
+    SAFER: Self-Averaged Fourier-Enhanced Robust adaptation.
+
+    Generates multiple stochastic augmentation views per input and minimises
+    cross-view inconsistency via JS divergence and Barlow Twins penalties.
+    """
+
+    def __init__(
+        self,
+        model,
+        optimizer,
+        steps: int = 1,
+        episodic: bool = False,
+        num_aug_views: int = 4,
+        include_original: bool = True,
+        aug_prob: float = 0.7,
+        aug_max_ops: Optional[int] = 4,
+        augmentations: Optional[Sequence[str]] = None,
+        js_weight: float = 1.0,
+        cc_weight: float = 1.0,
+        offdiag_weight: float = 1.0,
+        feature_normalize: bool = False,
+        aug_seed: Optional[int] = None,
+    ):
+        super().__init__()
+        assert steps > 0, "SAFER requires at least one update step"
+        assert num_aug_views >= 0, "num_aug_views must be ≥ 0"
+        if not include_original and num_aug_views == 0:
+            raise ValueError("Need at least one view (original or augmented).")
+
+        self.model = model
+        self.classifier = model.classifier
+        self.featurizer = model.featurizer
+        self.optimizer = optimizer
+        self.steps = steps
+        self.episodic = episodic
+        self.include_original = include_original
+        self.num_aug_views = num_aug_views
+        self.js_weight = js_weight
+        self.cc_weight = cc_weight
+        self.offdiag_weight = offdiag_weight
+        self.feature_normalize = feature_normalize
+
+        aug_views = max(1, num_aug_views)
+        self.augmenter = SAFERAugmenter(
+            num_views=aug_views,
+            augmentations=augmentations,
+            max_ops=aug_max_ops,
+            prob=aug_prob,
+            seed=aug_seed,
+        )
+
+        if self.episodic:
+            self.model_state, self.optimizer_state = copy_model_and_optimizer(
+                self.model, self.optimizer
+            )
+        else:
+            self.model_state, self.optimizer_state = None, None
+
+    def reset(self):
+        if self.model_state is None or self.optimizer_state is None:
+            raise Exception("Cannot reset without stored state.")
+        load_model_and_optimizer(self.model, self.optimizer, self.model_state, self.optimizer_state)
+
+    def forward(self, x):
+        if self.episodic:
+            self.reset()
+
+        outputs = None
+        for _ in range(self.steps):
+            outputs = self.forward_and_adapt(x, self.model, self.optimizer)
+        return outputs
+
+    def _build_views(self, x: torch.Tensor) -> torch.Tensor:
+        views: list[torch.Tensor] = []
+        if self.include_original:
+            views.append(x.unsqueeze(1))
+
+        if self.num_aug_views > 0:
+            aug = self.augmenter.augment(x.detach(), num_views=self.num_aug_views)
+            views.append(aug)
+
+        if not views:
+            raise RuntimeError("SAFER could not construct any views.")
+        return torch.cat(views, dim=1)
+
+    def forward_and_adapt(self, x, model, optimizer):
+        batch_views = self._build_views(x)
+        bsz, total_views, c, h, w = batch_views.shape
+        flat_input = batch_views.view(bsz * total_views, c, h, w)
+
+        feats = model.featurizer(flat_input)
+        if feats.dim() > 2:
+            feats_flat = torch.flatten(feats, start_dim=1)
+        else:
+            feats_flat = feats
+
+        logits = model.classifier(feats_flat)
+        logits = logits.view(bsz, total_views, -1)
+        feats_bt = feats_flat.view(bsz, total_views, -1)
+
+        if self.feature_normalize:
+            feats_bt = F.normalize(feats_bt, dim=-1)
+
+        probs = F.softmax(logits, dim=-1)
+        js_loss = _js_divergence(probs) if self.js_weight > 1e-8 else torch.tensor(
+            0.0, device=logits.device
+        )
+        cc_loss = (
+            _barlow_twins_loss(feats_bt, self.offdiag_weight)
+            if self.cc_weight > 1e-8
+            else torch.tensor(0.0, device=logits.device)
+        )
+
+        loss = (self.js_weight * js_loss) + (self.cc_weight * cc_loss)
+        wandb.log(
+            {
+                "SAFER/Loss": loss.item(),
+                "SAFER/L_js": js_loss.item(),
+                "SAFER/L_cc": cc_loss.item(),
+            }
+        )
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        mean_prob = probs.mean(dim=1)
+        return mean_prob

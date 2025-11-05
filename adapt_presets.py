@@ -37,6 +37,17 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "x_lr": 0.0001,
         "x_steps": 3,
     },
+    "SAFER": {
+        "lr": 5e-4,
+        "s_num_views": 4,
+        "s_aug_prob": 0.7,
+        "s_aug_max_ops": 4,
+        "s_js_weight": 1.0,
+        "s_cc_weight": 1.0,
+        "s_cc_offdiag": 0.01,
+        "s_include_original": 1,
+        "update_param": "tent",
+    },
 }
 
 

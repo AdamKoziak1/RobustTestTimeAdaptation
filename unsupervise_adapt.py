@@ -16,7 +16,7 @@ from utils.util import set_random_seed, Tee, img_param_init, print_environ, load
 from utils.svd import SVDDrop2D, SVDLoader
 from utils.fft import FFTDrop2D, FFTLoader
 from adapt_algorithm import collect_params, configure_model
-from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3
+from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3, SAFER
 from datautil.attacked_imagefolder import AttackedImageFolder
 import statistics
 from peft import LoraConfig, get_peft_model
@@ -54,7 +54,7 @@ def get_args():
     parser.add_argument("--net",type=str,default="resnet18",help="featurizer: vgg16, resnet18,resnet50, resnet101,DTNBase,ViT-B16,resnext50",)
     parser.add_argument("--test_envs", type=int, nargs="+", default=[0], help="target domains")
     parser.add_argument("--output", type=str, default="./tta_output", help="result output path")
-    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3]",)
+    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3,SAFER]",)
     parser.add_argument("--beta", type=float, default=0.9, help="threshold for pseudo label(PL)")
     parser.add_argument("--episodic", action="store_true", help="is episodic or not,default:False")
     parser.add_argument("--steps", type=int, default=1, help="steps of test time, default:1")
@@ -73,6 +73,18 @@ def get_args():
     parser.add_argument("--lam_pl", type=float, default=0.0, help="Coefficient for PsuedoLabel Loss")
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
     parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, help="Which ResNet block to start consistency-regularization at (0=layer1, …, 3=layer4).")
+
+    # SAFER
+    parser.add_argument("--s_num_views", type=int, default=4, help="Number of augmented SAFER views per input.")
+    parser.add_argument("--s_include_original", type=int, default=1, choices=[0,1], help="Include original sample as one of the SAFER views (1 enables).")
+    parser.add_argument("--s_aug_prob", type=float, default=0.7, help="Probability of sampling each augmentation in the SAFER pipeline.")
+    parser.add_argument("--s_aug_max_ops", type=int, default=4, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
+    parser.add_argument("--s_aug_list", type=str, nargs="+", default=None, help="Optional custom list of SAFER augmentations to sample from.")
+    parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
+    parser.add_argument("--s_cc_weight", type=float, default=1.0, help="Weight for SAFER cross-correlation loss.")
+    parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
+    parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
+    parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
 
     parser.add_argument("--attack", choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100", "linf_eps-8.0_steps-20_rho-0.3_a-1.0"], default="linf_eps-8.0_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
@@ -110,7 +122,7 @@ def get_args():
     parser.add_argument('--ema', type=float, default=0.99, help='EMA coefficient for student-teacher distillation')
     parser.add_argument('--x_lr', type=float, default=0.1, help='learning rate for x_tilde update')
     parser.add_argument('--x_steps', type=int, default=3, help='number of steps for x_tilde update')
-    parser.add_argument('--disable_preset_hparams', type=int, default=0, choices=[0,1], help='Disable auto-selection of preset hyperparameters based on adapt_alg.')
+    parser.add_argument('--disable_preset_hparams', type=int, default=1, choices=[0,1], help='Disable auto-selection of preset hyperparameters based on adapt_alg.')
 
     
     args = parser.parse_args()
@@ -130,6 +142,13 @@ def get_args():
     args.fft_input_learn_alpha = bool(args.fft_input_learn_alpha)
     args.fft_feat_use_residual = bool(args.fft_feat_use_residual)
     args.fft_feat_learn_alpha = bool(args.fft_feat_learn_alpha)
+
+    args.s_include_original = bool(args.s_include_original)
+    args.s_feat_normalize = bool(args.s_feat_normalize)
+    if args.s_aug_max_ops is not None and args.s_aug_max_ops <= 0:
+        args.s_aug_max_ops = None
+    if args.s_aug_seed is not None and args.s_aug_seed < 0:
+        args.s_aug_seed = None
 
     assert args.filter_K in [1,5,20,50,100,-1], "filter_K must be in [1,5,20,50,100,-1]"
     assert 0.0 <= args.svd_input_rank_ratio <= 1.0, "svd_input_rank_ratio must be in [0,1]"
@@ -171,6 +190,17 @@ def log_args(args, time_taken_s):
         # "x_lr": args.x_lr,
         # "x_steps": args.x_steps
     })
+    if args.adapt_alg == "SAFER":
+        wandb.log({
+            "s_num_views": args.s_num_views,
+            "s_include_original": args.s_include_original,
+            "s_aug_prob": args.s_aug_prob,
+            "s_aug_max_ops": -1 if args.s_aug_max_ops is None else args.s_aug_max_ops,
+            "s_js_weight": args.s_js_weight,
+            "s_cc_weight": args.s_cc_weight,
+            "s_cc_offdiag": args.s_cc_offdiag,
+            "s_feat_normalize": args.s_feat_normalize,
+        }, commit=False)
 
 def adapt_loader(args):
     test_envs = args.test_envs[0]
@@ -387,6 +417,53 @@ def make_adapt_model(args, algorithm):
             x_lr=args.x_lr,
             x_steps=args.x_steps
         )
+    elif args.adapt_alg == "SAFER":
+        if args.update_param == "all":
+            optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
+            sum_params = sum([p.nelement() for p in algorithm.parameters()])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "affine":
+            algorithm.train()
+            algorithm.requires_grad_(False)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            for m in algorithm.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.requires_grad_(True)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "tent":
+            algorithm = configure_model(algorithm)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "body":
+            optimizer = torch.optim.Adam(algorithm.featurizer.parameters(), lr=args.lr)
+            print("Update encoder")
+        elif args.update_param == "head":
+            optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
+            print("Update classifier")
+        else:
+            raise Exception("Do not support update with %s manner." % args.update_param)
+
+        augment_list = args.s_aug_list if args.s_aug_list else None
+        adapt_model = SAFER(
+            algorithm,
+            optimizer,
+            steps=args.steps,
+            episodic=args.episodic,
+            num_aug_views=args.s_num_views,
+            include_original=args.s_include_original,
+            aug_prob=args.s_aug_prob,
+            aug_max_ops=args.s_aug_max_ops,
+            augmentations=augment_list,
+            js_weight=args.s_js_weight,
+            cc_weight=args.s_cc_weight,
+            offdiag_weight=args.s_cc_offdiag,
+            feature_normalize=args.s_feat_normalize,
+            aug_seed=args.s_aug_seed,
+        )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
     return adapt_model.cuda()
@@ -441,6 +518,15 @@ if __name__ == "__main__":
             cr_modifier = f"-{args.cr_type}"
         #run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lam_flat}-{args.lam_adv}-{args.lam_cr}{cr_modifier}_rate-{args.attack_rate}"
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-fftin-k{args.fft_input_keep_ratio}-a{args.fft_input_alpha}-feat-k{args.fft_feat_keep_ratio}-a{args.fft_feat_alpha}-l{args.fft_feat_max_layer}_rate-{args.attack_rate}"
+    elif args.adapt_alg == "SAFER":
+        run_name = (
+            f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}"
+            f"-v{args.s_num_views}"
+            f"-p{args.s_aug_prob:.2f}"
+            f"-js{args.s_js_weight:.2f}"
+            f"-cc{args.s_cc_weight:.2f}"
+            f"_rate-{args.attack_rate}"
+        )
 
     wandb.init(
         project="fft_runs",

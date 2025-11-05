@@ -4,6 +4,7 @@ Train per‑domain model, create ℓp‑bounded PGD images,
 save *one tensor per image*  (clean & adv)  and print accuracy each epoch.
 """
 import argparse, os
+from typing import Optional
 from tqdm import tqdm
 import torch, torch.nn as nn
 
@@ -14,6 +15,7 @@ import torch.nn.functional as F
 
 from utils.util import set_random_seed, img_param_init, print_environ, img_param_init, get_config_id
 from utils.fft import FFTDrop2D
+from utils.safer_aug import SAFERAugmenter
 import wandb
 
 def get_args_adv():
@@ -73,6 +75,19 @@ def get_args_adv():
                         help="Frequency keep ratio for FFT input transform (1.0 disables).")
     parser.add_argument("--fft_alpha", type=float, default=1.0,
                         help="Residual mixing weight for FFT attack transform.")
+    parser.add_argument("--attack_variant", type=str, default="baseline",
+                        choices=["baseline", "random_aug", "worst_aug", "easy_aug"],
+                        help="Strategy for adversarial example generation with augmentations.")
+    parser.add_argument("--attack_aug_views", type=int, default=4,
+                        help="Number of augmentation candidates to evaluate for worst-case attacks.")
+    parser.add_argument("--attack_aug_prob", type=float, default=0.7,
+                        help="Per-augmentation application probability in attack pipelines.")
+    parser.add_argument("--attack_aug_max_ops", type=int, default=3,
+                        help="Max operations per attack pipeline (0 disables the cap).")
+    parser.add_argument("--attack_aug_seed", type=int, default=-1,
+                        help="Random seed for attack augmentation sampling (-1 disables).")
+    parser.add_argument("--attack_aug_list", type=str, nargs="+", default=None,
+                        help="Custom augmentation set for attack pipelines.")
 
     args = parser.parse_args()
     args.steps_per_epoch = 100
@@ -80,6 +95,10 @@ def get_args_adv():
     args.data_dir = os.path.join(args.data_file, args.data_dir, args.dataset)
 
     args = img_param_init(args)
+    if args.attack_aug_max_ops is not None and args.attack_aug_max_ops <= 0:
+        args.attack_aug_max_ops = None
+    if args.attack_aug_seed is not None and args.attack_aug_seed < 0:
+        args.attack_aug_seed = None
     assert 0.0 <= args.fft_rho <= 1.0, "fft_rho must be in [0, 1]"
     print_environ()
     return args
@@ -98,7 +117,85 @@ def _project_l2(x0, x, eps):
     delta = (flat * scale).view_as(delta)
     return (x0 + delta).clamp(0.0, 1.0)
 
-def pgd(model, x_pix, y, eps, alpha, steps, n_classes, norm="linf", input_transform=None):
+def _apply_pipeline_batch(augmenter: SAFERAugmenter, x: torch.Tensor, pipeline):
+    return torch.stack([augmenter.apply_pipeline(x[i], pipeline) for i in range(x.size(0))], dim=0)
+
+
+def _attack_forward(
+    model,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    input_transform,
+    variant: str,
+    augmenter: Optional[SAFERAugmenter],
+    candidates: int,
+):
+    def _transform(input_tensor: torch.Tensor) -> torch.Tensor:
+        return input_transform(input_tensor) if input_transform is not None else input_tensor
+
+    if variant == "baseline" or augmenter is None:
+        x_in = _transform(x)
+        logits = model.predict(x_in)
+        loss = F.cross_entropy(logits, y)
+        return logits, loss
+
+    if variant == "random_aug":
+        pipeline = augmenter.sample_pipelines(num_views=1)[0]
+        aug = _apply_pipeline_batch(augmenter, x, pipeline)
+        x_in = _transform(aug)
+        logits = model.predict(x_in)
+        loss = F.cross_entropy(logits, y)
+        return logits, loss
+
+    if variant == "easy_aug":
+        sampled = augmenter.sample_pipelines(num_views=1)[0]
+        pipeline = sampled[:1]
+        if pipeline:
+            aug = _apply_pipeline_batch(augmenter, x, pipeline)
+        else:
+            aug = x
+        x_in = _transform(aug)
+        logits = model.predict(x_in)
+        loss = F.cross_entropy(logits, y)
+        return logits, loss
+
+    if variant == "worst_aug":
+        num_candidates = max(1, candidates)
+        pipelines = augmenter.sample_pipelines(num_views=num_candidates)
+        best_pipeline = []
+        best_val = None
+        for pipeline in pipelines:
+            aug = _apply_pipeline_batch(augmenter, x, pipeline)
+            x_in = _transform(aug)
+            with torch.no_grad():
+                logits = model.predict(x_in)
+                loss_val = F.cross_entropy(logits, y)
+            if best_val is None or loss_val.item() > best_val:
+                best_val = loss_val.item()
+                best_pipeline = pipeline
+        aug = _apply_pipeline_batch(augmenter, x, best_pipeline)
+        x_in = _transform(aug)
+        logits = model.predict(x_in)
+        loss = F.cross_entropy(logits, y)
+        return logits, loss
+
+    raise ValueError(f"Unknown attack_variant: {variant}")
+
+
+def pgd(
+    model,
+    x_pix,
+    y,
+    eps,
+    alpha,
+    steps,
+    n_classes,
+    norm="linf",
+    input_transform=None,
+    attack_variant: str = "baseline",
+    attack_augmenter: Optional[SAFERAugmenter] = None,
+    attack_views: int = 1,
+):
     """
     x_pix: pixel input in [0,1]
     eps, alpha: pixel units (e.g., 8/255, 2/255)
@@ -123,9 +220,15 @@ def pgd(model, x_pix, y, eps, alpha, steps, n_classes, norm="linf", input_transf
 
     for _ in range(steps):
         x.requires_grad_(True)
-        x_in = input_transform(x) if input_transform is not None else x
-        logits = model.predict(x_in)  # <-- model handles standardization
-        loss = F.cross_entropy(logits, y)
+        logits, loss = _attack_forward(
+            model,
+            x,
+            y,
+            input_transform,
+            attack_variant,
+            attack_augmenter,
+            attack_views,
+        )
         (g,) = torch.autograd.grad(loss, x, only_inputs=True)
 
         #preds = logits.argmax(1)
@@ -146,6 +249,16 @@ def pgd(model, x_pix, y, eps, alpha, steps, n_classes, norm="linf", input_transf
 if __name__ == "__main__":
     args = get_args_adv()
     set_random_seed(args.seed)
+
+    attack_augmenter = None
+    if args.attack_variant != "baseline":
+        attack_augmenter = SAFERAugmenter(
+            num_views=max(1, args.attack_aug_views),
+            augmentations=args.attack_aug_list,
+            max_ops=args.attack_aug_max_ops,
+            prob=args.attack_aug_prob,
+            seed=args.attack_aug_seed,
+        )
     
     wandb.init(
         project="tta3_train_attack",         # ← change to your project
@@ -243,6 +356,9 @@ if __name__ == "__main__":
             n_classes,
             args.attack,
             input_transform=attack_transform,
+            attack_variant=args.attack_variant,
+            attack_augmenter=attack_augmenter,
+            attack_views=args.attack_aug_views,
         )
 
         adv_cursor = 0                   # points into img_adv
