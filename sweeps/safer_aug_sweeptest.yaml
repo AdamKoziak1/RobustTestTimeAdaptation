@@ -1,7 +1,7 @@
 program: unsupervised_adapt_dataset.py
 project: safer_runs2
 #name: safer_aug_grid_baselines
-name: safer_eachaugmentation
+name: safer_allaugmentations_refined
 method: grid
 metric:
   name: acc_mean
@@ -22,57 +22,58 @@ parameters:
 
 
   s_num_views:
-    values: [2]
+    #values: [2]
     #values: [2, 3]
-    #values: [2, 3, 4, 5]
+    values: [3, 5]
 
   s_include_original:
     values: [1]
 
   s_aug_prob:
     values: [1]
-    #values: [0.5, 0.8]
 
-  s_aug_list:
-    values: [
-            "gaussian_blur",
-            "gaussian_noise",
-            "fft_low_pass",
-            "fft_high_pass",
-            "autocontrast",
-            "equalize",
-            "invert",
-            "solarize",
-            "posterize",
-            "contrast",
-            "brightness",
-            "color",
-            "sharpness",
-            "shear_x",
-            "shear_y",
-            "translate_x",
-            "translate_y",
-            "rotate",
-        ]
+  # s_aug_list:
+  #   values: [
+  #           "gaussian_blur",
+  #           "gaussian_noise",
+  #           "fft_low_pass",
+  #           "fft_high_pass",
+  #           "equalize",
+  #           "invert",
+  #           "solarize",
+  #           "posterize",
+  #           "contrast",
+  #           "brightness",
+  #           "saturation",
+  #           "sharpness",
+  #           "shear_x",
+  #           "shear_y",
+  #           "translate_x",
+  #           "translate_y",
+  #           "rotate",
+  #       ]
 
   s_aug_max_ops:
     #values: [0, 2]
-    values: [0]
+    values: [1, 2, 4]
 
   s_js_weight:
-    #values: [0.01, 0.1, 1.0]
-    values: [0.01, 1.0]
+    values: [1.0]
+    #values: [0.01, 1.0]
     #value: 0.01
 
   s_cc_weight:
-    #values: [0.01, 0.1, 1.0]
-    values: [0.01, 1.0]
+    values: [0.01, 0.1]
+    #values: [0.01, 1.0]
     #value: 1
 
   s_cc_offdiag:
-    #values: [0.01, 0.1, 1.0]
-    values: [1.0]
+    values: [0.001, 0.01]
+    #values: [0.01]
 
   s_feat_normalize:
     #values: [0, 1]
-    values: [0, 1]
+    values: [0]
+
+  steps:
+    values: [1,3]

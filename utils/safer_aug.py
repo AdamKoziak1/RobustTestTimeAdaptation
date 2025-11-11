@@ -118,8 +118,8 @@ def _build_registry() -> Dict[str, _OpSpec]:
     return {
         "gaussian_blur": _OpSpec(
             sample_params=lambda rng: {
-                "kernel_size": int(rng.choice([3, 5, 7])),
-                "sigma": _sample_uniform(rng, 0.1, 2.0),
+                "kernel_size": int(rng.choice([7,9])),
+                "sigma": _sample_uniform(rng, 0.1, 2.5),
             },
             apply=lambda x, p: TF.gaussian_blur(
                 x,
@@ -136,12 +136,8 @@ def _build_registry() -> Dict[str, _OpSpec]:
             apply=lambda x, p: _fft_low_pass(x, p["keep_ratio"]),
         ),
         "fft_high_pass": _OpSpec(
-            sample_params=lambda rng: {"keep_ratio": _sample_uniform(rng, 0.3, 0.6)},
+            sample_params=lambda rng: {"keep_ratio": _sample_uniform(rng, 0.01, 0.1)},
             apply=lambda x, p: _fft_high_pass(x, p["keep_ratio"]),
-        ),
-        "autocontrast": _OpSpec(
-            sample_params=lambda _: {},
-            apply=lambda x, _: _auto_contrast(x),
         ),
         "equalize": _OpSpec(
             sample_params=lambda _: {},
@@ -160,19 +156,19 @@ def _build_registry() -> Dict[str, _OpSpec]:
             apply=lambda x, p: _posterize(x, p["bits"]),
         ),
         "contrast": _OpSpec(
-            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0.6, 1.4)},
+            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0.4, 1.6)},
             apply=lambda x, p: TF.adjust_contrast(x, p["factor"]),
         ),
         "brightness": _OpSpec(
-            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0.6, 1.4)},
+            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0.4, 1.6)},
             apply=lambda x, p: TF.adjust_brightness(x, p["factor"]),
         ),
-        "color": _OpSpec(
-            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0.6, 1.4)},
+        "saturation": _OpSpec(
+            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0.4, 1.6)},
             apply=lambda x, p: TF.adjust_saturation(x, p["factor"]),
         ),
         "sharpness": _OpSpec(
-            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0.6, 1.4)},
+            sample_params=lambda rng: {"factor": _sample_uniform(rng, 0, 10.0)},
             apply=lambda x, p: TF.adjust_sharpness(x, p["factor"]),
         ),
         "shear_x": _OpSpec(
@@ -246,14 +242,13 @@ class SAFERAugmenter:
             "gaussian_noise",
             "fft_low_pass",
             #"fft_high_pass",
-            "autocontrast",
             "equalize",
             "invert",
             "solarize",
             "posterize",
             "contrast",
             "brightness",
-            "color",
+            "saturation",
             "sharpness",
             "shear_x",
             "shear_y",
