@@ -58,11 +58,6 @@ def _fft_low_pass(x: Tensor, keep_ratio: float) -> Tensor:
     filtered = torch.fft.ifftshift(filtered_shifted, dim=(-2, -1))
     return torch.fft.ifft2(filtered, dim=(-2, -1), norm="ortho").real
 
-
-def _fft_high_pass(x: Tensor, keep_ratio: float) -> Tensor:
-    return (x - _fft_low_pass(x, keep_ratio)).clamp_(0.0, 1.0)
-
-
 def _equalize(x: Tensor) -> Tensor:
     c, h, w = x.shape
     out = torch.empty_like(x)
@@ -134,10 +129,6 @@ def _build_registry() -> Dict[str, _OpSpec]:
         "fft_low_pass": _OpSpec(
             sample_params=lambda rng: {"keep_ratio": _sample_uniform(rng, 0.2, 0.7)},
             apply=lambda x, p: _fft_low_pass(x, p["keep_ratio"]),
-        ),
-        "fft_high_pass": _OpSpec(
-            sample_params=lambda rng: {"keep_ratio": _sample_uniform(rng, 0.01, 0.1)},
-            apply=lambda x, p: _fft_high_pass(x, p["keep_ratio"]),
         ),
         "equalize": _OpSpec(
             sample_params=lambda _: {},
@@ -241,7 +232,6 @@ class SAFERAugmenter:
             "gaussian_blur",
             "gaussian_noise",
             "fft_low_pass",
-            #"fft_high_pass",
             "equalize",
             "invert",
             "solarize",

@@ -1,0 +1,53 @@
+program: unsupervise_adapt.py
+project: safer_runs
+name: safer_aug_grid
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    value: "SAFER"
+
+  update_param:
+    values: ["tent"]
+
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+
+  test_envs:
+    values: [0, 1, 2, 3]
+
+  attack:
+    value: "linf_eps-8.0_steps-20"
+
+  attack_rate:
+    values: [0, 50, 100]
+
+  s_num_views:
+    values: [5]
+
+  s_include_original:
+    values: [1]
+
+  s_aug_prob:
+    values: [1]
+
+  s_aug_max_ops:
+    values: [2]
+
+  s_js_weight:
+    value: 1
+
+  s_cc_weight:
+    value: 0.01
+
+  s_cc_offdiag:
+    value: 0.001
+
+  s_feat_normalize:
+    values: [0]
+  
+  steps: 
+    values: [1, 3]

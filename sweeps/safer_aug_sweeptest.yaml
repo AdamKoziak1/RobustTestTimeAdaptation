@@ -68,7 +68,7 @@ parameters:
     #value: 1
 
   s_cc_offdiag:
-    values: [0.001, 0.01]
+    values: [0.0001, 0.001, 0.01]
     #values: [0.01]
 
   s_feat_normalize:
