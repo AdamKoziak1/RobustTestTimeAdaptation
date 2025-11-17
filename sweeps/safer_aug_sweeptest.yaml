@@ -1,7 +1,7 @@
 program: unsupervised_adapt_dataset.py
 project: safer_runs2
 #name: safer_aug_grid_baselines
-name: safer_allaugmentations_refined
+name: safer_allaugmentations_refined_pl_em
 method: grid
 metric:
   name: acc_mean
@@ -55,7 +55,8 @@ parameters:
 
   s_aug_max_ops:
     #values: [0, 2]
-    values: [1, 2, 4]
+    #values: [1, 2, 4]
+    values: [2, 4]
 
   s_js_weight:
     values: [1.0]
@@ -74,6 +75,12 @@ parameters:
   s_feat_normalize:
     #values: [0, 1]
     values: [0]
+
+  s_sup_type:
+    values: ["pl", "em"]
+
+  s_sup_weight:
+    values: [0.01, 0.1, 1.0]
 
   steps:
     values: [1,3]

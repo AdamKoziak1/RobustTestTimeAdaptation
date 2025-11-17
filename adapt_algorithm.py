@@ -850,9 +850,33 @@ def _barlow_twins_loss(
     return loss / pairs
 
 
+def _confidence_weighted_pseudo_label(
+    mean_prob: torch.Tensor,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Confidence-weighted pseudo-label loss over averaged predictions.
+    """
+    conf, pseudo = torch.max(mean_prob, dim=-1)
+    log_prob = torch.log(mean_prob.clamp_min(eps))
+    ce = F.nll_loss(log_prob, pseudo, reduction="none")
+    return (conf * ce).mean()
+
+
+def _entropy_minimization_loss(
+    mean_prob: torch.Tensor,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Entropy minimisation over averaged predictions.
+    """
+    entropy = -(mean_prob * torch.log(mean_prob.clamp_min(eps))).sum(dim=-1)
+    return entropy.mean()
+
+
 class SAFER(nn.Module):
     """
-    SAFER: Self-Averaged Fourier-Enhanced Robust adaptation.
+    SAFER:Stochastically Augmented Feature Ensemble for Robust Test-Time Adaptation.
 
     Generates multiple stochastic augmentation views per input and minimises
     cross-view inconsistency via JS divergence and Barlow Twins penalties.
@@ -874,6 +898,8 @@ class SAFER(nn.Module):
         offdiag_weight: float = 1.0,
         feature_normalize: bool = False,
         aug_seed: Optional[int] = None,
+        sup_mode: str = "none",
+        sup_weight: float = 0.0,
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -893,6 +919,11 @@ class SAFER(nn.Module):
         self.cc_weight = cc_weight
         self.offdiag_weight = offdiag_weight
         self.feature_normalize = feature_normalize
+        sup_mode = sup_mode.lower()
+        if sup_mode not in {"none", "pl", "em"}:
+            raise ValueError(f"Unknown supervision mode: {sup_mode}")
+        self.sup_mode = sup_mode
+        self.sup_weight = sup_weight
 
         aug_views = max(1, num_aug_views)
         self.augmenter = SAFERAugmenter(
@@ -964,13 +995,24 @@ class SAFER(nn.Module):
             if self.cc_weight > 1e-8
             else torch.tensor(0.0, device=logits.device)
         )
+        mean_prob = probs.mean(dim=1)
+        sup_loss = torch.tensor(0.0, device=logits.device)
+        sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
+        if sup_active:
+            if self.sup_mode == "pl":
+                sup_loss = _confidence_weighted_pseudo_label(mean_prob)
+            elif self.sup_mode == "em":
+                sup_loss = _entropy_minimization_loss(mean_prob)
 
-        loss = (self.js_weight * js_loss) + (self.cc_weight * cc_loss)
+        loss = (self.js_weight * js_loss) + (self.cc_weight * cc_loss) + (
+            self.sup_weight * sup_loss
+        )
         wandb.log(
             {
                 "SAFER/Loss": loss.item(),
                 "SAFER/L_js": js_loss.item(),
                 "SAFER/L_cc": cc_loss.item(),
+                "SAFER/L_sup": sup_loss.item(),
             }
         )
 
@@ -978,5 +1020,4 @@ class SAFER(nn.Module):
         loss.backward()
         optimizer.step()
 
-        mean_prob = probs.mean(dim=1)
         return mean_prob

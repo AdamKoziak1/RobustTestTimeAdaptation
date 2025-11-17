@@ -49,3 +49,9 @@ parameters:
 
   s_feat_normalize:
     values: [0, 1]
+
+  s_sup_type:
+    values: ["none", "pl", "em"]
+
+  s_sup_weight:
+    values: [0.0, 0.5]

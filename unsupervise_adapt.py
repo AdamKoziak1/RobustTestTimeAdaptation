@@ -85,6 +85,19 @@ def get_args():
     parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
     parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
+    parser.add_argument(
+        "--s_sup_type",
+        type=str.lower,
+        default="none",
+        choices=["none", "pl", "em"],
+        help="Additional SAFER supervision: none, confidence-weighted pseudo-label (pl), or entropy minimisation (em).",
+    )
+    parser.add_argument(
+        "--s_sup_weight",
+        type=float,
+        default=0.0,
+        help="Weight applied to the SAFER pseudo-label / entropy minimization loss.",
+    )
 
     parser.add_argument("--attack", choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100", "linf_eps-8.0_steps-20_rho-0.3_a-1.0"], default="linf_eps-8.0_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
@@ -145,6 +158,9 @@ def get_args():
 
     args.s_include_original = bool(args.s_include_original)
     args.s_feat_normalize = bool(args.s_feat_normalize)
+    if args.s_sup_type == "none" or args.s_sup_weight <= 0.0:
+        args.s_sup_type = "none"
+        args.s_sup_weight = 0.0
     if args.s_aug_max_ops is not None and args.s_aug_max_ops <= 0:
         args.s_aug_max_ops = None
     if args.s_aug_seed is not None and args.s_aug_seed < 0:
@@ -200,6 +216,8 @@ def log_args(args, time_taken_s):
             "s_cc_weight": args.s_cc_weight,
             "s_cc_offdiag": args.s_cc_offdiag,
             "s_feat_normalize": args.s_feat_normalize,
+            "s_sup_type": args.s_sup_type,
+            "s_sup_weight": args.s_sup_weight,
         }, commit=False)
 
 def adapt_loader(args):
@@ -463,6 +481,8 @@ def make_adapt_model(args, algorithm):
             offdiag_weight=args.s_cc_offdiag,
             feature_normalize=args.s_feat_normalize,
             aug_seed=args.s_aug_seed,
+            sup_mode=args.s_sup_type,
+            sup_weight=args.s_sup_weight,
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
@@ -525,6 +545,10 @@ if __name__ == "__main__":
             f"-p{args.s_aug_prob:.2f}"
             f"-js{args.s_js_weight:.2f}"
             f"-cc{args.s_cc_weight:.2f}"
+        )
+        if args.s_sup_type != "none" and args.s_sup_weight > 0:
+            run_name += f"-{args.s_sup_type}{args.s_sup_weight:.2f}"
+        run_name += (
             f"_rate-{args.attack_rate}"
         )
 
