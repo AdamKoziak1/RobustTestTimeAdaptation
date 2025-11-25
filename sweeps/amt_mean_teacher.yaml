@@ -1,0 +1,59 @@
+program: unsupervise_adapt.py
+project: safer_runs3
+name: amt_mean_teacher_1step
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    value: "AMTDC"
+
+  update_param:
+    value: "tent"
+
+  dataset:
+    values: ["PACS"]
+
+  test_envs:
+    values: [0, 1, 2, 3]
+
+  attack:
+    value: "linf_eps-8.0_steps-20"
+
+  attack_rate:
+    values: [0, 50, 100]
+
+  lr:
+    values: [0.0001]
+
+  steps:
+    values: [1]
+
+  mt_alpha:
+    values: [0.01]
+
+  mt_gamma:
+    values: [0.90]
+
+  mt_gamma_y:
+    values: [0.7]
+
+  mt_kl_weight:
+    values: [0.1]
+
+  mt_ce_weight:
+    values: [1.0]
+
+  mt_ent_weight:
+    values: [0.2]
+
+  mt_mixup_weight:
+    values: [0.0]
+
+  mt_mixup_beta:
+    values: [0.7]
+
+  mt_use_teacher_pred:
+    values: [1]

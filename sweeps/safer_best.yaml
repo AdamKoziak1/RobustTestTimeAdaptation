@@ -1,0 +1,92 @@
+program: unsupervise_adapt.py
+project: safer_runs3
+#name: safer_aug_grid_baselines
+name: safer_allaugmentations_refined_pl_em_3step
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    value: "SAFER"
+
+  update_param:
+    value: "tent"
+
+  attack:
+    value: "linf_eps-8.0_steps-20"
+
+
+  dataset:
+    values: ["PACS"]
+
+  test_envs:
+    values: [0,1,2,3]
+    
+  attack_rate:
+    values: [0, 50, 100]
+
+  s_num_views:
+    #values: [2]
+    #values: [2, 3]
+    values: [5]
+
+  s_include_original:
+    values: [1]
+
+  s_aug_prob:
+    values: [1]
+
+  # s_aug_list:
+  #   values: [
+  #           "gaussian_blur",
+  #           "gaussian_noise",
+  #           "fft_low_pass",
+  #           "fft_high_pass",
+  #           "equalize",
+  #           "invert",
+  #           "solarize",
+  #           "posterize",
+  #           "contrast",
+  #           "brightness",
+  #           "saturation",
+  #           "sharpness",
+  #           "shear_x",
+  #           "shear_y",
+  #           "translate_x",
+  #           "translate_y",
+  #           "rotate",
+  #       ]
+
+  s_aug_max_ops:
+    #values: [0, 2]
+    #values: [1, 2, 4]
+    values: [2]
+
+  s_js_weight:
+    values: [1.0]
+    #values: [0.01, 1.0]
+    #value: 0.01
+
+  s_cc_weight:
+    values: [0.1]
+    #values: [0.01, 1.0]
+    #value: 1
+
+  s_cc_offdiag:
+    values: [0.001]
+    #values: [0.01]
+
+  s_feat_normalize:
+    #values: [0, 1]
+    values: [0]
+
+  s_sup_type:
+    values: ["em"]
+
+  s_sup_weight:
+    values: [0.1]
+
+  steps:
+    values: [3]
