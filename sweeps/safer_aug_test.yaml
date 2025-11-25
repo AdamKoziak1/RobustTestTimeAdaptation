@@ -11,10 +11,10 @@ parameters:
     value: "SAFER"
 
   update_param:
-    values: ["tent", "all"]
+    values: ["tent"]
 
   dataset:
-    values: ["PACS"]
+    values: ["PACS", "VLCS", "office-home"]
 
   test_envs:
     values: [0, 1, 2, 3]
@@ -23,35 +23,37 @@ parameters:
     value: "linf_eps-8.0_steps-20"
 
   attack_rate:
-    values: [0, 100]
-
+    values: [0, 50, 100]
 
   s_num_views:
-    values: [2, 3, 4, 5]
+    values: [5]
 
   s_include_original:
     values: [1]
 
   s_aug_prob:
-    values: [0.5, 0.8]
+    values: [1]
 
   s_aug_max_ops:
-    values: [3, 4]
+    values: [2]
 
   s_js_weight:
-    values: [0, 0.5, 1.0]
+    value: 1
 
   s_cc_weight:
-    values: [0, 0.5, 1.0]
-
-  s_cc_offdiag:
     value: 0.01
 
-  s_feat_normalize:
-    values: [0, 1]
+  s_cc_offdiag:
+    value: 0.001
 
+  s_feat_normalize:
+    values: [0]
+  
   s_sup_type:
     values: ["none", "pl", "em"]
 
   s_sup_weight:
     values: [0.0, 0.5]
+
+  steps: 
+    values: [1, 3]

@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from torchvision.models.feature_extraction import create_feature_extractor
+from torch.distributions import Beta
 from utils.svd import SVDDrop2D
 from utils.fft import FFTDrop2D
 from utils.safer_aug import SAFERAugmenter
@@ -850,9 +851,33 @@ def _barlow_twins_loss(
     return loss / pairs
 
 
+def _confidence_weighted_pseudo_label(
+    mean_prob: torch.Tensor,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Confidence-weighted pseudo-label loss over averaged predictions.
+    """
+    conf, pseudo = torch.max(mean_prob, dim=-1)
+    log_prob = torch.log(mean_prob.clamp_min(eps))
+    ce = F.nll_loss(log_prob, pseudo, reduction="none")
+    return (conf * ce).mean()
+
+
+def _entropy_minimization_loss(
+    mean_prob: torch.Tensor,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Entropy minimisation over averaged predictions.
+    """
+    entropy = -(mean_prob * torch.log(mean_prob.clamp_min(eps))).sum(dim=-1)
+    return entropy.mean()
+
+
 class SAFER(nn.Module):
     """
-    SAFER: Self-Averaged Fourier-Enhanced Robust adaptation.
+    SAFER:Stochastically Augmented Feature Ensemble for Robust Test-Time Adaptation.
 
     Generates multiple stochastic augmentation views per input and minimises
     cross-view inconsistency via JS divergence and Barlow Twins penalties.
@@ -874,6 +899,8 @@ class SAFER(nn.Module):
         offdiag_weight: float = 1.0,
         feature_normalize: bool = False,
         aug_seed: Optional[int] = None,
+        sup_mode: str = "none",
+        sup_weight: float = 0.0,
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -893,6 +920,11 @@ class SAFER(nn.Module):
         self.cc_weight = cc_weight
         self.offdiag_weight = offdiag_weight
         self.feature_normalize = feature_normalize
+        sup_mode = sup_mode.lower()
+        if sup_mode not in {"none", "pl", "em"}:
+            raise ValueError(f"Unknown supervision mode: {sup_mode}")
+        self.sup_mode = sup_mode
+        self.sup_weight = sup_weight
 
         aug_views = max(1, num_aug_views)
         self.augmenter = SAFERAugmenter(
@@ -964,13 +996,24 @@ class SAFER(nn.Module):
             if self.cc_weight > 1e-8
             else torch.tensor(0.0, device=logits.device)
         )
+        mean_prob = probs.mean(dim=1)
+        sup_loss = torch.tensor(0.0, device=logits.device)
+        sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
+        if sup_active:
+            if self.sup_mode == "pl":
+                sup_loss = _confidence_weighted_pseudo_label(mean_prob)
+            elif self.sup_mode == "em":
+                sup_loss = _entropy_minimization_loss(mean_prob)
 
-        loss = (self.js_weight * js_loss) + (self.cc_weight * cc_loss)
+        loss = (self.js_weight * js_loss) + (self.cc_weight * cc_loss) + (
+            self.sup_weight * sup_loss
+        )
         wandb.log(
             {
                 "SAFER/Loss": loss.item(),
                 "SAFER/L_js": js_loss.item(),
                 "SAFER/L_cc": cc_loss.item(),
+                "SAFER/L_sup": sup_loss.item(),
             }
         )
 
@@ -978,5 +1021,188 @@ class SAFER(nn.Module):
         loss.backward()
         optimizer.step()
 
-        mean_prob = probs.mean(dim=1)
         return mean_prob
+
+
+class MeanTeacherCorrection(nn.Module):
+    """
+    Adaptive mean-teacher with data correction and optional mixup regularisation.
+    """
+
+    def __init__(
+        self,
+        model,
+        optimizer,
+        steps: int = 1,
+        episodic: bool = False,
+        correction_alpha: float = 0.02,
+        teacher_momentum: float = 0.99,
+        pseudo_momentum: float = 0.5,
+        kl_weight: float = 0.1,
+        ce_weight: float = 1.0,
+        ent_weight: float = 0.0,
+        mixup_weight: float = 0.0,
+        mixup_beta: float = 0.5,
+        use_teacher_prediction: bool = True,
+    ):
+        super().__init__()
+        assert steps > 0, "MeanTeacherCorrection requires ≥ 1 update step."
+        self.model = model
+        self.optimizer = optimizer
+        self.steps = steps
+        self.episodic = episodic
+        self.correction_alpha = correction_alpha
+        self.teacher_momentum = teacher_momentum
+        self.pseudo_momentum = pseudo_momentum
+        self.kl_weight = kl_weight
+        self.ce_weight = ce_weight
+        self.ent_weight = ent_weight
+        self.mixup_weight = mixup_weight
+        self.mixup_beta = mixup_beta
+        self.use_teacher_prediction = use_teacher_prediction
+
+        self.teacher = deepcopy(self.model).eval()
+        self.teacher.requires_grad_(False)
+        for m in self.teacher.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.track_running_stats = False
+                m.running_mean = None
+                m.running_var = None
+
+        if self.episodic:
+            self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
+            self.teacher_state = deepcopy(self.teacher.state_dict())
+        else:
+            self.model_state = None
+            self.optimizer_state = None
+            self.teacher_state = None
+
+    def reset(self):
+        if any(state is None for state in (self.model_state, self.optimizer_state, self.teacher_state)):
+            raise Exception("Cannot reset without stored states.")
+        load_model_and_optimizer(self.model, self.optimizer, self.model_state, self.optimizer_state)
+        self.teacher.load_state_dict(self.teacher_state, strict=True)
+
+    def forward(self, x):
+        if self.episodic:
+            self.reset()
+
+        for _ in range(self.steps):
+            self.forward_and_adapt(x, self.model, self.optimizer)
+        return self._predict_outputs(x)
+
+    def _predict_outputs(self, x: torch.Tensor) -> torch.Tensor:
+        if self.use_teacher_prediction:
+            return self.teacher.predict(x)
+        return self.model.predict(x)
+
+    def _ema_update_teacher(self):
+        if self.teacher is None:
+            return
+        with torch.no_grad():
+            for t_param, s_param in zip(self.teacher.parameters(), self.model.parameters()):
+                t_param.data.mul_(self.teacher_momentum).add_(
+                    (1.0 - self.teacher_momentum) * s_param.data
+                )
+            for t_buffer, s_buffer in zip(self.teacher.buffers(), self.model.buffers()):
+                if not t_buffer.is_floating_point():
+                    t_buffer.data.copy_(s_buffer.data)
+                    continue
+                t_buffer.data.mul_(self.teacher_momentum).add_(
+                    (1.0 - self.teacher_momentum) * s_buffer.data
+                )
+
+    def _data_correction(self, x: torch.Tensor, pseudo: torch.Tensor) -> torch.Tensor:
+        if self.correction_alpha <= 0:
+            return x.detach()
+        x_in = x.detach().clone().requires_grad_(True)
+        with torch.enable_grad():
+            logits = self.teacher.predict(x_in)
+            log_probs = F.log_softmax(logits, dim=1)
+            target = pseudo.detach()
+            correction_loss = -(target * log_probs).sum(dim=1).mean()
+        grad = torch.autograd.grad(correction_loss, x_in, retain_graph=False)[0]
+        corrected = (x_in - self.correction_alpha * grad).detach()
+        return corrected
+
+    def _mixup_loss(self, corrected: torch.Tensor, logits: torch.Tensor) -> torch.Tensor:
+        if self.mixup_weight <= 1e-8 or corrected.size(0) < 2 or self.mixup_beta <= 0:
+            return torch.tensor(0.0, device=corrected.device)
+        perm = torch.randperm(corrected.size(0), device=corrected.device)
+        shuffled = corrected[perm]
+        beta_dist = Beta(self.mixup_beta, self.mixup_beta)
+        lam = beta_dist.sample((corrected.size(0),)).to(corrected.device)
+        lam_img = lam.view(-1, 1, 1, 1)
+        lam_prob = lam.view(-1, 1)
+        mixed = lam_img * corrected + (1.0 - lam_img) * shuffled
+
+        with torch.no_grad():
+            probs_main = F.softmax(logits, dim=1)
+            probs_shuffled = probs_main[perm]
+            target = lam_prob * probs_main + (1.0 - lam_prob) * probs_shuffled
+
+        mixed_logits = self.model.predict(mixed)
+        mixed_probs = F.softmax(mixed_logits, dim=1)
+        return F.mse_loss(mixed_probs, target)
+
+    def forward_and_adapt(self, x, model, optimizer):
+        student_logits = model.predict(x)
+        with torch.no_grad():
+            teacher_logits = self.teacher.predict(x)
+            teacher_prob = F.softmax(teacher_logits, dim=1)
+
+        student_prob = F.softmax(student_logits.detach(), dim=1)
+        pseudo = self.pseudo_momentum * student_prob + (1.0 - self.pseudo_momentum) * teacher_prob
+        corrected = self._data_correction(x, pseudo)
+
+        with torch.no_grad():
+            teacher_logits_corr = self.teacher.predict(corrected)
+            teacher_prob_corr = F.softmax(teacher_logits_corr, dim=1)
+
+        pseudo = self.pseudo_momentum * student_prob + (1.0 - self.pseudo_momentum) * teacher_prob_corr
+        pseudo = pseudo.clamp_min(1e-6)
+
+        student_logits_corr = model.predict(corrected)
+        log_probs = F.log_softmax(student_logits_corr, dim=1)
+
+        ce_loss = torch.tensor(0.0, device=x.device)
+        if self.ce_weight > 1e-8:
+            ce_loss = -(pseudo.detach() * log_probs).sum(dim=1).mean()
+
+        ent_loss = torch.tensor(0.0, device=x.device)
+        if self.ent_weight > 1e-8:
+            ent_loss = softmax_entropy(student_logits_corr).mean()
+
+        kl_loss = torch.tensor(0.0, device=x.device)
+        if self.kl_weight > 1e-8:
+            kl_loss = F.kl_div(
+                log_probs,
+                teacher_prob_corr.detach(),
+                reduction="batchmean",
+            )
+
+        mix_loss = torch.tensor(0.0, device=x.device)
+        if self.mixup_weight > 1e-8:
+            mix_loss = self._mixup_loss(corrected, student_logits_corr)
+
+        loss = (
+            self.ce_weight * ce_loss
+            + self.ent_weight * ent_loss
+            + self.kl_weight * kl_loss
+            + self.mixup_weight * mix_loss
+        )
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        self._ema_update_teacher()
+        wandb.log(
+            {
+                "MTDC/Loss": loss.item(),
+                "MTDC/L_ce": ce_loss.item(),
+                "MTDC/L_ent": ent_loss.item(),
+                "MTDC/L_kl": kl_loss.item(),
+                "MTDC/L_mix": mix_loss.item(),
+            }
+        )
