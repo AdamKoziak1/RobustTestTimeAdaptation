@@ -16,7 +16,18 @@ from utils.util import set_random_seed, Tee, img_param_init, print_environ, load
 from utils.svd import SVDDrop2D, SVDLoader
 from utils.fft import FFTDrop2D, FFTLoader
 from adapt_algorithm import collect_params, configure_model
-from adapt_algorithm import PseudoLabel, SHOTIM, T3A, BN, ERM, Tent, TSD, TTA3, SAFER
+from adapt_algorithm import (
+    PseudoLabel,
+    SHOTIM,
+    T3A,
+    BN,
+    ERM,
+    Tent,
+    TSD,
+    TTA3,
+    SAFER,
+    MeanTeacherCorrection,
+)
 from datautil.attacked_imagefolder import AttackedImageFolder
 import statistics
 from peft import LoraConfig, get_peft_model
@@ -54,7 +65,7 @@ def get_args():
     parser.add_argument("--net",type=str,default="resnet18",help="featurizer: vgg16, resnet18,resnet50, resnet101,DTNBase,ViT-B16,resnext50",)
     parser.add_argument("--test_envs", type=int, nargs="+", default=[0], help="target domains")
     parser.add_argument("--output", type=str, default="./tta_output", help="result output path")
-    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3,SAFER]",)
+    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3,SAFER,AMTDC]",)
     parser.add_argument("--beta", type=float, default=0.9, help="threshold for pseudo label(PL)")
     parser.add_argument("--episodic", action="store_true", help="is episodic or not,default:False")
     parser.add_argument("--steps", type=int, default=1, help="steps of test time, default:1")
@@ -85,6 +96,29 @@ def get_args():
     parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
     parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
+    parser.add_argument(
+        "--s_sup_type",
+        type=str.lower,
+        default="none",
+        choices=["none", "pl", "em"],
+        help="Additional SAFER supervision: none, confidence-weighted pseudo-label (pl), or entropy minimisation (em).",
+    )
+    parser.add_argument(
+        "--s_sup_weight",
+        type=float,
+        default=0.0,
+        help="Weight applied to the SAFER pseudo-label / entropy minimization loss.",
+    )
+    # Adaptive Mean-Teacher Data Correction
+    parser.add_argument("--mt_alpha", type=float, default=0.02, help="Step size for data correction (alpha).")
+    parser.add_argument("--mt_gamma", type=float, default=0.99, help="EMA momentum for teacher parameters (gamma).")
+    parser.add_argument("--mt_gamma_y", type=float, default=0.5, help="Mixing weight between student and teacher pseudo-labels (gamma_y).")
+    parser.add_argument("--mt_kl_weight", type=float, default=0.1, help="Weight on KL regularisation between student and teacher.")
+    parser.add_argument("--mt_ce_weight", type=float, default=1.0, help="Weight on cross-entropy w.r.t pseudo-labels.")
+    parser.add_argument("--mt_ent_weight", type=float, default=0.0, help="Weight on entropy minimisation term.")
+    parser.add_argument("--mt_mixup_weight", type=float, default=0.0, help="Weight on mixup consistency regulariser.")
+    parser.add_argument("--mt_mixup_beta", type=float, default=0.5, help="Beta distribution parameter for mixup.")
+    parser.add_argument("--mt_use_teacher_pred", type=int, default=1, choices=[0,1], help="Use teacher predictions for evaluation (1 enables).")
 
     parser.add_argument("--attack", choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100", "linf_eps-8.0_steps-20_rho-0.3_a-1.0"], default="linf_eps-8.0_steps-20")
     parser.add_argument("--eps", type=float, default=4)  
@@ -145,6 +179,12 @@ def get_args():
 
     args.s_include_original = bool(args.s_include_original)
     args.s_feat_normalize = bool(args.s_feat_normalize)
+    if args.s_sup_type == "none" or args.s_sup_weight <= 0.0:
+        args.s_sup_type = "none"
+        args.s_sup_weight = 0.0
+    args.mt_use_teacher_pred = bool(args.mt_use_teacher_pred)
+    if args.mt_mixup_beta <= 0:
+        args.mt_mixup_beta = 0.5
     if args.s_aug_max_ops is not None and args.s_aug_max_ops <= 0:
         args.s_aug_max_ops = None
     if args.s_aug_seed is not None and args.s_aug_seed < 0:
@@ -200,6 +240,20 @@ def log_args(args, time_taken_s):
             "s_cc_weight": args.s_cc_weight,
             "s_cc_offdiag": args.s_cc_offdiag,
             "s_feat_normalize": args.s_feat_normalize,
+            "s_sup_type": args.s_sup_type,
+            "s_sup_weight": args.s_sup_weight,
+        }, commit=False)
+    elif args.adapt_alg == "AMTDC":
+        wandb.log({
+            "mt_alpha": args.mt_alpha,
+            "mt_gamma": args.mt_gamma,
+            "mt_gamma_y": args.mt_gamma_y,
+            "mt_kl_weight": args.mt_kl_weight,
+            "mt_ce_weight": args.mt_ce_weight,
+            "mt_ent_weight": args.mt_ent_weight,
+            "mt_mixup_weight": args.mt_mixup_weight,
+            "mt_mixup_beta": args.mt_mixup_beta,
+            "mt_use_teacher_pred": args.mt_use_teacher_pred,
         }, commit=False)
 
 def adapt_loader(args):
@@ -463,6 +517,53 @@ def make_adapt_model(args, algorithm):
             offdiag_weight=args.s_cc_offdiag,
             feature_normalize=args.s_feat_normalize,
             aug_seed=args.s_aug_seed,
+            sup_mode=args.s_sup_type,
+            sup_weight=args.s_sup_weight,
+        )
+    elif args.adapt_alg == "AMTDC":
+        if args.update_param == "all":
+            optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
+            sum_params = sum([p.nelement() for p in algorithm.parameters()])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "affine":
+            algorithm.train()
+            algorithm.requires_grad_(False)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            for m in algorithm.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.requires_grad_(True)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "tent":
+            algorithm = configure_model(algorithm)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "body":
+            optimizer = torch.optim.Adam(algorithm.featurizer.parameters(), lr=args.lr)
+            print("Update encoder")
+        elif args.update_param == "head":
+            optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
+            print("Update classifier")
+        else:
+            raise Exception("Do not support update with %s manner." % args.update_param)
+
+        adapt_model = MeanTeacherCorrection(
+            algorithm,
+            optimizer,
+            steps=args.steps,
+            episodic=args.episodic,
+            correction_alpha=args.mt_alpha,
+            teacher_momentum=args.mt_gamma,
+            pseudo_momentum=args.mt_gamma_y,
+            kl_weight=args.mt_kl_weight,
+            ce_weight=args.mt_ce_weight,
+            ent_weight=args.mt_ent_weight,
+            mixup_weight=args.mt_mixup_weight,
+            mixup_beta=args.mt_mixup_beta,
+            use_teacher_prediction=args.mt_use_teacher_pred,
         )
     else:
         raise ValueError(f"Unknown adapt_alg: {args.adapt_alg}")
@@ -525,6 +626,20 @@ if __name__ == "__main__":
             f"-p{args.s_aug_prob:.2f}"
             f"-js{args.s_js_weight:.2f}"
             f"-cc{args.s_cc_weight:.2f}"
+        )
+        if args.s_sup_type != "none" and args.s_sup_weight > 0:
+            run_name += f"-{args.s_sup_type}{args.s_sup_weight:.2f}"
+        run_name += (
+            f"_rate-{args.attack_rate}"
+        )
+    elif args.adapt_alg == "AMTDC":
+        run_name = (
+            f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}"
+            f"-a{args.mt_alpha:.3f}"
+            f"-g{args.mt_gamma:.2f}"
+            f"-gy{args.mt_gamma_y:.2f}"
+            f"-kl{args.mt_kl_weight:.2f}"
+            f"-mix{args.mt_mixup_weight:.2f}"
             f"_rate-{args.attack_rate}"
         )
 
