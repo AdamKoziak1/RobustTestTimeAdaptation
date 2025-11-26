@@ -15,6 +15,7 @@ from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
 from utils.svd import SVDDrop2D, SVDLoader
 from utils.fft import FFTDrop2D, FFTLoader
+from utils.image_ops import GaussianBlur2D, GaussianBlurLoader, JPEGCompressionLoader
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import (
     PseudoLabel,
@@ -144,6 +145,9 @@ def get_args():
     parser.add_argument("--fft_feat_alpha", type=float, default=1.0, help="Residual mix weight for FFT feature filtering.")
     parser.add_argument("--fft_feat_learn_alpha", type=int, default=0, choices=[0,1], help="Learn residual alpha for FFT feature filtering (1 enables).")
     parser.add_argument("--fft_feat_use_residual", type=int, default=1, choices=[0,1], help="Enable residual mixing for FFT feature filtering (1 enables).")
+    parser.add_argument("--gauss_input_sigma", type=float, default=0.0, help="Gaussian blur σ for input preprocessing (0 disables).")
+    parser.add_argument("--gauss_feat_sigma", type=float, default=0.0, help="Gaussian blur σ inserted after the first conv block (0 disables).")
+    parser.add_argument("--jpeg_input_quality", type=int, default=100, help="JPEG quality (1-100) for input re-encoding (100 disables).")
 
     parser.add_argument('--nuc_top', type=int, default=0, help='0..4 stages instrumented (bottom-up)')
     parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
@@ -194,6 +198,9 @@ def get_args():
     assert 0.0 <= args.svd_input_rank_ratio <= 1.0, "svd_input_rank_ratio must be in [0,1]"
     assert 0.0 <= args.fft_input_keep_ratio <= 1.0, "fft_input_keep_ratio must be in [0,1]"
     assert 0.0 <= args.fft_feat_keep_ratio <= 1.0, "fft_feat_keep_ratio must be in [0,1]"
+    assert args.gauss_input_sigma >= 0.0, "gauss_input_sigma must be non-negative"
+    assert args.gauss_feat_sigma >= 0.0, "gauss_feat_sigma must be non-negative"
+    assert 0 <= args.jpeg_input_quality <= 100, "jpeg_input_quality must be in [0, 100]"
     print_environ()
     return args
 
@@ -287,17 +294,31 @@ def adapt_loader(args):
         pin_memory=True,
     )
 
+    loader = testloader
+    if 1 <= args.jpeg_input_quality < 100:
+        loader = JPEGCompressionLoader(
+            loader,
+            quality=args.jpeg_input_quality,
+            device="cuda",
+        )
+    if args.gauss_input_sigma > 0:
+        loader = GaussianBlurLoader(
+            loader,
+            sigma=args.gauss_input_sigma,
+            device="cuda",
+        )
+
     if args.svd_input_rank_ratio < 1.0:
-        return SVDLoader(
-            testloader,
+        loader = SVDLoader(
+            loader,
             rank_ratio=args.svd_input_rank_ratio,
             device="cuda",
             mode=args.svd_input_mode,
             use_ste=False,
         )
-    if args.fft_input_keep_ratio < 1.0:
-        return FFTLoader(
-            testloader,
+    elif args.fft_input_keep_ratio < 1.0:
+        loader = FFTLoader(
+            loader,
             keep_ratio=args.fft_input_keep_ratio,
             device="cuda",
             mode=args.fft_input_mode,
@@ -306,7 +327,7 @@ def adapt_loader(args):
             alpha=args.fft_input_alpha,
             learn_alpha=args.fft_input_learn_alpha,
         )
-    return testloader
+    return loader
 
 
 def make_adapt_model(args, algorithm):
@@ -331,6 +352,13 @@ def make_adapt_model(args, algorithm):
         feat.layer2 = nn.Sequential(feat.layer2, FFTDrop2D(keep_ratio, mode=mode, use_residual=use_residual, alpha=alpha, learn_alpha=learn_alpha)) if args.fft_feat_max_layer >= 2 else feat.layer2
         feat.layer3 = nn.Sequential(feat.layer3, FFTDrop2D(keep_ratio, mode=mode, use_residual=use_residual, alpha=alpha, learn_alpha=learn_alpha)) if args.fft_feat_max_layer >= 3 else feat.layer3
         feat.layer4 = nn.Sequential(feat.layer4, FFTDrop2D(keep_ratio, mode=mode, use_residual=use_residual, alpha=alpha, learn_alpha=learn_alpha)) if args.fft_feat_max_layer >= 4 else feat.layer4
+    if args.gauss_feat_sigma > 0:
+        feat = algorithm.featurizer
+        blur = GaussianBlur2D(args.gauss_feat_sigma)
+        if hasattr(feat, "layer1"):
+            feat.layer1 = nn.Sequential(feat.layer1, blur)
+        else:
+            print("Warning: gauss_feat_sigma > 0 but featurizer lacks layer1; skipping blur.")
 
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":
