@@ -1,0 +1,74 @@
+program: unsupervise_adapt.py
+project: tta3_input_filters
+name: gaussian_blur_study2
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    #values: ["TSD", "Tent"]
+    values: ["TSD"]
+
+  jpeg_input_quality:
+    value: 100
+
+  gauss_input_sigma:
+    values: [0.5]
+    #values: [0.0, 0.25, 0.5, 0.75, 1.0]
+
+  gauss_feat_sigma:
+    values: [0.5]
+    #values: [0.0, 0.25, 0.5]
+
+  fft_input_keep_ratio:
+    value: 1.0
+
+  fft_feat_keep_ratio:
+    value: 1.0
+
+  dataset:
+    values: ["PACS"]
+
+  test_envs:
+    values: [0, 1, 2, 3]
+
+  attack_rate:
+    values: [0, 100]
+
+  update_param:
+    value: "all"
+
+  lr:
+    value: 0.0001
+
+  steps:
+    value: 1
+
+  svd_input_rank_ratio:
+    value: 1.0
+
+  svd_feat_rank_ratio:
+    value: 1.0
+
+  svd_feat_max_layer:
+    value: 0
+
+  fft_feat_mode:
+    value: "spatial"
+
+  fft_input_mode:
+    value: "spatial"
+
+  fft_feat_use_residual:
+    value: 1
+
+  fft_feat_learn_alpha:
+    value: 0
+
+  fft_input_use_residual:
+    value: 1
+
+  fft_input_learn_alpha:
+    value: 0
