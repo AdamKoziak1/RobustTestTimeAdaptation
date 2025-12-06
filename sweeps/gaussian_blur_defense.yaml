@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
 project: tta3_input_filters
-name: gaussian_blur_study
+name: gaussian_blur_study2
 method: grid
 metric:
   name: acc_mean
@@ -8,16 +8,19 @@ metric:
 
 parameters:
   adapt_alg:
-    values: ["TSD", "Tent"]
+    #values: ["TSD", "Tent"]
+    values: ["TSD"]
 
   jpeg_input_quality:
     value: 100
 
   gauss_input_sigma:
-    values: [0.0, 0.25, 0.5, 0.75, 1.0]
+    values: [0.5]
+    #values: [0.0, 0.25, 0.5, 0.75, 1.0]
 
   gauss_feat_sigma:
-    values: [0.0, 0.25, 0.5]
+    values: [0.5]
+    #values: [0.0, 0.25, 0.5]
 
   fft_input_keep_ratio:
     value: 1.0
@@ -35,7 +38,7 @@ parameters:
     values: [0, 100]
 
   update_param:
-    value: "affine"
+    value: "all"
 
   lr:
     value: 0.0001

@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
 project: tta3_input_filters
-name: jpeg_input_ablation
+name: jpeg_input_ablation_tsd_all
 method: grid
 metric:
   name: acc_mean
@@ -8,10 +8,12 @@ metric:
 
 parameters:
   adapt_alg:
-    values: ["TSD", "Tent"]
+    #values: ["TSD", "Tent"]
+    values: ["TSD"]
 
   jpeg_input_quality:
-    values: [100, 90, 80, 70, 60, 50, 40]
+    values: [100, 90, 80, 70, 60, 50, 40, 30, 20, 10]
+    
 
   gauss_input_sigma:
     value: 0.0
@@ -35,7 +37,7 @@ parameters:
     values: [0, 100]
 
   update_param:
-    value: "affine"
+    value: "all"
 
   lr:
     value: 0.0001
