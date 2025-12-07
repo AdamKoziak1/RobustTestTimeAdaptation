@@ -822,8 +822,7 @@ def _js_divergence(probs: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 def _barlow_twins_loss(
     features: torch.Tensor,
     offdiag_weight: float = 1.0,
-    eps: float = 0,
-    #eps: float = 1e-12,
+    eps: float = 1e-12,
 ) -> torch.Tensor:
     """
     Barlow Twins style feature cross-correlation penalty.
@@ -833,24 +832,62 @@ def _barlow_twins_loss(
     """
     bsz, num_views, dim = features.shape
     if num_views < 2:
-        return torch.tensor(0.0, device=features.device)
+        return torch.tensor(0.0, device=features.device, dtype=features.dtype)
 
-    loss = torch.tensor(0.0, device=features.device)
+    mean = features.mean(dim=0, keepdim=True)
+    std  = features.std(dim=0, unbiased=False, keepdim=True)
+    z = (features - mean) / (std + eps)
+
+    loss = features.new_tensor(0.0)
     pairs = 0
+    eye = torch.eye(dim, device=features.device, dtype=features.dtype)
+
     for i in range(num_views):
-        zi = features[:, i]
-        zi = (zi - zi.mean(dim=0)) / (zi.std(dim=0, unbiased=False) + eps)
+        zi = z[:, i]
         for j in range(i + 1, num_views):
-            zj = features[:, j]
-            zj = (zj - zj.mean(dim=0)) / (zj.std(dim=0, unbiased=False) + eps)
-            cross = torch.matmul(zi.t(), zj) / float(bsz)
-            diag = torch.diagonal(cross)
-            off = cross - torch.diag(diag)
-            loss = loss + ((1.0 - diag) ** 2).sum() + offdiag_weight * (off ** 2).sum()
+            zj = z[:, j]
+            c = (zi.T @ zj) / float(bsz)
+
+            c_diff = (c - eye).pow(2)
+            diag_loss = torch.diagonal(c_diff).sum()
+            offdiag_loss = c_diff.sum() - diag_loss
+
+            loss = loss + diag_loss + offdiag_weight * offdiag_loss
             pairs += 1
-    if pairs == 0:
-        return torch.tensor(0.0, device=features.device)
+
     return loss / pairs
+
+
+def _barlow_twins_loss_einsum(
+    features: torch.Tensor,
+    offdiag_weight: float = 1.0,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    bsz, num_views, dim = features.shape
+    if num_views < 2:
+        return torch.tensor(0.0, device=features.device, dtype=features.dtype)
+
+    z = features - features.mean(dim=0, keepdim=True)
+    norm = torch.sqrt(torch.sum(z ** 2, dim=0) + eps)
+
+    C = torch.einsum('bvi,bwj->vwij', z, z)
+    denom = torch.einsum('vi,wj->vwij', norm, norm)
+    C = C / (denom + eps)
+
+    loss = features.new_tensor(0.0)
+    pairs = 0
+    eye = torch.eye(dim, device=features.device, dtype=features.dtype)
+
+    for i in range(num_views):
+        for j in range(i + 1, num_views):
+            c_ij = C[i, j]
+            c_diff = (c_ij - eye).pow(2)
+            diag_loss = torch.diagonal(c_diff).sum()
+            offdiag_loss = c_diff.sum() - diag_loss
+            loss += diag_loss + offdiag_weight * offdiag_loss
+            pairs += 1
+
+    return loss / pairs if pairs > 0 else loss
 
 
 def _confidence_weighted_pseudo_label(

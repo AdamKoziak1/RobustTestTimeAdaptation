@@ -9,108 +9,12 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from adapt_algorithm import _barlow_twins_loss  # noqa: E402
+from adapt_algorithm import _barlow_twins_loss, _barlow_twins_loss_einsum
 
 try:
     import matplotlib.pyplot as plt
 except ImportError:
     plt = None
-
-
-def _barlow_twins_loss_fast_alg1_style(
-    features: torch.Tensor,
-    offdiag_weight: float = 1.0,
-    eps: float = 1e-12,
-) -> torch.Tensor:
-    bsz, num_views, dim = features.shape
-    if num_views < 2:
-        return torch.tensor(0.0, device=features.device, dtype=features.dtype)
-
-    mean = features.mean(dim=0, keepdim=True)
-    std  = features.std(dim=0, unbiased=False, keepdim=True)
-    z = (features - mean) / (std + eps)
-
-    loss = features.new_tensor(0.0)
-    pairs = 0
-    eye = torch.eye(dim, device=features.device, dtype=features.dtype)
-
-    for i in range(num_views):
-        zi = z[:, i]
-        for j in range(i + 1, num_views):
-            zj = z[:, j]
-            c = (zi.T @ zj) / float(bsz)
-
-            c_diff = (c - eye).pow(2)
-            # scale only off-diagonal entries in-place
-            off_diagonal(c_diff).mul_(offdiag_weight)
-
-            loss = loss + c_diff.sum()
-            pairs += 1
-
-    return loss / pairs
-
-
-def _barlow_twins_loss_einsum(
-    features: torch.Tensor,
-    offdiag_weight: float = 1.0,
-    eps: float = 1e-12,
-) -> torch.Tensor:
-    bsz, num_views, dim = features.shape
-    if num_views < 2:
-        return torch.tensor(0.0, device=features.device, dtype=features.dtype)
-
-    mean = features.mean(dim=0, keepdim=True)
-    std = features.std(dim=0, unbiased=False, keepdim=True)
-    z = (features - mean) / (std + eps)
-    z = z.permute(1, 0, 2)  # (V, B, D)
-
-    c = torch.einsum('vbi,wbj->vij', z, z) / bsz  # (V, V, D, D)
-
-    loss = features.new_tensor(0.0)
-    pairs = 0
-    eye = torch.eye(dim, device=features.device, dtype=features.dtype)
-
-    for i in range(num_views):
-        for j in range(i + 1, num_views):
-            c_ij = c[i, j]
-            c_diff = (c_ij - eye).pow(2)
-            off_diagonal(c_diff).mul_(offdiag_weight)
-            loss += c_diff.sum()
-            pairs += 1
-
-    return loss / pairs
-
-
-def _barlow_twins_loss_einsum_v2(
-    features: torch.Tensor,
-    offdiag_weight: float = 1.0,
-    eps: float = 1e-12,
-) -> torch.Tensor:
-    bsz, num_views, dim = features.shape
-    if num_views < 2:
-        return torch.tensor(0.0, device=features.device, dtype=features.dtype)
-
-    mean = features.mean(dim=0, keepdim=True)
-    std = features.std(dim=0, unbiased=False, keepdim=True)
-    z = (features - mean) / (std + eps)
-    z = z.permute(1, 0, 2)  # (V, B, D)
-
-    # The line the user requested
-    C = torch.einsum('bvi,bwj->vwij', features, features) / bsz
-
-    loss = features.new_tensor(0.0)
-    pairs = 0
-    eye = torch.eye(dim, device=features.device, dtype=features.dtype)
-
-    for i in range(num_views):
-        for j in range(i + 1, num_views):
-            c_ij = C[i, j]
-            c_diff = (c_ij - eye).pow(2)
-            off_diagonal(c_diff).mul_(offdiag_weight)
-            loss += c_diff.sum()
-            pairs += 1
-
-    return loss / pairs
 
 
 def get_gpu_memory_info(device) -> tuple[int, int] | None:
@@ -161,7 +65,7 @@ def barlow_twins_paper(z_a: torch.Tensor, z_b: torch.Tensor, offdiag_weight: flo
     num = z_a.T @ z_b
     # denom: outer product of per-feature norms
     denom = norm_a.unsqueeze(1) * norm_b.unsqueeze(0)
-    c = num / denom  # [D, D]
+    c = num / (denom + eps)  # [D, D]
 
     # Loss per Eq. 1
     on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
@@ -200,7 +104,7 @@ def barlow_twins_pairwise(features: torch.Tensor, offdiag_weight: float = 1.0, e
         return torch.tensor(0.0, device=features.device, dtype=features.dtype)
     losses = []
     for i, j in combinations(range(num_views), r=2):
-        losses.append(barlow_twins_paper(features[:, i], features[:, j], offdiag_weight, eps))
+        losses.append(barlow_twins_paper(features[:, i], features[:, j], offdiag_weight=offdiag_weight, eps=eps))
     return torch.stack(losses).mean()
 
 
@@ -209,7 +113,7 @@ def plot_results(results):
         print("Matplotlib not found. Skipping plot.")
         return
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 15))
     fig.suptitle('Barlow Twins Implementation Benchmark')
 
     impls = sorted(list(results[0].keys()))
@@ -220,8 +124,10 @@ def plot_results(results):
             continue
         times = [r[impl]['time'] for r in results]
         losses = [r[impl]['loss'] for r in results]
+        vram = [r[impl]['vram'] for r in results]
         ax1.plot(views, times, marker='o', linestyle='-', label=impl)
         ax2.plot(views, losses, marker='o', linestyle='-', label=impl)
+        ax3.plot(views, vram, marker='o', linestyle='-', label=impl)
 
     ax1.set_xlabel('Number of Views')
     ax1.set_ylabel('Time (ms)')
@@ -235,6 +141,12 @@ def plot_results(results):
     ax2.legend()
     ax2.grid(True)
     ax2.set_yscale('log')
+    
+    ax3.set_xlabel('Number of Views')
+    ax3.set_ylabel('Peak VRAM (MB)')
+    ax3.set_title('Peak VRAM vs. Number of Views')
+    ax3.legend()
+    ax3.grid(True)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show()
@@ -246,10 +158,8 @@ def benchmark_runtime(num_views_list, device, batch_size, repeats, offdiag_weigh
     
     implementations = {
         "repo": _barlow_twins_loss,
-        "pairwise": barlow_twins_pairwise,
-        "fast_alg1": _barlow_twins_loss_fast_alg1_style,
+        "paper": barlow_twins_pairwise,
         "einsum": _barlow_twins_loss_einsum,
-        "einsum_v2": _barlow_twins_loss_einsum_v2,
     }
 
     header = f"{ 'views':>5} | { 'impl':>10} | { 'time (ms)':>12} | { 'peak VRAM (MB)':>15} | { 'loss_val':>12} | { 'rel_diff':>10}"
@@ -286,7 +196,7 @@ def benchmark_runtime(num_views_list, device, batch_size, repeats, offdiag_weigh
 
             print(f"{nv:5d} | {name:>10} | {elapsed_ms:12.3f} | {peak_vram_mb:15.3f} | {loss_val.item():12.6f} | {rel_diff.item():10.4e}")
             
-            view_results[name] = {'time': elapsed_ms, 'loss': loss_val.item()}
+            view_results[name] = {'time': elapsed_ms, 'loss': loss_val.item(), 'vram': peak_vram_mb}
         
         results_for_plot.append(view_results)
         print("-" * len(header))
@@ -315,24 +225,24 @@ def main():
 
     # Common args
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for synthetic tensors.")
-    parser.add_argument("--offdiag-weight", type=float, default=5e-3, help="Off-diagonal penalty weight.")
+    parser.add_argument("--offdiag-weight", type=float, default=1e-1, help="Off-diagonal penalty weight.")
     parser.add_argument("--eps", type=float, default=1e-12, help="Numerical stability epsilon.")
 
     args = parser.parse_args()
     device = resolve_device(args.device)
 
     if "equivalence" in args.test:
-        print("--- Running Equivalence Test ---")
+        print("---Running Equivalence Test---")
         test_equivalence(device=device, trials=args.trials, batch_size=args.batch_size, dim=args.dim,
                          offdiag_weight=args.offdiag_weight, eps=args.eps)
-        print("-" * 30)
+        print("---" * 10)
 
     if "benchmark" in args.test:
         print("\n--- Running Runtime Benchmark ---")
         benchmark_runtime(num_views_list=args.views, device=device, batch_size=args.batch_size,
                           repeats=args.repeats, offdiag_weight=args.offdiag_weight, eps=args.eps,
                           do_plot=args.plot)
-        print("-" * 30)
+        print("---" * 10)
 
 
 if __name__ == "__main__":
