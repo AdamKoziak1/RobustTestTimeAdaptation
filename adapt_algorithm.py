@@ -822,7 +822,8 @@ def _js_divergence(probs: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
 def _barlow_twins_loss(
     features: torch.Tensor,
     offdiag_weight: float = 1.0,
-    eps: float = 1e-6,
+    eps: float = 0,
+    #eps: float = 1e-12,
 ) -> torch.Tensor:
     """
     Barlow Twins style feature cross-correlation penalty.
@@ -838,10 +839,10 @@ def _barlow_twins_loss(
     pairs = 0
     for i in range(num_views):
         zi = features[:, i]
-        zi = (zi - zi.mean(dim=0)) / (zi.std(dim=0) + eps)
+        zi = (zi - zi.mean(dim=0)) / (zi.std(dim=0, unbiased=False) + eps)
         for j in range(i + 1, num_views):
             zj = features[:, j]
-            zj = (zj - zj.mean(dim=0)) / (zj.std(dim=0) + eps)
+            zj = (zj - zj.mean(dim=0)) / (zj.std(dim=0, unbiased=False) + eps)
             cross = torch.matmul(zi.t(), zj) / float(bsz)
             diag = torch.diagonal(cross)
             off = cross - torch.diag(diag)
