@@ -72,23 +72,26 @@ class FFTDrop2D(nn.Module):
         if self.mode == "spatial":
             return self._apply_spatial_fft(x)
         return self._apply_channel_fft(x)
-
+    
     def _apply_spatial_fft(self, x: torch.Tensor) -> torch.Tensor:
-        b, c, h, w = x.shape
+        """Spatial FFT drop without allocating a mask tensor."""
+        _, _, h, w = x.shape
         freq = torch.fft.fft2(x, dim=(-2, -1), norm="ortho")
         freq_shifted = torch.fft.fftshift(freq, dim=(-2, -1))
 
-        keep_h = max(1, int(math.ceil(h * self.keep_ratio)))
-        keep_w = max(1, int(math.ceil(w * self.keep_ratio)))
+        keep_h = max(1, math.ceil(h * self.keep_ratio))
+        keep_w = max(1, math.ceil(w * self.keep_ratio))
         start_h = (h - keep_h) // 2
         end_h = start_h + keep_h
         start_w = (w - keep_w) // 2
         end_w = start_w + keep_w
 
-        mask = torch.zeros_like(freq_shifted.real)
-        mask[..., start_h:end_h, start_w:end_w] = 1.0
-        filtered_shifted = freq_shifted * mask
-        filtered = torch.fft.ifftshift(filtered_shifted, dim=(-2, -1))
+        freq_shifted[..., :start_h, :] = 0
+        freq_shifted[..., end_h:, :] = 0
+        freq_shifted[..., :, :start_w] = 0
+        freq_shifted[..., :, end_w:] = 0
+
+        filtered = torch.fft.ifftshift(freq_shifted, dim=(-2, -1))
         return torch.fft.ifft2(filtered, dim=(-2, -1), norm="ortho").real
 
     def _apply_channel_fft(self, x: torch.Tensor) -> torch.Tensor:
