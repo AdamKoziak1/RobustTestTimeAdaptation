@@ -14,9 +14,6 @@ if str(REPO_ROOT) not in sys.path:
 from adapt_algorithm import (
     _barlow_twins_loss,
     _barlow_twins_loss_einsum,
-    _entropy_minimization_loss,
-    _js_divergence,
-    softmax_entropy,
 )
 from utils.fft import FFTDrop2D
 
@@ -33,9 +30,16 @@ def _maybe_sync():
         torch.cuda.synchronize()
 
 
-def benchmark(fn: Callable, *args, repeats: int = 10, **kwargs) -> Tuple[torch.Tensor, float]:
-    """Return (result, avg_time_ms) with optional CUDA sync for fair timing."""
+def benchmark(fn: Callable, *args, repeats: int = 10, warmup: int = 3, **kwargs) -> Tuple[torch.Tensor, float]:
+    """Return (result, avg_time_ms) with warmup and optional CUDA sync for fair timing."""
+    # Warm up to amortize kernel/cudnn/fft plan init.
+    for k in range(warmup):
+        torch.manual_seed(10_000 + k)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed(10_000 + k)
+        fn(*args, **kwargs)
     _maybe_sync()
+
     start = time.perf_counter()
     out = None
     for i in range(repeats):
@@ -48,32 +52,26 @@ def benchmark(fn: Callable, *args, repeats: int = 10, **kwargs) -> Tuple[torch.T
     return out, elapsed
 
 
-def js_divergence_opt(probs: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
-    mean_prob = probs.mean(dim=1)
-    entropy_each = -torch.xlogy(probs, probs.clamp_min(eps)).sum(dim=-1)
-    entropy_mean = -torch.xlogy(mean_prob, mean_prob.clamp_min(eps)).sum(dim=-1)
-    return (entropy_mean - entropy_each.mean(dim=1)).mean()
-
-
-def test_barlow_twins_fast_vs_einsum():
+@pytest.mark.parametrize("offdiag_weight", [0.01, 0.1, 1])
+def test_barlow_twins_fast_vs_einsum(offdiag_weight):
     features = torch.randn(BATCH_SIZE, SAFER_VIEWS, RESNET_FEAT_DIM, device=DEVICE)
-    kwargs = {"offdiag_weight": 1.0}
+    kwargs = {"offdiag_weight": offdiag_weight}
     base, base_ms = benchmark(_barlow_twins_loss, features, **kwargs)
     fast, fast_ms = benchmark(_barlow_twins_loss_einsum, features, **kwargs)
     torch.testing.assert_close(base, fast, atol=1e-5, rtol=1e-5)
     print(f"[Barlow Twins] fast={base_ms:.3f}ms einsum={fast_ms:.3f}ms")
 
 
-def test_js_divergence_efficiency():
-    probs = torch.rand(BATCH_SIZE, SAFER_VIEWS, NUM_CLASSES, device=DEVICE)
-    probs = probs / probs.sum(dim=-1, keepdim=True)
-    base, base_ms = benchmark(_js_divergence, probs)
-    opt, opt_ms = benchmark(js_divergence_opt, probs)
-    torch.testing.assert_close(base, opt, atol=1e-6, rtol=1e-6)
-    print(f"[SAFER JS] baseline={base_ms:.3f}ms optimized={opt_ms:.3f}ms")
+@pytest.mark.parametrize("keep_ratio", [0.1, 0.3, 0.7, 1])
+def test_fft_spatial_mask_vs_inplace(keep_ratio):
+    x = torch.randn(BATCH_SIZE, *IMG_SHAPE, device=DEVICE)
+    layer = FFTDrop2D(keep_ratio=keep_ratio, mode="spatial").to(DEVICE)
 
+    optimized, opt_ms = benchmark(layer._apply_spatial_fft, x)
+    baseline, base_ms = benchmark(layer._apply_spatial_fft_old, x)
 
-#@pytest.mark.parametrize("keep_ratio", [0.1, 0.5, 1])
+    torch.testing.assert_close(baseline, optimized, atol=1e-6, rtol=1e-6)
+    print(f"[FFT spatial keep={keep_ratio}] baseline={base_ms:.3f}ms optimized={opt_ms:.3f}ms")
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main(["-s", __file__]))

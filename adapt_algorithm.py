@@ -804,7 +804,7 @@ class TTA3(nn.Module):
         return logits_s
 
 
-def _js_divergence(probs: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+def _js_divergence(probs: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     """
     Jensen–Shannon divergence across augmentation views.
 
@@ -812,12 +812,9 @@ def _js_divergence(probs: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
         probs: tensor with shape (B, V, K) containing per-view class probabilities.
     """
     mean_prob = probs.mean(dim=1)
-    log_prob = torch.log(probs.clamp_min(eps))
-    entropy_each = -(probs * log_prob).sum(dim=-1)
-    entropy_mean = -(mean_prob * torch.log(mean_prob.clamp_min(eps))).sum(dim=-1)
-    js = entropy_mean - entropy_each.mean(dim=1)
-    return js.mean()
-
+    entropy_each = -torch.xlogy(probs, probs.clamp_min(eps)).sum(dim=-1)
+    entropy_mean = -torch.xlogy(mean_prob, mean_prob.clamp_min(eps)).sum(dim=-1)
+    return (entropy_mean - entropy_each.mean(dim=1)).mean()
 
 def _barlow_twins_loss(
     features: torch.Tensor,
