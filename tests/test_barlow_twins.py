@@ -225,7 +225,7 @@ def main():
 
     # Common args
     parser.add_argument("--batch-size", type=int, default=64, help="Batch size for synthetic tensors.")
-    parser.add_argument("--offdiag-weight", type=float, default=1e-1, help="Off-diagonal penalty weight.")
+    parser.add_argument("--offdiag-weight", type=float, default=5e-3, help="Off-diagonal penalty weight.")
     parser.add_argument("--eps", type=float, default=1e-12, help="Numerical stability epsilon.")
 
     args = parser.parse_args()

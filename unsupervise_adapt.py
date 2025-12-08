@@ -95,6 +95,7 @@ def get_args():
     parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
     parser.add_argument("--s_cc_weight", type=float, default=1.0, help="Weight for SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
+    parser.add_argument("--s_cc_impl", type=str, default="fast", choices=["fast", "einsum"], help="Cross-correlation implementation: fast pairwise or einsum-based.")
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
     parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
     parser.add_argument(
@@ -183,6 +184,7 @@ def get_args():
 
     args.s_include_original = bool(args.s_include_original)
     args.s_feat_normalize = bool(args.s_feat_normalize)
+    args.s_cc_impl = args.s_cc_impl.lower()
     if args.s_sup_type == "none" or args.s_sup_weight <= 0.0:
         args.s_sup_type = "none"
         args.s_sup_weight = 0.0
@@ -246,6 +248,7 @@ def log_args(args, time_taken_s):
             "s_js_weight": args.s_js_weight,
             "s_cc_weight": args.s_cc_weight,
             "s_cc_offdiag": args.s_cc_offdiag,
+            "s_cc_impl": args.s_cc_impl,
             "s_feat_normalize": args.s_feat_normalize,
             "s_sup_type": args.s_sup_type,
             "s_sup_weight": args.s_sup_weight,
@@ -547,6 +550,7 @@ def make_adapt_model(args, algorithm):
             aug_seed=args.s_aug_seed,
             sup_mode=args.s_sup_type,
             sup_weight=args.s_sup_weight,
+            cc_impl=args.s_cc_impl,
         )
     elif args.adapt_alg == "AMTDC":
         if args.update_param == "all":
@@ -612,6 +616,10 @@ def run_one_seed(args):
 
     adapt_model.cuda()
     outputs_arr, labels_arr = [], []
+    peak_vram_mb = 0.0
+    use_cuda = torch.cuda.is_available()
+    if use_cuda:
+        torch.cuda.reset_peak_memory_stats()
 
     for _, sample in enumerate(dataloader):
         image, label = sample
@@ -627,6 +635,9 @@ def run_one_seed(args):
     outputs_arr = torch.cat(outputs_arr, 0).numpy()
     labels_arr = torch.cat(labels_arr).numpy()
     outputs_arr = outputs_arr.argmax(1)
+    if use_cuda:
+        peak_vram_mb = torch.cuda.max_memory_allocated() / (1024 ** 2)
+    wandb.log({"max_vram_overhead_mb": peak_vram_mb}, commit=False)
 
     return 100*accuracy_score(labels_arr, outputs_arr)
 

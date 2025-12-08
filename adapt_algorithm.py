@@ -940,6 +940,7 @@ class SAFER(nn.Module):
         aug_seed: Optional[int] = None,
         sup_mode: str = "none",
         sup_weight: float = 0.0,
+        cc_impl: str = "fast",
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -964,6 +965,15 @@ class SAFER(nn.Module):
             raise ValueError(f"Unknown supervision mode: {sup_mode}")
         self.sup_mode = sup_mode
         self.sup_weight = sup_weight
+        cc_impl = cc_impl.lower()
+        cc_impls = {
+            "fast": _barlow_twins_loss,
+            "einsum": _barlow_twins_loss_einsum,
+        }
+        if cc_impl not in cc_impls:
+            raise ValueError(f"Unknown cross-correlation impl '{cc_impl}'. Expected one of {tuple(cc_impls)}.")
+        self.cc_impl = cc_impl
+        self._cc_loss_fn = cc_impls[cc_impl]
 
         aug_views = max(1, num_aug_views)
         self.augmenter = SAFERAugmenter(
@@ -1030,11 +1040,10 @@ class SAFER(nn.Module):
         js_loss = _js_divergence(probs) if self.js_weight > 1e-8 else torch.tensor(
             0.0, device=logits.device
         )
-        cc_loss = (
-            _barlow_twins_loss(feats_bt, self.offdiag_weight)
-            if self.cc_weight > 1e-8
-            else torch.tensor(0.0, device=logits.device)
-        )
+        if self.cc_weight > 1e-8:
+            cc_loss = self._cc_loss_fn(feats_bt, self.offdiag_weight)
+        else:
+            cc_loss = torch.tensor(0.0, device=logits.device)
         mean_prob = probs.mean(dim=1)
         sup_loss = torch.tensor(0.0, device=logits.device)
         sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
