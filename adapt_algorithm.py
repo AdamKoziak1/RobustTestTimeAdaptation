@@ -1,3 +1,4 @@
+import math
 from copy import deepcopy
 from typing import Optional, Sequence
 
@@ -888,16 +889,19 @@ def _barlow_twins_loss_einsum(
 
 
 def _confidence_weighted_pseudo_label(
-    mean_prob: torch.Tensor,
+    pooled_prob: torch.Tensor,
+    confidence_scale: bool = True,
     eps: float = 1e-6,
 ) -> torch.Tensor:
     """
-    Confidence-weighted pseudo-label loss over averaged predictions.
+    Confidence-weighted pseudo-label loss over pooled predictions.
     """
-    conf, pseudo = torch.max(mean_prob, dim=-1)
-    log_prob = torch.log(mean_prob.clamp_min(eps))
+    conf, pseudo = torch.max(pooled_prob, dim=-1)
+    log_prob = torch.log(pooled_prob.clamp_min(eps))
     ce = F.nll_loss(log_prob, pseudo, reduction="none")
-    return (conf * ce).mean()
+    if confidence_scale:
+        ce = conf * ce
+    return ce.mean()
 
 
 def _entropy_minimization_loss(
@@ -909,6 +913,104 @@ def _entropy_minimization_loss(
     """
     entropy = -(mean_prob * torch.log(mean_prob.clamp_min(eps))).sum(dim=-1)
     return entropy.mean()
+
+
+def _cross_view_reliability(features: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """
+    Estimate per-view reliability from feature cross-correlation diagonals.
+    """
+    bsz, num_views, _ = features.shape
+    if num_views < 2:
+        return torch.ones(num_views, device=features.device, dtype=features.dtype)
+
+    z = features - features.mean(dim=0, keepdim=True)
+    std = torch.sqrt(torch.mean(z ** 2, dim=0) + eps)
+    z = z / (std + eps)
+
+    reliabilities = []
+    for i in range(num_views):
+        zi = z[:, i]
+        pair_scores = []
+        for j in range(num_views):
+            if i == j:
+                continue
+            zj = z[:, j]
+            diag_corr = (zi * zj).mean(dim=0)
+            pair_scores.append(diag_corr.mean())
+        reliabilities.append(torch.stack(pair_scores).mean())
+    return torch.stack(reliabilities)
+
+
+def _aggregate_view_probs(
+    probs: torch.Tensor,
+    features: torch.Tensor,
+    strategy: str = "mean",
+    eps: float = 1e-6,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Pool per-view probabilities using a chosen weighting strategy.
+    Returns pooled probabilities and normalised view weights (B, V).
+    """
+    bsz, num_views, num_classes = probs.shape
+    if num_views == 1:
+        weights = torch.ones(bsz, 1, device=probs.device, dtype=probs.dtype)
+        return probs[:, 0], weights
+
+    strategy = strategy.lower()
+    if strategy == "mean":
+        weights = torch.ones(bsz, num_views, device=probs.device, dtype=probs.dtype)
+    elif strategy == "entropy":
+        entropy = -(probs * torch.log(probs.clamp_min(eps))).sum(dim=-1)
+        weights = 1.0 - entropy / math.log(num_classes)
+    elif strategy == "top1":
+        weights = probs.max(dim=-1).values
+    elif strategy in {"cc", "cc_drop"}:
+        rel = _cross_view_reliability(features, eps=eps).clamp_min(0.0)
+        weights = rel.unsqueeze(0).expand(bsz, -1)
+    elif strategy == "worst":
+        entropy = -(probs * torch.log(probs.clamp_min(eps))).sum(dim=-1)
+        worst_idx = entropy.argmax(dim=1)
+        weights = torch.zeros(bsz, num_views, device=probs.device, dtype=probs.dtype)
+        weights.scatter_(1, worst_idx.unsqueeze(1), 1.0)
+    else:
+        raise ValueError(f"Unknown SAFER view pooling strategy '{strategy}'.")
+
+    weights = weights.clamp_min(0.0)
+    if strategy == "cc_drop":
+        min_idx = weights.argmin(dim=1, keepdim=True)
+        weights = weights.clone()
+        weights.scatter_(1, min_idx, 0.0)
+
+    zero_mask = weights.sum(dim=1, keepdim=True) <= eps
+    weights = torch.where(zero_mask, torch.ones_like(weights), weights)
+    weight_sum = weights.sum(dim=1, keepdim=True).clamp_min(eps)
+    norm_weights = weights / weight_sum
+    pooled = (probs * norm_weights.unsqueeze(-1)).sum(dim=1)
+    return pooled, norm_weights
+
+
+def _weighted_pseudo_label_loss(
+    logits: torch.Tensor,
+    agg_prob: torch.Tensor,
+    view_weights: torch.Tensor,
+    confidence_scale: bool = True,
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    """
+    Cross-entropy to a pooled pseudo-label, weighted across views.
+    """
+    bsz, num_views, num_classes = logits.shape
+    pseudo = agg_prob.argmax(dim=-1)
+    ce = F.cross_entropy(
+        logits.view(-1, num_classes),
+        pseudo.repeat_interleave(num_views),
+        reduction="none",
+    ).view(bsz, num_views)
+    weighted = (ce * view_weights).sum(dim=1)
+    if confidence_scale:
+        conf = agg_prob.max(dim=-1).values
+        weighted = weighted * conf
+    return weighted.mean()
 
 
 class SAFER(nn.Module):
@@ -938,6 +1040,9 @@ class SAFER(nn.Module):
         sup_mode: str = "none",
         sup_weight: float = 0.0,
         cc_impl: str = "fast",
+        sup_view_pool: str = "mean",
+        sup_pl_weighted: bool = False,
+        sup_confidence_scale: bool = True,
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -962,6 +1067,15 @@ class SAFER(nn.Module):
             raise ValueError(f"Unknown supervision mode: {sup_mode}")
         self.sup_mode = sup_mode
         self.sup_weight = sup_weight
+        sup_view_pool = sup_view_pool.lower()
+        valid_pools = {"mean", "worst", "entropy", "top1", "cc", "cc_drop"}
+        if sup_view_pool not in valid_pools:
+            raise ValueError(
+                f"Unknown view pooling strategy '{sup_view_pool}'. Expected one of {sorted(valid_pools)}."
+            )
+        self.sup_view_pool = sup_view_pool
+        self.sup_pl_weighted = sup_pl_weighted
+        self.sup_confidence_scale = sup_confidence_scale
         cc_impl = cc_impl.lower()
         cc_impls = {
             "fast": _barlow_twins_loss,
@@ -1045,10 +1159,25 @@ class SAFER(nn.Module):
         sup_loss = torch.tensor(0.0, device=logits.device)
         sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
         if sup_active:
+            sup_prob, view_weights = _aggregate_view_probs(
+                probs=probs,
+                features=feats_bt,
+                strategy=self.sup_view_pool,
+            )
             if self.sup_mode == "pl":
-                sup_loss = _confidence_weighted_pseudo_label(mean_prob)
+                if self.sup_pl_weighted:
+                    sup_loss = _weighted_pseudo_label_loss(
+                        logits=logits,
+                        agg_prob=sup_prob,
+                        view_weights=view_weights,
+                        confidence_scale=self.sup_confidence_scale,
+                    )
+                else:
+                    sup_loss = _confidence_weighted_pseudo_label(
+                        sup_prob, confidence_scale=self.sup_confidence_scale
+                    )
             elif self.sup_mode == "em":
-                sup_loss = _entropy_minimization_loss(mean_prob)
+                sup_loss = _entropy_minimization_loss(sup_prob)
 
         loss = (self.js_weight * js_loss) + (self.cc_weight * cc_loss) + (
             self.sup_weight * sup_loss

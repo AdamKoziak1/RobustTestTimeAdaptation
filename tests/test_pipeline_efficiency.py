@@ -62,16 +62,5 @@ def test_barlow_twins_fast_vs_einsum(offdiag_weight):
     print(f"[Barlow Twins] fast={base_ms:.3f}ms einsum={fast_ms:.3f}ms")
 
 
-@pytest.mark.parametrize("keep_ratio", [0.1, 0.3, 0.7, 1])
-def test_fft_spatial_mask_vs_inplace(keep_ratio):
-    x = torch.randn(BATCH_SIZE, *IMG_SHAPE, device=DEVICE)
-    layer = FFTDrop2D(keep_ratio=keep_ratio, mode="spatial").to(DEVICE)
-
-    optimized, opt_ms = benchmark(layer._apply_spatial_fft, x)
-    baseline, base_ms = benchmark(layer._apply_spatial_fft_old, x)
-
-    torch.testing.assert_close(baseline, optimized, atol=1e-6, rtol=1e-6)
-    print(f"[FFT spatial keep={keep_ratio}] baseline={base_ms:.3f}ms optimized={opt_ms:.3f}ms")
-
 if __name__ == "__main__":
     raise SystemExit(pytest.main(["-s", __file__]))

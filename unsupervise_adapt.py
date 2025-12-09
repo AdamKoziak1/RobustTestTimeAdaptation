@@ -111,6 +111,27 @@ def get_args():
         default=0.0,
         help="Weight applied to the SAFER pseudo-label / entropy minimization loss.",
     )
+    parser.add_argument(
+        "--s_sup_view_pool",
+        type=str.lower,
+        default="mean",
+        choices=["mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        help="Pooling strategy for combining SAFER view predictions.",
+    )
+    parser.add_argument(
+        "--s_sup_pl_weighted",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Weight pseudo-label loss across views using the pooling weights (1 enables).",
+    )
+    parser.add_argument(
+        "--s_sup_conf_scale",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="Scale pseudo-label losses by pooled confidence (1 enables).",
+    )
     # Adaptive Mean-Teacher Data Correction
     parser.add_argument("--mt_alpha", type=float, default=0.02, help="Step size for data correction (alpha).")
     parser.add_argument("--mt_gamma", type=float, default=0.99, help="EMA momentum for teacher parameters (gamma).")
@@ -185,6 +206,8 @@ def get_args():
     args.s_include_original = bool(args.s_include_original)
     args.s_feat_normalize = bool(args.s_feat_normalize)
     args.s_cc_impl = args.s_cc_impl.lower()
+    args.s_sup_pl_weighted = bool(args.s_sup_pl_weighted)
+    args.s_sup_conf_scale = bool(args.s_sup_conf_scale)
     if args.s_sup_type == "none" or args.s_sup_weight <= 0.0:
         args.s_sup_type = "none"
         args.s_sup_weight = 0.0
@@ -252,6 +275,9 @@ def log_args(args, time_taken_s):
             "s_feat_normalize": args.s_feat_normalize,
             "s_sup_type": args.s_sup_type,
             "s_sup_weight": args.s_sup_weight,
+            "s_sup_view_pool": args.s_sup_view_pool,
+            "s_sup_pl_weighted": args.s_sup_pl_weighted,
+            "s_sup_conf_scale": args.s_sup_conf_scale,
         }, commit=False)
     elif args.adapt_alg == "AMTDC":
         wandb.log({
@@ -551,6 +577,9 @@ def make_adapt_model(args, algorithm):
             sup_mode=args.s_sup_type,
             sup_weight=args.s_sup_weight,
             cc_impl=args.s_cc_impl,
+            sup_view_pool=args.s_sup_view_pool,
+            sup_pl_weighted=args.s_sup_pl_weighted,
+            sup_confidence_scale=args.s_sup_conf_scale,
         )
     elif args.adapt_alg == "AMTDC":
         if args.update_param == "all":

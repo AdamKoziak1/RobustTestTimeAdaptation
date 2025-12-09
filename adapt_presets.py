@@ -48,6 +48,9 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "s_include_original": 1,
         "s_sup_type": "none",
         "s_sup_weight": 0.0,
+        "s_sup_view_pool": "mean",
+        "s_sup_pl_weighted": 0,
+        "s_sup_conf_scale": 1,
         "update_param": "tent",
     },
     "AMTDC": {
