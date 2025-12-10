@@ -805,17 +805,56 @@ class TTA3(nn.Module):
         return logits_s
 
 
-def _js_divergence(probs: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+def _js_divergence(
+    probs: torch.Tensor,
+    ref_probs: Optional[torch.Tensor] = None,
+    view_weights: Optional[torch.Tensor] = None,
+    mode: str = "pooled",
+    eps: float = 1e-12,
+) -> torch.Tensor:
     """
     Jensen–Shannon divergence across augmentation views.
 
     Args:
         probs: tensor with shape (B, V, K) containing per-view class probabilities.
+        ref_probs: optional pooled distribution used as the JS reference.
+        view_weights: optional weights used for pooling entropies or weighting pairs.
+        mode: 'pooled' (default) or 'pairwise' for full pairwise computation.
     """
-    mean_prob = probs.mean(dim=1)
+    mode = mode.lower()
+    if mode not in {"pooled", "pairwise"}:
+        raise ValueError(f"Unknown JS computation mode '{mode}'.")
+
+    if mode == "pairwise":
+        bsz, num_views, _ = probs.shape
+        if num_views < 2:
+            return torch.tensor(0.0, device=probs.device, dtype=probs.dtype)
+        total = probs.new_tensor(0.0)
+        weight_total = probs.new_tensor(0.0)
+        for i in range(num_views):
+            for j in range(i + 1, num_views):
+                p, q = probs[:, i], probs[:, j]
+                m = 0.5 * (p + q)
+                js_pair = 0.5 * _prob_kl_divergence(p, m, eps=eps) + 0.5 * _prob_kl_divergence(q, m, eps=eps)
+                pair_weight = None
+                if view_weights is not None:
+                    pair_weight = view_weights[:, i] * view_weights[:, j]
+                    total += (js_pair * pair_weight).sum()
+                    weight_total += pair_weight.sum()
+                else:
+                    total += js_pair.sum()
+                    weight_total += js_pair.numel()
+        return total / weight_total.clamp_min(eps)
+
+    if ref_probs is None:
+        ref_probs = probs.mean(dim=1)
     entropy_each = -torch.xlogy(probs, probs.clamp_min(eps)).sum(dim=-1)
-    entropy_mean = -torch.xlogy(mean_prob, mean_prob.clamp_min(eps)).sum(dim=-1)
-    return (entropy_mean - entropy_each.mean(dim=1)).mean()
+    entropy_mean = -torch.xlogy(ref_probs, ref_probs.clamp_min(eps)).sum(dim=-1)
+    if view_weights is None:
+        entropy_each = entropy_each.mean(dim=1)
+    else:
+        entropy_each = (entropy_each * view_weights).sum(dim=1)
+    return (entropy_mean - entropy_each).mean()
 
 def _barlow_twins_loss(
     features: torch.Tensor,
@@ -888,6 +927,26 @@ def _barlow_twins_loss_einsum(
     return loss / pairs if pairs > 0 else loss
 
 
+def _prob_kl_divergence(p: torch.Tensor, q: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    """
+    KL(p || q) for probability tensors with a shared trailing class dimension.
+    """
+    p = p.clamp_min(eps)
+    q = q.clamp_min(eps)
+    return (p * (p.log() - q.log())).sum(dim=-1)
+
+
+def _weighted_mean(values: torch.Tensor, weights: Optional[torch.Tensor], eps: float = 1e-6) -> torch.Tensor:
+    """
+    Weighted mean across all elements of `values`. Falls back to the simple mean when
+    `weights` is None.
+    """
+    if weights is None:
+        return values.mean()
+    weight_sum = weights.sum().clamp_min(eps)
+    return (values * weights).sum() / weight_sum
+
+
 def _confidence_weighted_pseudo_label(
     pooled_prob: torch.Tensor,
     confidence_scale: bool = True,
@@ -941,21 +1000,17 @@ def _cross_view_reliability(features: torch.Tensor, eps: float = 1e-12) -> torch
     return torch.stack(reliabilities)
 
 
-def _aggregate_view_probs(
+def _view_pool_weights(
     probs: torch.Tensor,
-    features: torch.Tensor,
+    features: Optional[torch.Tensor],
     strategy: str = "mean",
     eps: float = 1e-6,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> torch.Tensor:
     """
-    Pool per-view probabilities using a chosen weighting strategy.
-    Returns pooled probabilities and normalised view weights (B, V).
+    Compute per-view weights for pooling strategies. The weights are normalised to sum to 1
+    across the view dimension.
     """
     bsz, num_views, num_classes = probs.shape
-    if num_views == 1:
-        weights = torch.ones(bsz, 1, device=probs.device, dtype=probs.dtype)
-        return probs[:, 0], weights
-
     strategy = strategy.lower()
     if strategy == "mean":
         weights = torch.ones(bsz, num_views, device=probs.device, dtype=probs.dtype)
@@ -965,6 +1020,8 @@ def _aggregate_view_probs(
     elif strategy == "top1":
         weights = probs.max(dim=-1).values
     elif strategy in {"cc", "cc_drop"}:
+        if features is None:
+            raise ValueError("Feature tensor is required for cc-based pooling.")
         rel = _cross_view_reliability(features, eps=eps).clamp_min(0.0)
         weights = rel.unsqueeze(0).expand(bsz, -1)
     elif strategy == "worst":
@@ -984,9 +1041,93 @@ def _aggregate_view_probs(
     zero_mask = weights.sum(dim=1, keepdim=True) <= eps
     weights = torch.where(zero_mask, torch.ones_like(weights), weights)
     weight_sum = weights.sum(dim=1, keepdim=True).clamp_min(eps)
-    norm_weights = weights / weight_sum
+    return weights / weight_sum
+
+
+def _pool_features(
+    features: torch.Tensor,
+    view_weights: Optional[torch.Tensor],
+    eps: float = 1e-6,
+) -> torch.Tensor:
+    if view_weights is None:
+        return features.mean(dim=1)
+    weight_sum = view_weights.sum(dim=1, keepdim=True).clamp_min(eps)
+    return (features * view_weights.unsqueeze(-1)).sum(dim=1) / weight_sum
+
+
+def _aggregate_view_probs(
+    probs: torch.Tensor,
+    features: torch.Tensor,
+    strategy: str = "mean",
+    use_weights: bool = True,
+    eps: float = 1e-6,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Pool per-view probabilities using a chosen weighting strategy.
+    Returns pooled probabilities and normalised view weights (B, V).
+    """
+    bsz, num_views, num_classes = probs.shape
+    if num_views == 1:
+        weights = torch.ones(bsz, 1, device=probs.device, dtype=probs.dtype)
+        return probs[:, 0], weights
+
+    if use_weights:
+        norm_weights = _view_pool_weights(probs, features, strategy=strategy, eps=eps)
+    else:
+        norm_weights = torch.ones(bsz, num_views, device=probs.device, dtype=probs.dtype)
+        norm_weights = norm_weights / norm_weights.sum(dim=1, keepdim=True)
     pooled = (probs * norm_weights.unsqueeze(-1)).sum(dim=1)
     return pooled, norm_weights
+
+
+def _barlow_twins_two_view(
+    z_a: torch.Tensor,
+    z_b: torch.Tensor,
+    offdiag_weight: float = 1.0,
+    eps: float = 1e-12,
+) -> torch.Tensor:
+    """
+    Two-view Barlow Twins loss used for pooled reference comparisons.
+    """
+    assert z_a.ndim == 2 and z_b.ndim == 2
+    assert z_a.shape == z_b.shape
+    bsz, dim = z_a.shape
+
+    z_a = z_a - z_a.mean(dim=0, keepdim=True)
+    z_b = z_b - z_b.mean(dim=0, keepdim=True)
+
+    norm_a = torch.sqrt(torch.sum(z_a ** 2, dim=0) + eps)
+    norm_b = torch.sqrt(torch.sum(z_b ** 2, dim=0) + eps)
+
+    c = (z_a.T @ z_b) / (norm_a.unsqueeze(1) * norm_b.unsqueeze(0) + eps)
+    eye = torch.eye(dim, device=z_a.device, dtype=z_a.dtype)
+    c_diff = (c - eye).pow(2)
+    diag_loss = torch.diagonal(c_diff).sum()
+    offdiag_loss = c_diff.sum() - diag_loss
+    return diag_loss + offdiag_weight * offdiag_loss
+
+
+def _barlow_twins_against_pooled(
+    features: torch.Tensor,
+    pooled: torch.Tensor,
+    offdiag_weight: float = 1.0,
+    eps: float = 1e-12,
+    view_weights: Optional[torch.Tensor] = None,
+    impl: str = "fast",
+) -> torch.Tensor:
+    """
+    Cross-correlation between each view and pooled features instead of pairwise views.
+    """
+    bsz, num_views, _ = features.shape
+    losses = []
+    impl_fn = _barlow_twins_loss if impl == "fast" else _barlow_twins_loss_einsum
+    for i in range(num_views):
+        pair_feats = torch.stack([features[:, i], pooled], dim=1)
+        losses.append(impl_fn(pair_feats, offdiag_weight=offdiag_weight, eps=eps))
+    view_weights_reduced: Optional[torch.Tensor] = None
+    if view_weights is not None:
+        view_weights_reduced = view_weights.mean(dim=0)
+    return _weighted_mean(torch.stack(losses), view_weights_reduced)
 
 
 def _weighted_pseudo_label_loss(
@@ -1006,7 +1147,10 @@ def _weighted_pseudo_label_loss(
         pseudo.repeat_interleave(num_views),
         reduction="none",
     ).view(bsz, num_views)
-    weighted = (ce * view_weights).sum(dim=1)
+    if view_weights is None:
+        weighted = ce.mean(dim=1)
+    else:
+        weighted = (ce * view_weights).sum(dim=1)
     if confidence_scale:
         conf = agg_prob.max(dim=-1).values
         weighted = weighted * conf
@@ -1043,6 +1187,15 @@ class SAFER(nn.Module):
         sup_view_pool: str = "mean",
         sup_pl_weighted: bool = False,
         sup_confidence_scale: bool = True,
+        js_view_pool: str = "matching",
+        js_mode: str = "pooled",
+        view_weighting: bool = True,
+        tta_loss: str = "none",
+        tta_weight: float = 0.0,
+        tta_target: str = "views",
+        tta_view_pool: str = "matching",
+        cc_mode: str = "pairwise",
+        cc_view_pool: str = "matching",
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -1062,6 +1215,7 @@ class SAFER(nn.Module):
         self.cc_weight = cc_weight
         self.offdiag_weight = offdiag_weight
         self.feature_normalize = feature_normalize
+        self.use_view_weights = bool(view_weighting)
         sup_mode = sup_mode.lower()
         if sup_mode not in {"none", "pl", "em"}:
             raise ValueError(f"Unknown supervision mode: {sup_mode}")
@@ -1069,11 +1223,12 @@ class SAFER(nn.Module):
         self.sup_weight = sup_weight
         sup_view_pool = sup_view_pool.lower()
         valid_pools = {"mean", "worst", "entropy", "top1", "cc", "cc_drop"}
+        valid_pools_with_match = valid_pools | {"matching"}
         if sup_view_pool not in valid_pools:
             raise ValueError(
                 f"Unknown view pooling strategy '{sup_view_pool}'. Expected one of {sorted(valid_pools)}."
             )
-        self.sup_view_pool = sup_view_pool
+        self.primary_view_pool = sup_view_pool
         self.sup_pl_weighted = sup_pl_weighted
         self.sup_confidence_scale = sup_confidence_scale
         cc_impl = cc_impl.lower()
@@ -1085,6 +1240,39 @@ class SAFER(nn.Module):
             raise ValueError(f"Unknown cross-correlation impl '{cc_impl}'. Expected one of {tuple(cc_impls)}.")
         self.cc_impl = cc_impl
         self._cc_loss_fn = cc_impls[cc_impl]
+        js_mode = js_mode.lower()
+        if js_mode not in {"pooled", "pairwise"}:
+            raise ValueError("js_mode must be 'pooled' or 'pairwise'.")
+        self.js_mode = js_mode
+
+        tta_loss = tta_loss.lower()
+        if tta_loss not in {"none", "tent", "pl", "tsd"}:
+            raise ValueError("tta_loss must be one of ['none', 'tent', 'pl', 'tsd'].")
+        self.tta_loss = tta_loss
+        self.tta_weight = tta_weight
+
+        tta_target = tta_target.lower()
+        if tta_target not in {"views", "pooled"}:
+            raise ValueError("tta_target must be 'views' or 'pooled'.")
+        self.tta_target = tta_target
+
+        cc_mode = cc_mode.lower()
+        if cc_mode not in {"pairwise", "pooled"}:
+            raise ValueError("cc_mode must be 'pairwise' or 'pooled'.")
+        self.cc_mode = cc_mode
+
+        def _validate_pool(name: str, value: str) -> str:
+            value = value.lower()
+            if value not in valid_pools_with_match:
+                raise ValueError(
+                    f"Unknown view pooling strategy '{value}' for {name}. Expected one of {sorted(valid_pools_with_match)}."
+                )
+            return value
+
+        self.sup_view_pool = sup_view_pool
+        self.js_view_pool = _validate_pool("js_view_pool", js_view_pool)
+        self.tta_view_pool = _validate_pool("tta_view_pool", tta_view_pool)
+        self.cc_view_pool = _validate_pool("cc_view_pool", cc_view_pool)
 
         aug_views = max(1, num_aug_views)
         self.augmenter = SAFERAugmenter(
@@ -1101,6 +1289,9 @@ class SAFER(nn.Module):
             )
         else:
             self.model_state, self.optimizer_state = None, None
+
+    def _resolve_pool_choice(self, choice: str) -> str:
+        return self.primary_view_pool if choice == "matching" else choice
 
     def reset(self):
         if self.model_state is None or self.optimizer_state is None:
@@ -1129,6 +1320,37 @@ class SAFER(nn.Module):
             raise RuntimeError("SAFER could not construct any views.")
         return torch.cat(views, dim=1)
 
+    def _compute_tta_loss(
+        self,
+        logits: torch.Tensor,
+        probs: torch.Tensor,
+        pooled_prob: torch.Tensor,
+        view_weights: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        if self.tta_loss == "tent":
+            if self.tta_target == "views":
+                ent = -(probs * probs.clamp_min(1e-6).log()).sum(dim=-1)
+                return _weighted_mean(ent, view_weights)
+            return _entropy_minimization_loss(pooled_prob)
+        if self.tta_loss == "pl":
+            if self.tta_target == "views":
+                weights = view_weights if self.use_view_weights else None
+                return _weighted_pseudo_label_loss(
+                    logits=logits,
+                    agg_prob=pooled_prob,
+                    view_weights=weights,
+                    confidence_scale=self.sup_confidence_scale,
+                )
+            return _confidence_weighted_pseudo_label(pooled_prob, confidence_scale=self.sup_confidence_scale)
+        if self.tta_loss == "tsd":
+            teacher = pooled_prob.detach()
+            if self.tta_target == "views":
+                kl = _prob_kl_divergence(probs, teacher.unsqueeze(1))
+                return _weighted_mean(kl, view_weights)
+            kl = _prob_kl_divergence(pooled_prob.unsqueeze(1), probs.detach())
+            return _weighted_mean(kl, view_weights)
+        return torch.tensor(0.0, device=logits.device)
+
     def forward_and_adapt(self, x, model, optimizer):
         batch_views = self._build_views(x)
         bsz, total_views, c, h, w = batch_views.shape
@@ -1148,39 +1370,88 @@ class SAFER(nn.Module):
             feats_bt = F.normalize(feats_bt, dim=-1)
 
         probs = F.softmax(logits, dim=-1)
-        js_loss = _js_divergence(probs) if self.js_weight > 1e-8 else torch.tensor(
-            0.0, device=logits.device
-        )
+        weight_cache: dict[str, torch.Tensor] = {}
+
+        def pool_probs(strategy: str) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
+            strat = self._resolve_pool_choice(strategy)
+            weights = None
+            if self.use_view_weights:
+                if strat not in weight_cache:
+                    weight_cache[strat] = _view_pool_weights(
+                        probs=probs,
+                        features=feats_bt,
+                        strategy=strat,
+                    )
+                weights = weight_cache[strat]
+            if weights is None:
+                pooled = probs.mean(dim=1)
+            else:
+                pooled = (probs * weights.unsqueeze(-1)).sum(dim=1)
+            return pooled, weights
+
+        base_prob, base_weights = pool_probs(self.sup_view_pool)
+
+        js_loss = torch.tensor(0.0, device=logits.device)
+        if self.js_weight > 1e-8:
+            js_prob, js_weights = pool_probs(self.js_view_pool)
+            js_loss = _js_divergence(
+                probs,
+                ref_probs=js_prob if self.js_mode == "pooled" else None,
+                view_weights=js_weights if self.use_view_weights else None,
+                mode=self.js_mode,
+            )
+
+        cc_loss = torch.tensor(0.0, device=logits.device)
         if self.cc_weight > 1e-8:
-            cc_loss = self._cc_loss_fn(feats_bt, self.offdiag_weight)
-        else:
-            cc_loss = torch.tensor(0.0, device=logits.device)
-        mean_prob = probs.mean(dim=1)
+            if self.cc_mode == "pairwise":
+                cc_loss = self._cc_loss_fn(feats_bt, self.offdiag_weight)
+            else:
+                _, cc_weights = pool_probs(self.cc_view_pool)
+                pooled_feats = _pool_features(feats_bt, cc_weights if self.use_view_weights else None)
+                cc_loss = _barlow_twins_against_pooled(
+                    feats_bt,
+                    pooled_feats,
+                    offdiag_weight=self.offdiag_weight,
+                    eps=1e-12,
+                    view_weights=cc_weights if self.use_view_weights else None,
+                    impl=self.cc_impl,
+                )
+
         sup_loss = torch.tensor(0.0, device=logits.device)
         sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
         if sup_active:
-            sup_prob, view_weights = _aggregate_view_probs(
-                probs=probs,
-                features=feats_bt,
-                strategy=self.sup_view_pool,
-            )
+            sup_weights = base_weights if (self.sup_pl_weighted and self.use_view_weights) else None
             if self.sup_mode == "pl":
                 if self.sup_pl_weighted:
                     sup_loss = _weighted_pseudo_label_loss(
                         logits=logits,
-                        agg_prob=sup_prob,
-                        view_weights=view_weights,
+                        agg_prob=base_prob,
+                        view_weights=sup_weights,
                         confidence_scale=self.sup_confidence_scale,
                     )
                 else:
                     sup_loss = _confidence_weighted_pseudo_label(
-                        sup_prob, confidence_scale=self.sup_confidence_scale
+                        base_prob, confidence_scale=self.sup_confidence_scale
                     )
             elif self.sup_mode == "em":
-                sup_loss = _entropy_minimization_loss(sup_prob)
+                sup_loss = _entropy_minimization_loss(base_prob)
 
-        loss = (self.js_weight * js_loss) + (self.cc_weight * cc_loss) + (
-            self.sup_weight * sup_loss
+        tta_loss = torch.tensor(0.0, device=logits.device)
+        if self.tta_loss != "none" and self.tta_weight > 1e-8:
+            tta_prob, tta_weights = pool_probs(self.tta_view_pool)
+            tta_weights = tta_weights if self.use_view_weights else None
+            tta_loss = self._compute_tta_loss(
+                logits=logits,
+                probs=probs,
+                pooled_prob=tta_prob,
+                view_weights=tta_weights,
+            )
+
+        loss = (
+            (self.js_weight * js_loss)
+            + (self.cc_weight * cc_loss)
+            + (self.sup_weight * sup_loss)
+            + (self.tta_weight * tta_loss)
         )
         wandb.log(
             {
@@ -1188,6 +1459,7 @@ class SAFER(nn.Module):
                 "SAFER/L_js": js_loss.item(),
                 "SAFER/L_cc": cc_loss.item(),
                 "SAFER/L_sup": sup_loss.item(),
+                "SAFER/L_tta": tta_loss.item(),
             }
         )
 
@@ -1195,7 +1467,7 @@ class SAFER(nn.Module):
         loss.backward()
         optimizer.step()
 
-        return mean_prob
+        return base_prob
 
 
 class MeanTeacherCorrection(nn.Module):

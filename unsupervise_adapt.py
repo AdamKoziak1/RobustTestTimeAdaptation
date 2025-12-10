@@ -132,6 +132,68 @@ def get_args():
         choices=[0, 1],
         help="Scale pseudo-label losses by pooled confidence (1 enables).",
     )
+    parser.add_argument(
+        "--s_js_mode",
+        type=str.lower,
+        default="pooled",
+        choices=["pooled", "pairwise"],
+        help="JS divergence computation mode.",
+    )
+    parser.add_argument(
+        "--s_js_view_pool",
+        type=str.lower,
+        default="matching",
+        choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        help="Pooling strategy for JS reference; 'matching' reuses the supervision pool.",
+    )
+    parser.add_argument(
+        "--s_view_weighting",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="Enable view-weighting when pooling for SAFER losses.",
+    )
+    parser.add_argument(
+        "--s_tta_loss",
+        type=str.lower,
+        default="none",
+        choices=["none", "tent", "pl", "tsd"],
+        help="Auxiliary TTA loss applied to SAFER predictions.",
+    )
+    parser.add_argument(
+        "--s_tta_weight",
+        type=float,
+        default=0.0,
+        help="Weight applied to SAFER TTA auxiliary loss.",
+    )
+    parser.add_argument(
+        "--s_tta_target",
+        type=str.lower,
+        default="views",
+        choices=["views", "pooled"],
+        help="Whether to apply the SAFER TTA loss to individual views or the pooled prediction.",
+    )
+    parser.add_argument(
+        "--s_tta_view_pool",
+        type=str.lower,
+        default="matching",
+        choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        help="Pooling strategy for TTA losses; 'matching' reuses the supervision pool.",
+    )
+    parser.add_argument(
+        "--s_cc_mode",
+        type=str.lower,
+        default="pairwise",
+        choices=["pairwise", "pooled"],
+        help="Cross-correlation mode: pairwise across views or each view vs pooled features.",
+    )
+    parser.add_argument(
+        "--s_cc_view_pool",
+        type=str.lower,
+        default="matching",
+        choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        help="Pooling strategy for pooled-feature cross-correlation; 'matching' reuses the supervision pool.",
+    )
     # Adaptive Mean-Teacher Data Correction
     parser.add_argument("--mt_alpha", type=float, default=0.02, help="Step size for data correction (alpha).")
     parser.add_argument("--mt_gamma", type=float, default=0.99, help="EMA momentum for teacher parameters (gamma).")
@@ -208,9 +270,20 @@ def get_args():
     args.s_cc_impl = args.s_cc_impl.lower()
     args.s_sup_pl_weighted = bool(args.s_sup_pl_weighted)
     args.s_sup_conf_scale = bool(args.s_sup_conf_scale)
+    args.s_js_view_pool = args.s_js_view_pool.lower()
+    args.s_js_mode = args.s_js_mode.lower()
+    args.s_view_weighting = bool(args.s_view_weighting)
+    args.s_tta_loss = args.s_tta_loss.lower()
+    args.s_tta_target = args.s_tta_target.lower()
+    args.s_tta_view_pool = args.s_tta_view_pool.lower()
+    args.s_cc_mode = args.s_cc_mode.lower()
+    args.s_cc_view_pool = args.s_cc_view_pool.lower()
     if args.s_sup_type == "none" or args.s_sup_weight <= 0.0:
         args.s_sup_type = "none"
         args.s_sup_weight = 0.0
+    if args.s_tta_loss == "none" or args.s_tta_weight <= 0.0:
+        args.s_tta_loss = "none"
+        args.s_tta_weight = 0.0
     args.mt_use_teacher_pred = bool(args.mt_use_teacher_pred)
     if args.mt_mixup_beta <= 0:
         args.mt_mixup_beta = 0.5
@@ -278,6 +351,15 @@ def log_args(args, time_taken_s):
             "s_sup_view_pool": args.s_sup_view_pool,
             "s_sup_pl_weighted": args.s_sup_pl_weighted,
             "s_sup_conf_scale": args.s_sup_conf_scale,
+            "s_js_mode": args.s_js_mode,
+            "s_js_view_pool": args.s_js_view_pool,
+            "s_view_weighting": args.s_view_weighting,
+            "s_tta_loss": args.s_tta_loss,
+            "s_tta_weight": args.s_tta_weight,
+            "s_tta_target": args.s_tta_target,
+            "s_tta_view_pool": args.s_tta_view_pool,
+            "s_cc_mode": args.s_cc_mode,
+            "s_cc_view_pool": args.s_cc_view_pool,
         }, commit=False)
     elif args.adapt_alg == "AMTDC":
         wandb.log({
@@ -580,6 +662,15 @@ def make_adapt_model(args, algorithm):
             sup_view_pool=args.s_sup_view_pool,
             sup_pl_weighted=args.s_sup_pl_weighted,
             sup_confidence_scale=args.s_sup_conf_scale,
+            js_view_pool=args.s_js_view_pool,
+            js_mode=args.s_js_mode,
+            view_weighting=args.s_view_weighting,
+            tta_loss=args.s_tta_loss,
+            tta_weight=args.s_tta_weight,
+            tta_target=args.s_tta_target,
+            tta_view_pool=args.s_tta_view_pool,
+            cc_mode=args.s_cc_mode,
+            cc_view_pool=args.s_cc_view_pool,
         )
     elif args.adapt_alg == "AMTDC":
         if args.update_param == "all":

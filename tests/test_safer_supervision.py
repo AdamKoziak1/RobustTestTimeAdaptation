@@ -11,6 +11,7 @@ if str(REPO_ROOT) not in sys.path:
 from adapt_algorithm import (
     _aggregate_view_probs,
     _weighted_pseudo_label_loss,
+    _js_divergence,
 )
 
 
@@ -51,6 +52,37 @@ def test_weighted_pseudo_label_loss_supports_cc_weights():
     assert loss.ndim == 0 and torch.isfinite(loss).item()
     loss.backward()
     assert logits.grad is not None
+
+
+def test_aggregate_view_probs_uniform_when_disabled():
+    probs, _ = _rand_probs()
+    features = torch.randn_like(probs[:, :, :1]).expand(probs.size(0), probs.size(1), 3)
+    pooled, weights = _aggregate_view_probs(probs, features, strategy="entropy", use_weights=False)
+
+    expected_weights = torch.full_like(weights, 1.0 / probs.size(1))
+    torch.testing.assert_close(weights, expected_weights, atol=1e-6, rtol=1e-6)
+    torch.testing.assert_close(pooled, probs.mean(dim=1), atol=1e-6, rtol=1e-6)
+
+
+def test_weighted_pseudo_label_loss_accepts_none_weights():
+    batch, views, classes = 2, 4, 7
+    logits = torch.randn(batch, views, classes, requires_grad=True)
+    probs = torch.softmax(logits, dim=-1)
+    pooled = probs.mean(dim=1)
+    loss = _weighted_pseudo_label_loss(logits, pooled, view_weights=None, confidence_scale=False)
+    loss.backward()
+    assert loss.item() >= 0
+    assert logits.grad is not None
+
+
+def test_js_divergence_pairwise_weighted_runs():
+    probs, _ = _rand_probs(batch=3, views=4, classes=6)
+    # simple entropy-based weights
+    pooled, weights = _aggregate_view_probs(probs, torch.randn(probs.size(0), probs.size(1), 3), strategy="entropy")
+    loss_pair = _js_divergence(probs, view_weights=weights, mode="pairwise")
+    assert torch.isfinite(loss_pair)
+    loss_pooled = _js_divergence(probs, ref_probs=pooled, view_weights=weights, mode="pooled")
+    assert torch.isfinite(loss_pooled)
 
 
 if __name__ == "__main__":

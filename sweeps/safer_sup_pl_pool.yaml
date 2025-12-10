@@ -57,3 +57,30 @@ parameters:
 
   s_sup_conf_scale:
     values: [0, 1]
+
+  s_js_mode:
+    value: "pairwise"
+
+  s_js_view_pool:
+    value: "matching"
+
+  s_view_weighting:
+    value: 1
+
+  s_cc_mode:
+    value: "pairwise"
+
+  s_cc_view_pool:
+    value: "matching"
+
+  s_tta_loss:
+    value: "tent"
+
+  s_tta_weight:
+    values: [0.0, 0.2]
+
+  s_tta_target:
+    value: "views"
+
+  s_tta_view_pool:
+    value: "matching"
