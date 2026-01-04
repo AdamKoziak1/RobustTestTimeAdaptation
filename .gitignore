@@ -185,3 +185,4 @@ tta_output_old/*
 svd_files/
 *.png
 *.sh
+.gemini

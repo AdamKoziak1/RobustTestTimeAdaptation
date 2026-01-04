@@ -1,0 +1,67 @@
+program: unsupervised_adapt_dataset.py
+project: safer_loss
+name: safer_supervision_isolation
+method: grid
+metric:
+  name: acc_0
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    value: "SAFER"
+
+  update_param:
+    value: "tent"
+
+  lr:
+    value: 0.0001
+
+  steps:
+    value: 1
+
+  # 3 total views: 1 original + 2 augmented
+  s_num_views:
+    value: 2
+  s_include_original:
+    value: 1
+
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 4
+  s_aug_seed:
+    value: 123
+
+  # Supervision isolation (pseudo-label / entropy minimization)
+  s_sup_type:
+    values: ["pl", "em"]
+  s_sup_weight:
+    values: [0.1, 0.3, 0.6]
+  s_sup_view_pool:
+    values: ["mean", "entropy", "cc", "top1"]
+  s_sup_pl_weighted:
+    values: [0, 1]
+  s_sup_conf_scale:
+    values: [0, 1]
+  s_view_weighting:
+    value: 1
+
+  # Disable JS/CC and aux TTA to focus on supervision
+  s_js_weight:
+    value: 0.0
+  s_js_mode:
+    value: "pooled"
+  s_js_view_pool:
+    value: "matching"
+
+  s_cc_weight:
+    value: 0.0
+  s_cc_mode:
+    value: "pairwise"
+  s_cc_view_pool:
+    value: "matching"
+
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
