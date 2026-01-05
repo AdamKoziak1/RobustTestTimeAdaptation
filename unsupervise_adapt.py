@@ -27,6 +27,7 @@ from adapt_algorithm import (
     TSD,
     TTA3,
     SAFER,
+    TeSLA,
     MeanTeacherCorrection,
 )
 from datautil.attacked_imagefolder import AttackedImageFolder
@@ -66,7 +67,7 @@ def get_args():
     parser.add_argument("--net",type=str,default="resnet18",help="featurizer: vgg16, resnet18,resnet50, resnet101,DTNBase,ViT-B16,resnext50",)
     parser.add_argument("--test_envs", type=int, nargs="+", default=[0], help="target domains")
     parser.add_argument("--output", type=str, default="./tta_output", help="result output path")
-    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3,SAFER,AMTDC]",)
+    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3,SAFER,TeSLA,AMTDC]",)
     parser.add_argument("--beta", type=float, default=0.9, help="threshold for pseudo label(PL)")
     parser.add_argument("--episodic", action="store_true", help="is episodic or not,default:False")
     parser.add_argument("--steps", type=int, default=1, help="steps of test time, default:1")
@@ -194,6 +195,32 @@ def get_args():
         choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
         help="Pooling strategy for pooled-feature cross-correlation; 'matching' reuses the supervision pool.",
     )
+    # TeSLA
+    parser.add_argument("--tesla_sub_policy_dim", type=int, default=2, help="Number of ops per TeSLA sub-policy.")
+    parser.add_argument("--tesla_aug_mult", type=int, default=1, help="Number of hard augmentation views per batch.")
+    parser.add_argument("--tesla_aug_mult_easy", type=int, default=4, help="Number of easy augmentation views per batch.")
+    parser.add_argument("--tesla_lmb_kl", type=float, default=1.0, help="Weight on TeSLA hard-augmentation KL loss.")
+    parser.add_argument("--tesla_lmb_norm", type=float, default=1.0, help="Weight on TeSLA augmentation norm loss.")
+    parser.add_argument("--tesla_ema", type=float, default=0.99, help="EMA momentum for TeSLA teacher.")
+    parser.add_argument("--tesla_no_kl_hard", type=int, default=0, choices=[0,1], help="Disable TeSLA hard-augmentation distillation.")
+    parser.add_argument("--tesla_nn_queue_size", type=int, default=256, help="TeSLA nearest-neighbour queue size (0 disables).")
+    parser.add_argument("--tesla_n_neigh", type=int, default=10, help="Number of neighbours for TeSLA PLR.")
+    parser.add_argument("--tesla_pl_ce", type=int, default=0, choices=[0,1], help="Use CE with teacher as target.")
+    parser.add_argument("--tesla_pl_fce", type=int, default=0, choices=[0,1], help="Use CE with student as target.")
+    parser.add_argument(
+        "--tesla_hard_augment",
+        type=str,
+        default="optimal",
+        choices=["optimal", "aa", "randaugment"],
+        help="TeSLA hard augmentation source (optimal policy, AutoAugment, or RandAugment).",
+    )
+    parser.add_argument(
+        "--tesla_input_is_normalized",
+        type=int,
+        default=-1,
+        choices=[-1, 0, 1],
+        help="Override input normalization detection: -1 auto, 0 raw, 1 normalized.",
+    )
     # Adaptive Mean-Teacher Data Correction
     parser.add_argument("--mt_alpha", type=float, default=0.02, help="Step size for data correction (alpha).")
     parser.add_argument("--mt_gamma", type=float, default=0.99, help="EMA momentum for teacher parameters (gamma).")
@@ -278,6 +305,14 @@ def get_args():
     args.s_tta_view_pool = args.s_tta_view_pool.lower()
     args.s_cc_mode = args.s_cc_mode.lower()
     args.s_cc_view_pool = args.s_cc_view_pool.lower()
+    args.tesla_no_kl_hard = bool(args.tesla_no_kl_hard)
+    args.tesla_pl_ce = bool(args.tesla_pl_ce)
+    args.tesla_pl_fce = bool(args.tesla_pl_fce)
+    args.tesla_hard_augment = args.tesla_hard_augment.lower()
+    if args.tesla_input_is_normalized < 0:
+        args.tesla_input_is_normalized = None
+    else:
+        args.tesla_input_is_normalized = bool(args.tesla_input_is_normalized)
     if args.s_sup_type == "none" or args.s_sup_weight <= 0.0:
         args.s_sup_type = "none"
         args.s_sup_weight = 0.0
@@ -360,6 +395,22 @@ def log_args(args, time_taken_s):
             "s_tta_view_pool": args.s_tta_view_pool,
             "s_cc_mode": args.s_cc_mode,
             "s_cc_view_pool": args.s_cc_view_pool,
+        }, commit=False)
+    elif args.adapt_alg == "TeSLA":
+        wandb.log({
+            "tesla_sub_policy_dim": args.tesla_sub_policy_dim,
+            "tesla_aug_mult": args.tesla_aug_mult,
+            "tesla_aug_mult_easy": args.tesla_aug_mult_easy,
+            "tesla_lmb_kl": args.tesla_lmb_kl,
+            "tesla_lmb_norm": args.tesla_lmb_norm,
+            "tesla_ema": args.tesla_ema,
+            "tesla_no_kl_hard": args.tesla_no_kl_hard,
+            "tesla_nn_queue_size": args.tesla_nn_queue_size,
+            "tesla_n_neigh": args.tesla_n_neigh,
+            "tesla_pl_ce": args.tesla_pl_ce,
+            "tesla_pl_fce": args.tesla_pl_fce,
+            "tesla_hard_augment": args.tesla_hard_augment,
+            "tesla_input_is_normalized": args.tesla_input_is_normalized,
         }, commit=False)
     elif args.adapt_alg == "AMTDC":
         wandb.log({
@@ -672,6 +723,55 @@ def make_adapt_model(args, algorithm):
             cc_mode=args.s_cc_mode,
             cc_view_pool=args.s_cc_view_pool,
         )
+    elif args.adapt_alg == "TeSLA":
+        if args.update_param == "all":
+            optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
+            sum_params = sum([p.nelement() for p in algorithm.parameters()])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "affine":
+            algorithm.train()
+            algorithm.requires_grad_(False)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            for m in algorithm.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.requires_grad_(True)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "tent":
+            algorithm = configure_model(algorithm)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
+            sum_params = sum([p.nelement() for p in params])
+            wandb.log({"sum_params": sum_params})
+        elif args.update_param == "body":
+            optimizer = torch.optim.Adam(algorithm.featurizer.parameters(), lr=args.lr)
+            print("Update encoder")
+        elif args.update_param == "head":
+            optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
+            print("Update classifier")
+        else:
+            raise Exception("Do not support update with %s manner." % args.update_param)
+
+        adapt_model = TeSLA(
+            algorithm,
+            optimizer,
+            steps=args.steps,
+            episodic=args.episodic,
+            sub_policy_dim=args.tesla_sub_policy_dim,
+            aug_mult=args.tesla_aug_mult,
+            aug_mult_easy=args.tesla_aug_mult_easy,
+            hard_augment=args.tesla_hard_augment,
+            lmb_kl=args.tesla_lmb_kl,
+            lmb_norm=args.tesla_lmb_norm,
+            ema_momentum=args.tesla_ema,
+            no_kl_hard=args.tesla_no_kl_hard,
+            nn_queue_size=args.tesla_nn_queue_size,
+            n_neigh=args.tesla_n_neigh,
+            pl_ce=args.tesla_pl_ce,
+            pl_fce=args.tesla_pl_fce,
+            input_is_normalized=args.tesla_input_is_normalized,
+        )
     elif args.adapt_alg == "AMTDC":
         if args.update_param == "all":
             optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
@@ -789,6 +889,16 @@ if __name__ == "__main__":
         if args.s_sup_type != "none" and args.s_sup_weight > 0:
             run_name += f"-{args.s_sup_type}{args.s_sup_weight:.2f}"
         run_name += (
+            f"_rate-{args.attack_rate}"
+        )
+    elif args.adapt_alg == "TeSLA":
+        run_name = (
+            f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}"
+            f"-a{args.tesla_aug_mult}"
+            f"-e{args.tesla_aug_mult_easy}"
+            f"-k{args.tesla_lmb_kl:.2f}"
+            f"-ema{args.tesla_ema:.2f}"
+            f"-{args.tesla_hard_augment}"
             f"_rate-{args.attack_rate}"
         )
     elif args.adapt_alg == "AMTDC":

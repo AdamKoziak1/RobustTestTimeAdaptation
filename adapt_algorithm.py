@@ -1,17 +1,22 @@
 import math
+import random
 from copy import deepcopy
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
+import torchvision.transforms as tvT
+import torchvision.transforms.functional as tvF
 from torchvision.models.feature_extraction import create_feature_extractor
 from torch.distributions import Beta
 from utils.svd import SVDDrop2D
 from utils.fft import FFTDrop2D
 from utils.image_ops import GaussianBlur2D
 from utils.safer_aug import SAFERAugmenter
+from utils.tesla_aug.optaug import OptAug
+from utils.tesla_losses import EntropyClassMarginals
 
 @torch.jit.script
 def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
@@ -1155,6 +1160,357 @@ def _weighted_pseudo_label_loss(
         conf = agg_prob.max(dim=-1).values
         weighted = weighted * conf
     return weighted.mean()
+
+
+def _soft_cross_entropy(p: torch.Tensor, q: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    return -torch.sum(p * torch.log(q + eps), dim=-1)
+
+
+class TeSLA(nn.Module):
+    """
+    TeSLA: Test-Time Self-Learning with automatic adversarial augmentation.
+    """
+
+    def __init__(
+        self,
+        model,
+        optimizer,
+        steps: int = 1,
+        episodic: bool = False,
+        sub_policy_dim: int = 2,
+        aug_mult: int = 1,
+        aug_mult_easy: int = 4,
+        hard_augment: str = "optimal",
+        lmb_kl: float = 1.0,
+        lmb_norm: float = 1.0,
+        ema_momentum: float = 0.9,
+        no_kl_hard: bool = False,
+        nn_queue_size: int = 0,
+        n_neigh: int = 4,
+        pl_ce: bool = False,
+        pl_fce: bool = False,
+        mean: Optional[Sequence[float]] = None,
+        std: Optional[Sequence[float]] = None,
+        input_is_normalized: Optional[bool] = None,
+    ):
+        super().__init__()
+        assert steps > 0, "TeSLA requires >= 1 step(s) to forward and update"
+        self.model = model
+        self.optimizer = optimizer
+        self.steps = steps
+        self.episodic = episodic
+        self.sub_policy_dim = sub_policy_dim
+        self.aug_mult = int(aug_mult)
+        self.aug_mult_easy = int(aug_mult_easy)
+        self.hard_augment = hard_augment.lower()
+        self.lmb_kl = lmb_kl
+        self.lmb_norm = lmb_norm
+        self.ema_momentum = ema_momentum
+        self.no_kl_hard = bool(no_kl_hard)
+        self.pl_ce = bool(pl_ce)
+        self.pl_fce = bool(pl_fce)
+        self.input_is_normalized = input_is_normalized
+        if self.hard_augment not in {"optimal", "aa", "randaugment"}:
+            raise ValueError("hard_augment must be one of ['optimal', 'aa', 'randaugment']")
+        if self.aug_mult < 0 or self.aug_mult_easy < 0:
+            raise ValueError("aug_mult and aug_mult_easy must be non-negative")
+
+        self.featurizer = model.featurizer
+        self.classifier = model.classifier
+        self.softmax = nn.Softmax(dim=-1)
+        self.criterian_cm = EntropyClassMarginals()
+
+        self.num_classes = self._infer_num_classes()
+        self.feat_dim = self._infer_feat_dim()
+        self.nn_queue_size = int(nn_queue_size)
+        self.n_neigh = int(n_neigh)
+        self.feats_nn_queue = None
+        self.prob_nn_queue = None
+
+        self.teacher = deepcopy(model).eval()
+        self.teacher.requires_grad_(False)
+
+        mean_t, std_t = self._resolve_input_stats(mean, std)
+        self.register_buffer("norm_mean", mean_t)
+        self.register_buffer("norm_std", std_t)
+
+        self.normalize_fn = lambda x: (x - self.norm_mean) / self.norm_std
+        self.denormalize_fn = lambda x: x * self.norm_std + self.norm_mean
+
+        self.hard_opt_aug = None
+        if (not self.no_kl_hard) and self.aug_mult > 0 and self.hard_augment == "optimal":
+            self.hard_opt_aug = OptAug(
+                self.teacher,
+                self.sub_policy_dim,
+                self.aug_mult,
+                "Hard",
+                self.normalize_fn,
+                self.denormalize_fn,
+                self.lmb_norm,
+            )
+        self.hard_aug_transform = None
+        if self.hard_augment in {"aa", "randaugment"}:
+            policy = tvT.AutoAugment() if self.hard_augment == "aa" else tvT.RandAugment()
+            self.hard_aug_transform = tvT.Compose(
+                [
+                    tvT.Lambda(lambda img: (img * 255.0).to(torch.uint8)),
+                    tvT.RandomHorizontalFlip(),
+                    policy,
+                    tvT.Lambda(lambda img: (img.to(torch.float32) / 255.0)),
+                ]
+            )
+
+        if self.episodic:
+            self.model_state, self.optimizer_state = copy_model_and_optimizer(self.model, self.optimizer)
+            self.teacher_state = deepcopy(self.teacher.state_dict())
+            if self.hard_opt_aug is not None:
+                self.policy_state = deepcopy(self.hard_opt_aug.policy_predictor.state_dict())
+                self.policy_optim_state = deepcopy(self.hard_opt_aug.optimizer_policy.state_dict())
+            else:
+                self.policy_state = None
+                self.policy_optim_state = None
+
+    def _infer_num_classes(self) -> int:
+        if hasattr(self.classifier, "fc"):
+            return self.classifier.fc.weight.size(0)
+        if hasattr(self.classifier, "weight"):
+            return self.classifier.weight.size(0)
+        raise ValueError("Unable to infer num_classes from classifier.")
+
+    def _infer_feat_dim(self) -> int:
+        if hasattr(self.classifier, "fc"):
+            return self.classifier.fc.weight.size(1)
+        if hasattr(self.classifier, "weight"):
+            return self.classifier.weight.size(1)
+        raise ValueError("Unable to infer feature dim from classifier.")
+
+    def _resolve_input_stats(
+        self,
+        mean: Optional[Sequence[float]],
+        std: Optional[Sequence[float]],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if mean is not None and std is not None:
+            mean_t = torch.tensor(mean, dtype=torch.float32).view(1, -1, 1, 1)
+            std_t = torch.tensor(std, dtype=torch.float32).view(1, -1, 1, 1)
+            return mean_t, std_t
+        for module in (self.featurizer, self.model):
+            if hasattr(module, "_in_mean") and hasattr(module, "_in_std"):
+                mean_t = module._in_mean.detach().clone().to(dtype=torch.float32)
+                std_t = module._in_std.detach().clone().to(dtype=torch.float32)
+                return mean_t, std_t
+        default_mean = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(1, -1, 1, 1)
+        default_std = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(1, -1, 1, 1)
+        return default_mean, default_std
+
+    def _detect_normalized(self, x: torch.Tensor) -> bool:
+        if self.input_is_normalized is not None:
+            return self.input_is_normalized
+        x_min = x.amin().item()
+        x_max = x.amax().item()
+        return (x_min < -0.05) or (x_max > 1.05)
+
+    def _maybe_denormalize(self, x: torch.Tensor, normalized: bool) -> tuple[torch.Tensor, bool]:
+        if normalized:
+            return self.denormalize_fn(x), True
+        return x, False
+
+    def _maybe_normalize(self, x: torch.Tensor, was_normalized: bool) -> torch.Tensor:
+        if was_normalized:
+            return self.normalize_fn(x)
+        return x
+
+    def _normalize_views(self, views: torch.Tensor) -> torch.Tensor:
+        b, v, c, h, w = views.shape
+        flat = views.reshape(-1, c, h, w)
+        flat = self.normalize_fn(flat)
+        return flat.reshape(b, v, c, h, w)
+
+    def _apply_easy_augment(self, x: torch.Tensor) -> torch.Tensor:
+        b, c, h, w = x.shape
+        out = []
+        for idx in range(b):
+            img = x[idx]
+            i, j, h_crop, w_crop = tvT.RandomResizedCrop.get_params(
+                img, scale=(0.8, 1.0), ratio=(3.0 / 4.0, 4.0 / 3.0)
+            )
+            img = tvF.resized_crop(
+                img,
+                i,
+                j,
+                h_crop,
+                w_crop,
+                (h, w),
+                interpolation=tvF.InterpolationMode.BILINEAR,
+            )
+            if torch.rand((), device=img.device) < 0.5:
+                img = tvF.hflip(img)
+            out.append(img)
+        return torch.stack(out, dim=0)
+
+    def _sample_easy_views(self, x: torch.Tensor, normalized: bool) -> Optional[torch.Tensor]:
+        if self.aug_mult_easy <= 0:
+            return None
+        x_raw, was_norm = self._maybe_denormalize(x, normalized)
+        views = []
+        for _ in range(self.aug_mult_easy):
+            view = self._apply_easy_augment(x_raw)
+            views.append(view.clamp(0.0, 1.0))
+        views = torch.stack(views, dim=1)
+        return self._normalize_views(views) if was_norm else views
+
+    def _apply_hard_augment(self, x: torch.Tensor, normalized: bool) -> torch.Tensor:
+        if self.hard_aug_transform is None:
+            return x
+        x_raw, was_norm = self._maybe_denormalize(x, normalized)
+        x_cpu = x_raw.detach().cpu()
+        out = [self.hard_aug_transform(x_cpu[i]) for i in range(x_cpu.size(0))]
+        out = torch.stack(out, dim=0).to(device=x.device, dtype=x.dtype)
+        out = out.clamp(0.0, 1.0)
+        return self._maybe_normalize(out, was_norm)
+
+    def _ensure_nn_queue(self, device):
+        if self.nn_queue_size <= 0:
+            return
+        if self.feats_nn_queue is None or next(iter(self.feats_nn_queue.values())).device != device:
+            self.feats_nn_queue = {
+                k: torch.empty((0, self.feat_dim), device=device) for k in range(self.num_classes)
+            }
+            self.prob_nn_queue = {
+                k: torch.empty((0, self.num_classes), device=device) for k in range(self.num_classes)
+            }
+
+    @torch.no_grad()
+    def update_nearest_neighbours(self, feats, labels):
+        hard_labels = torch.argmax(labels, dim=-1)
+        for l in range(self.num_classes):
+            mask = hard_labels == l
+            if mask.sum() == 0:
+                continue
+            curr_feats = feats[mask][: self.nn_queue_size]
+            curr_labels = labels[mask][: self.nn_queue_size]
+            feats_cat = torch.cat([self.feats_nn_queue[l], curr_feats], dim=0)
+            labels_cat = torch.cat([self.prob_nn_queue[l], curr_labels], dim=0)
+            if feats_cat.size(0) > self.nn_queue_size:
+                feats_cat = feats_cat[-self.nn_queue_size :]
+                labels_cat = labels_cat[-self.nn_queue_size :]
+            self.feats_nn_queue[l] = feats_cat
+            self.prob_nn_queue[l] = labels_cat
+
+    @torch.no_grad()
+    def get_pseudo_labels_nearest_neighbours(self, feats):
+        all_feats = torch.cat(list(self.feats_nn_queue.values()), dim=0)
+        all_probs = torch.cat(list(self.prob_nn_queue.values()), dim=0)
+        if all_feats.numel() == 0:
+            return None, None
+        k = min(self.n_neigh, all_feats.size(0))
+        norm_feats = F.normalize(feats, dim=-1)
+        norm_all = F.normalize(all_feats, dim=-1)
+        cosine_sim = torch.einsum("bd,cd->bc", norm_feats, norm_all)
+        _, idx_neighbours = torch.topk(cosine_sim, k=k, dim=-1)
+        pred_top_k = all_probs[idx_neighbours]
+        soft_voting = torch.mean(pred_top_k, dim=1)
+        pseudo_label = torch.argmax(soft_voting, dim=-1)
+        return pseudo_label, soft_voting
+
+    def reset(self):
+        if self.model_state is None or self.optimizer_state is None:
+            raise Exception("Cannot reset without stored model/optimizer state.")
+        load_model_and_optimizer(self.model, self.optimizer, self.model_state, self.optimizer_state)
+        self.teacher.load_state_dict(self.teacher_state)
+        if self.hard_opt_aug is not None and self.policy_state is not None:
+            self.hard_opt_aug.policy_predictor.load_state_dict(self.policy_state)
+            self.hard_opt_aug.optimizer_policy.load_state_dict(self.policy_optim_state)
+        self.feats_nn_queue = None
+        self.prob_nn_queue = None
+
+    def forward(self, x):
+        if self.episodic:
+            self.reset()
+        outputs = None
+        for _ in range(self.steps):
+            outputs = self.forward_and_adapt(x, self.model, self.optimizer)
+        return outputs
+
+    @torch.no_grad()
+    def _ema_update_teacher(self):
+        for p_t, p_s in zip(self.teacher.parameters(), self.model.parameters()):
+            p_t.data.mul_(self.ema_momentum).add_(p_s.data, alpha=1.0 - self.ema_momentum)
+
+    @torch.enable_grad()
+    def forward_and_adapt(self, x, model, optimizer):
+        normalized = self._detect_normalized(x)
+        easy_views = self._sample_easy_views(x, normalized)
+        if easy_views is None:
+            all_views = x.unsqueeze(1)
+        else:
+            all_views = torch.cat([x.unsqueeze(1), easy_views], dim=1)
+
+        num_views = all_views.size(1)
+        if num_views > 1:
+            view_idx = random.randrange(num_views)
+            batch_x = all_views[:, view_idx]
+        else:
+            batch_x = x
+
+        x_aug_hard = None
+        if not self.no_kl_hard:
+            if self.hard_augment == "optimal" and self.hard_opt_aug is not None:
+                self.hard_opt_aug.optimize(batch_x)
+                x_aug_hard = self.hard_opt_aug.sample(batch_x)
+            elif self.hard_augment in {"aa", "randaugment"}:
+                x_aug_hard = self._apply_hard_augment(batch_x, normalized).unsqueeze(1)
+
+        with torch.no_grad():
+            scores_ema_easy = []
+            feats_ema_easy = []
+            for i in reversed(range(num_views)):
+                feats_view = self.teacher.featurizer(all_views[:, i])
+                logits_view = self.teacher.classifier(feats_view)
+                scores_ema_easy.append(self.softmax(logits_view))
+                feats_ema_easy.append(feats_view)
+
+            feats_ema_easy = torch.stack(feats_ema_easy, dim=0).mean(dim=0)
+            soft_pseudo_labels = torch.stack(scores_ema_easy, dim=0).mean(dim=0)
+            if self.nn_queue_size > 0 and self.n_neigh > 0:
+                self._ensure_nn_queue(feats_ema_easy.device)
+                self.update_nearest_neighbours(feats_ema_easy, soft_pseudo_labels)
+                _, refined = self.get_pseudo_labels_nearest_neighbours(feats_ema_easy)
+                if refined is not None and refined.numel() > 0:
+                    soft_pseudo_labels = refined
+
+        logits_student = model.predict(batch_x)
+        scores_student = self.softmax(logits_student)
+
+        if self.pl_ce:
+            loss_teach = _soft_cross_entropy(soft_pseudo_labels, scores_student).mean()
+            loss_cm = torch.tensor(0.0, device=x.device)
+        elif self.pl_fce:
+            loss_teach = _soft_cross_entropy(scores_student, soft_pseudo_labels).mean()
+            loss_cm = torch.tensor(0.0, device=x.device)
+        else:
+            loss_cm = self.criterian_cm(scores_student)
+            loss_teach = _soft_cross_entropy(scores_student, soft_pseudo_labels).mean()
+
+        loss = loss_cm + loss_teach
+
+        if x_aug_hard is not None and self.lmb_kl > 0:
+            loss_hard = torch.tensor(0.0, device=x.device)
+            for j in range(x_aug_hard.size(1)):
+                logits_hard = model.predict(x_aug_hard[:, j])
+                scores_hard = self.softmax(logits_hard)
+                loss_hard += F.kl_div(
+                    torch.log(scores_hard + 1e-8),
+                    soft_pseudo_labels,
+                    reduction="batchmean",
+                )
+            loss = loss + self.lmb_kl * loss_hard
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        self._ema_update_teacher()
+
+        return logits_student
 
 
 class SAFER(nn.Module):
