@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
 project: tesla
-name: tesla_baseline
+name: tesla_baseline2
 method: grid
 metric:
   name: acc_mean

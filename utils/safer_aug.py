@@ -211,6 +211,10 @@ class SAFERAugmenter:
         max_ops: cap on how many operations to include in one pipeline (None = unlimited).
         prob: Bernoulli probability per augmentation.
         seed: optional seed for determinism.
+        force_noise_first: ensure the noise_op is the first operation in the pipeline.
+        require_freq_or_blur: enforce at least one frequency/blur op per pipeline.
+        noise_op: name of the noise operation to place first when forced.
+        freq_or_blur_ops: candidate ops used to satisfy the frequency/blur requirement.
     """
 
     def __init__(
@@ -220,6 +224,10 @@ class SAFERAugmenter:
         max_ops: Optional[int] = None,
         prob: float = 0.7,
         seed: Optional[int] = None,
+        force_noise_first: bool = False,
+        require_freq_or_blur: bool = False,
+        noise_op: str = "gaussian_noise",
+        freq_or_blur_ops: Optional[Sequence[str]] = None,
     ) -> None:
         assert num_views >= 1, "num_views must be ≥ 1"
         assert 0.0 <= prob <= 1.0, "prob must be in [0, 1]"
@@ -228,6 +236,13 @@ class SAFERAugmenter:
         self.prob = prob
         self.rng = random.Random(seed)
         self.registry = _build_registry()
+        self.force_noise_first = bool(force_noise_first)
+        self.require_freq_or_blur = bool(require_freq_or_blur)
+        self.noise_op = noise_op
+        self.freq_or_blur_ops = list(freq_or_blur_ops) if freq_or_blur_ops is not None else [
+            "fft_low_pass",
+            "gaussian_blur",
+        ]
         default_ops: Tuple[str, ...] = (
             "gaussian_blur",
             "gaussian_noise",
@@ -257,10 +272,43 @@ class SAFERAugmenter:
                 spec = self.registry[name]
                 params = spec.sample_params(self.rng)
                 ops.append((name, params))
-        if self.max_ops is not None and len(ops) > self.max_ops:
-            ops = self.rng.sample(ops, self.max_ops)
+
+        mandatory: List[Tuple[str, Dict[str, float]]] = []
+        if self.force_noise_first:
+            noise_spec = self.registry.get(self.noise_op)
+            if noise_spec is not None:
+                noise_params = None
+                for i, (name, params) in enumerate(ops):
+                    if name == self.noise_op:
+                        noise_params = params
+                        ops.pop(i)
+                        break
+                if noise_params is None:
+                    noise_params = noise_spec.sample_params(self.rng)
+                mandatory.append((self.noise_op, noise_params))
+
+        if self.require_freq_or_blur:
+            candidates = [name for name in self.freq_or_blur_ops if name in self.registry]
+            if candidates:
+                chosen_name = None
+                chosen_params = None
+                for i, (name, params) in enumerate(ops):
+                    if name in candidates:
+                        chosen_name = name
+                        chosen_params = params
+                        ops.pop(i)
+                        break
+                if chosen_name is None:
+                    chosen_name = self.rng.choice(candidates)
+                    chosen_params = self.registry[chosen_name].sample_params(self.rng)
+                mandatory.append((chosen_name, chosen_params))
+
+        if self.max_ops is not None:
+            budget = max(self.max_ops - len(mandatory), 0)
+            if len(ops) > budget:
+                ops = self.rng.sample(ops, budget)
         self.rng.shuffle(ops)
-        return ops
+        return mandatory + ops
 
     def _apply_ops(self, x: Tensor, ops: List[Tuple[str, Dict[str, float]]]) -> Tensor:
         out = x.clone()

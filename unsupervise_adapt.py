@@ -100,6 +100,33 @@ def get_args():
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
     parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
     parser.add_argument(
+        "--s_aug_force_noise",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="Always apply Gaussian noise as the first SAFER augmentation.",
+    )
+    parser.add_argument(
+        "--s_aug_require_freq_blur",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="Require FFT low-pass or Gaussian blur in each SAFER augmentation pipeline.",
+    )
+    parser.add_argument(
+        "--s_input_is_normalized",
+        type=int,
+        default=-1,
+        choices=[-1, 0, 1],
+        help="Override SAFER input normalization detection: -1 auto, 0 raw, 1 normalized.",
+    )
+    parser.add_argument(
+        "--s_cm_weight",
+        type=float,
+        default=0.0,
+        help="Weight for SAFER class-marginal regularisation.",
+    )
+    parser.add_argument(
         "--s_sup_type",
         type=str.lower,
         default="none",
@@ -221,6 +248,19 @@ def get_args():
         choices=[-1, 0, 1],
         help="Override input normalization detection: -1 auto, 0 raw, 1 normalized.",
     )
+    parser.add_argument(
+        "--tesla_view_pool",
+        type=str.lower,
+        default="mean",
+        choices=["mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        help="View pooling strategy for TeSLA teacher view aggregation.",
+    )
+    parser.add_argument(
+        "--tesla_js_weight",
+        type=float,
+        default=0.0,
+        help="Weight for TeSLA JS divergence across easy views.",
+    )
     # Adaptive Mean-Teacher Data Correction
     parser.add_argument("--mt_alpha", type=float, default=0.02, help="Step size for data correction (alpha).")
     parser.add_argument("--mt_gamma", type=float, default=0.99, help="EMA momentum for teacher parameters (gamma).")
@@ -305,10 +345,17 @@ def get_args():
     args.s_tta_view_pool = args.s_tta_view_pool.lower()
     args.s_cc_mode = args.s_cc_mode.lower()
     args.s_cc_view_pool = args.s_cc_view_pool.lower()
+    args.s_aug_force_noise = bool(args.s_aug_force_noise)
+    args.s_aug_require_freq_blur = bool(args.s_aug_require_freq_blur)
+    if args.s_input_is_normalized < 0:
+        args.s_input_is_normalized = None
+    else:
+        args.s_input_is_normalized = bool(args.s_input_is_normalized)
     args.tesla_no_kl_hard = bool(args.tesla_no_kl_hard)
     args.tesla_pl_ce = bool(args.tesla_pl_ce)
     args.tesla_pl_fce = bool(args.tesla_pl_fce)
     args.tesla_hard_augment = args.tesla_hard_augment.lower()
+    args.tesla_view_pool = args.tesla_view_pool.lower()
     if args.tesla_input_is_normalized < 0:
         args.tesla_input_is_normalized = None
     else:
@@ -381,6 +428,10 @@ def log_args(args, time_taken_s):
             "s_cc_offdiag": args.s_cc_offdiag,
             "s_cc_impl": args.s_cc_impl,
             "s_feat_normalize": args.s_feat_normalize,
+            "s_aug_force_noise": args.s_aug_force_noise,
+            "s_aug_require_freq_blur": args.s_aug_require_freq_blur,
+            "s_input_is_normalized": args.s_input_is_normalized,
+            "s_cm_weight": args.s_cm_weight,
             "s_sup_type": args.s_sup_type,
             "s_sup_weight": args.s_sup_weight,
             "s_sup_view_pool": args.s_sup_view_pool,
@@ -411,6 +462,8 @@ def log_args(args, time_taken_s):
             "tesla_pl_fce": args.tesla_pl_fce,
             "tesla_hard_augment": args.tesla_hard_augment,
             "tesla_input_is_normalized": args.tesla_input_is_normalized,
+            "tesla_view_pool": args.tesla_view_pool,
+            "tesla_js_weight": args.tesla_js_weight,
         }, commit=False)
     elif args.adapt_alg == "AMTDC":
         wandb.log({
@@ -702,6 +755,8 @@ def make_adapt_model(args, algorithm):
             aug_prob=args.s_aug_prob,
             aug_max_ops=args.s_aug_max_ops,
             augmentations=augment_list,
+            force_noise_first=args.s_aug_force_noise,
+            require_freq_or_blur=args.s_aug_require_freq_blur,
             js_weight=args.s_js_weight,
             cc_weight=args.s_cc_weight,
             offdiag_weight=args.s_cc_offdiag,
@@ -709,6 +764,7 @@ def make_adapt_model(args, algorithm):
             aug_seed=args.s_aug_seed,
             sup_mode=args.s_sup_type,
             sup_weight=args.s_sup_weight,
+            class_marginal_weight=args.s_cm_weight,
             cc_impl=args.s_cc_impl,
             sup_view_pool=args.s_sup_view_pool,
             sup_pl_weighted=args.s_sup_pl_weighted,
@@ -722,6 +778,7 @@ def make_adapt_model(args, algorithm):
             tta_view_pool=args.s_tta_view_pool,
             cc_mode=args.s_cc_mode,
             cc_view_pool=args.s_cc_view_pool,
+            input_is_normalized=args.s_input_is_normalized,
         )
     elif args.adapt_alg == "TeSLA":
         if args.update_param == "all":
@@ -771,6 +828,8 @@ def make_adapt_model(args, algorithm):
             pl_ce=args.tesla_pl_ce,
             pl_fce=args.tesla_pl_fce,
             input_is_normalized=args.tesla_input_is_normalized,
+            view_pool=args.tesla_view_pool,
+            js_weight=args.tesla_js_weight,
         )
     elif args.adapt_alg == "AMTDC":
         if args.update_param == "all":

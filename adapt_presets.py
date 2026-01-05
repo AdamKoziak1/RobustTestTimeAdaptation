@@ -46,6 +46,9 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "s_cc_weight": 1.0,
         "s_cc_offdiag": 0.01,
         "s_include_original": 1,
+        "s_aug_force_noise": 1,
+        "s_aug_require_freq_blur": 1,
+        "s_cm_weight": 0.0,
         "s_sup_type": "none",
         "s_sup_weight": 0.0,
         "s_sup_view_pool": "mean",
@@ -76,6 +79,8 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "tesla_pl_ce": 0,
         "tesla_pl_fce": 0,
         "tesla_hard_augment": "optimal",
+        "tesla_view_pool": "mean",
+        "tesla_js_weight": 0.0,
     },
     "AMTDC": {
         "lr": 1e-4,

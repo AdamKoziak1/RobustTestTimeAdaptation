@@ -24,6 +24,74 @@ def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     return -(x.softmax(1) * x.log_softmax(1)).sum(1)
 
 
+VIEW_POOL_STRATEGIES = {"mean", "worst", "entropy", "top1", "cc", "cc_drop"}
+VIEW_POOL_STRATEGIES_WITH_MATCHING = VIEW_POOL_STRATEGIES | {"matching"}
+
+
+def _resolve_input_stats(
+    mean: Optional[Sequence[float]],
+    std: Optional[Sequence[float]],
+    modules: Sequence[nn.Module],
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    if mean is not None and std is not None:
+        mean_t = torch.tensor(mean, dtype=torch.float32).view(1, -1, 1, 1)
+        std_t = torch.tensor(std, dtype=torch.float32).view(1, -1, 1, 1)
+        return mean_t, std_t
+    for module in modules:
+        if hasattr(module, "_in_mean") and hasattr(module, "_in_std"):
+            mean_t = module._in_mean.detach().clone().to(dtype=torch.float32)
+            std_t = module._in_std.detach().clone().to(dtype=torch.float32)
+            return mean_t, std_t
+    default_mean = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(1, -1, 1, 1)
+    default_std = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(1, -1, 1, 1)
+    return default_mean, default_std
+
+
+def _normalize_input(x: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
+    return (x - mean) / std
+
+
+def _denormalize_input(x: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
+    return x * std + mean
+
+
+def _detect_normalized_input(x: torch.Tensor, override: Optional[bool] = None) -> bool:
+    if override is not None:
+        return override
+    x_min = x.amin().item()
+    x_max = x.amax().item()
+    return (x_min < -0.05) or (x_max > 1.05)
+
+
+def _maybe_denormalize(
+    x: torch.Tensor,
+    mean: torch.Tensor,
+    std: torch.Tensor,
+    normalized: bool,
+) -> tuple[torch.Tensor, bool]:
+    if normalized:
+        return _denormalize_input(x, mean, std), True
+    return x, False
+
+
+def _maybe_normalize(
+    x: torch.Tensor,
+    mean: torch.Tensor,
+    std: torch.Tensor,
+    was_normalized: bool,
+) -> torch.Tensor:
+    if was_normalized:
+        return _normalize_input(x, mean, std)
+    return x
+
+
+def _normalize_views(views: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
+    b, v, c, h, w = views.shape
+    flat = views.reshape(-1, c, h, w)
+    flat = _normalize_input(flat, mean, std)
+    return flat.reshape(b, v, c, h, w)
+
+
 def collect_params(model):
     """Collect the affine scale + shift parameters from batch norms.
     Walk the model's modules and collect all batch normalization parameters.
@@ -1192,6 +1260,8 @@ class TeSLA(nn.Module):
         mean: Optional[Sequence[float]] = None,
         std: Optional[Sequence[float]] = None,
         input_is_normalized: Optional[bool] = None,
+        view_pool: str = "mean",
+        js_weight: float = 0.0,
     ):
         super().__init__()
         assert steps > 0, "TeSLA requires >= 1 step(s) to forward and update"
@@ -1210,6 +1280,13 @@ class TeSLA(nn.Module):
         self.pl_ce = bool(pl_ce)
         self.pl_fce = bool(pl_fce)
         self.input_is_normalized = input_is_normalized
+        view_pool = view_pool.lower()
+        if view_pool not in VIEW_POOL_STRATEGIES:
+            raise ValueError(
+                f"Unknown view pooling strategy '{view_pool}'. Expected one of {sorted(VIEW_POOL_STRATEGIES)}."
+            )
+        self.view_pool = view_pool
+        self.js_weight = js_weight
         if self.hard_augment not in {"optimal", "aa", "randaugment"}:
             raise ValueError("hard_augment must be one of ['optimal', 'aa', 'randaugment']")
         if self.aug_mult < 0 or self.aug_mult_easy < 0:
@@ -1230,12 +1307,12 @@ class TeSLA(nn.Module):
         self.teacher = deepcopy(model).eval()
         self.teacher.requires_grad_(False)
 
-        mean_t, std_t = self._resolve_input_stats(mean, std)
+        mean_t, std_t = _resolve_input_stats(mean, std, (self.featurizer, self.model))
         self.register_buffer("norm_mean", mean_t)
         self.register_buffer("norm_std", std_t)
 
-        self.normalize_fn = lambda x: (x - self.norm_mean) / self.norm_std
-        self.denormalize_fn = lambda x: x * self.norm_std + self.norm_mean
+        self.normalize_fn = lambda x: _normalize_input(x, self.norm_mean, self.norm_std)
+        self.denormalize_fn = lambda x: _denormalize_input(x, self.norm_mean, self.norm_std)
 
         self.hard_opt_aug = None
         if (not self.no_kl_hard) and self.aug_mult > 0 and self.hard_augment == "optimal":
@@ -1284,47 +1361,6 @@ class TeSLA(nn.Module):
             return self.classifier.weight.size(1)
         raise ValueError("Unable to infer feature dim from classifier.")
 
-    def _resolve_input_stats(
-        self,
-        mean: Optional[Sequence[float]],
-        std: Optional[Sequence[float]],
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if mean is not None and std is not None:
-            mean_t = torch.tensor(mean, dtype=torch.float32).view(1, -1, 1, 1)
-            std_t = torch.tensor(std, dtype=torch.float32).view(1, -1, 1, 1)
-            return mean_t, std_t
-        for module in (self.featurizer, self.model):
-            if hasattr(module, "_in_mean") and hasattr(module, "_in_std"):
-                mean_t = module._in_mean.detach().clone().to(dtype=torch.float32)
-                std_t = module._in_std.detach().clone().to(dtype=torch.float32)
-                return mean_t, std_t
-        default_mean = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(1, -1, 1, 1)
-        default_std = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(1, -1, 1, 1)
-        return default_mean, default_std
-
-    def _detect_normalized(self, x: torch.Tensor) -> bool:
-        if self.input_is_normalized is not None:
-            return self.input_is_normalized
-        x_min = x.amin().item()
-        x_max = x.amax().item()
-        return (x_min < -0.05) or (x_max > 1.05)
-
-    def _maybe_denormalize(self, x: torch.Tensor, normalized: bool) -> tuple[torch.Tensor, bool]:
-        if normalized:
-            return self.denormalize_fn(x), True
-        return x, False
-
-    def _maybe_normalize(self, x: torch.Tensor, was_normalized: bool) -> torch.Tensor:
-        if was_normalized:
-            return self.normalize_fn(x)
-        return x
-
-    def _normalize_views(self, views: torch.Tensor) -> torch.Tensor:
-        b, v, c, h, w = views.shape
-        flat = views.reshape(-1, c, h, w)
-        flat = self.normalize_fn(flat)
-        return flat.reshape(b, v, c, h, w)
-
     def _apply_easy_augment(self, x: torch.Tensor) -> torch.Tensor:
         b, c, h, w = x.shape
         out = []
@@ -1350,23 +1386,23 @@ class TeSLA(nn.Module):
     def _sample_easy_views(self, x: torch.Tensor, normalized: bool) -> Optional[torch.Tensor]:
         if self.aug_mult_easy <= 0:
             return None
-        x_raw, was_norm = self._maybe_denormalize(x, normalized)
+        x_raw, was_norm = _maybe_denormalize(x, self.norm_mean, self.norm_std, normalized)
         views = []
         for _ in range(self.aug_mult_easy):
             view = self._apply_easy_augment(x_raw)
             views.append(view.clamp(0.0, 1.0))
         views = torch.stack(views, dim=1)
-        return self._normalize_views(views) if was_norm else views
+        return _normalize_views(views, self.norm_mean, self.norm_std) if was_norm else views
 
     def _apply_hard_augment(self, x: torch.Tensor, normalized: bool) -> torch.Tensor:
         if self.hard_aug_transform is None:
             return x
-        x_raw, was_norm = self._maybe_denormalize(x, normalized)
+        x_raw, was_norm = _maybe_denormalize(x, self.norm_mean, self.norm_std, normalized)
         x_cpu = x_raw.detach().cpu()
         out = [self.hard_aug_transform(x_cpu[i]) for i in range(x_cpu.size(0))]
         out = torch.stack(out, dim=0).to(device=x.device, dtype=x.dtype)
         out = out.clamp(0.0, 1.0)
-        return self._maybe_normalize(out, was_norm)
+        return _maybe_normalize(out, self.norm_mean, self.norm_std, was_norm)
 
     def _ensure_nn_queue(self, device):
         if self.nn_queue_size <= 0:
@@ -1438,7 +1474,7 @@ class TeSLA(nn.Module):
 
     @torch.enable_grad()
     def forward_and_adapt(self, x, model, optimizer):
-        normalized = self._detect_normalized(x)
+        normalized = _detect_normalized_input(x, self.input_is_normalized)
         easy_views = self._sample_easy_views(x, normalized)
         if easy_views is None:
             all_views = x.unsqueeze(1)
@@ -1460,26 +1496,61 @@ class TeSLA(nn.Module):
             elif self.hard_augment in {"aa", "randaugment"}:
                 x_aug_hard = self._apply_hard_augment(batch_x, normalized).unsqueeze(1)
 
+        view_weights = None
         with torch.no_grad():
             scores_ema_easy = []
             feats_ema_easy = []
-            for i in reversed(range(num_views)):
+            for i in range(num_views):
                 feats_view = self.teacher.featurizer(all_views[:, i])
                 logits_view = self.teacher.classifier(feats_view)
                 scores_ema_easy.append(self.softmax(logits_view))
-                feats_ema_easy.append(feats_view)
+                feat_vec = feats_view
+                if feat_vec.dim() > 2:
+                    feat_vec = torch.flatten(feat_vec, start_dim=1)
+                feats_ema_easy.append(feat_vec)
 
-            feats_ema_easy = torch.stack(feats_ema_easy, dim=0).mean(dim=0)
-            soft_pseudo_labels = torch.stack(scores_ema_easy, dim=0).mean(dim=0)
+            scores_ema_easy = torch.stack(scores_ema_easy, dim=1)
+            feats_ema_easy = torch.stack(feats_ema_easy, dim=1)
+            if num_views > 1 and self.view_pool != "mean":
+                view_weights = _view_pool_weights(
+                    probs=scores_ema_easy,
+                    features=feats_ema_easy,
+                    strategy=self.view_pool,
+                )
+            if view_weights is None:
+                feats_pooled = feats_ema_easy.mean(dim=1)
+                soft_pseudo_labels = scores_ema_easy.mean(dim=1)
+            else:
+                feats_pooled = _pool_features(feats_ema_easy, view_weights)
+                soft_pseudo_labels = (scores_ema_easy * view_weights.unsqueeze(-1)).sum(dim=1)
             if self.nn_queue_size > 0 and self.n_neigh > 0:
-                self._ensure_nn_queue(feats_ema_easy.device)
-                self.update_nearest_neighbours(feats_ema_easy, soft_pseudo_labels)
-                _, refined = self.get_pseudo_labels_nearest_neighbours(feats_ema_easy)
+                self._ensure_nn_queue(feats_pooled.device)
+                self.update_nearest_neighbours(feats_pooled, soft_pseudo_labels)
+                _, refined = self.get_pseudo_labels_nearest_neighbours(feats_pooled)
                 if refined is not None and refined.numel() > 0:
                     soft_pseudo_labels = refined
 
         logits_student = model.predict(batch_x)
         scores_student = self.softmax(logits_student)
+
+        js_loss = torch.tensor(0.0, device=x.device)
+        if self.js_weight > 1e-8 and num_views > 1:
+            bsz, _, c, h, w = all_views.shape
+            flat_views = all_views.view(bsz * num_views, c, h, w)
+            logits_views = model.predict(flat_views)
+            probs_views = F.softmax(logits_views, dim=-1).view(bsz, num_views, -1)
+            if view_weights is None:
+                js_ref = probs_views.mean(dim=1)
+                js_weights = None
+            else:
+                js_ref = (probs_views * view_weights.unsqueeze(-1)).sum(dim=1)
+                js_weights = view_weights
+            js_loss = _js_divergence(
+                probs_views,
+                ref_probs=js_ref,
+                view_weights=js_weights,
+                mode="pooled",
+            )
 
         if self.pl_ce:
             loss_teach = _soft_cross_entropy(soft_pseudo_labels, scores_student).mean()
@@ -1491,7 +1562,7 @@ class TeSLA(nn.Module):
             loss_cm = self.criterian_cm(scores_student)
             loss_teach = _soft_cross_entropy(scores_student, soft_pseudo_labels).mean()
 
-        loss = loss_cm + loss_teach
+        loss = loss_cm + loss_teach + (self.js_weight * js_loss)
 
         if x_aug_hard is not None and self.lmb_kl > 0:
             loss_hard = torch.tensor(0.0, device=x.device)
@@ -1532,6 +1603,8 @@ class SAFER(nn.Module):
         aug_prob: float = 0.7,
         aug_max_ops: Optional[int] = 4,
         augmentations: Optional[Sequence[str]] = None,
+        force_noise_first: bool = False,
+        require_freq_or_blur: bool = False,
         js_weight: float = 1.0,
         cc_weight: float = 1.0,
         offdiag_weight: float = 1.0,
@@ -1539,6 +1612,7 @@ class SAFER(nn.Module):
         aug_seed: Optional[int] = None,
         sup_mode: str = "none",
         sup_weight: float = 0.0,
+        class_marginal_weight: float = 0.0,
         cc_impl: str = "fast",
         sup_view_pool: str = "mean",
         sup_pl_weighted: bool = False,
@@ -1552,6 +1626,9 @@ class SAFER(nn.Module):
         tta_view_pool: str = "matching",
         cc_mode: str = "pairwise",
         cc_view_pool: str = "matching",
+        mean: Optional[Sequence[float]] = None,
+        std: Optional[Sequence[float]] = None,
+        input_is_normalized: Optional[bool] = None,
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -1571,15 +1648,23 @@ class SAFER(nn.Module):
         self.cc_weight = cc_weight
         self.offdiag_weight = offdiag_weight
         self.feature_normalize = feature_normalize
+        self.cm_weight = class_marginal_weight
         self.use_view_weights = bool(view_weighting)
         sup_mode = sup_mode.lower()
         if sup_mode not in {"none", "pl", "em"}:
             raise ValueError(f"Unknown supervision mode: {sup_mode}")
         self.sup_mode = sup_mode
         self.sup_weight = sup_weight
+        self.class_marginal = EntropyClassMarginals()
+        self.input_is_normalized = input_is_normalized
+        mean_t, std_t = _resolve_input_stats(mean, std, (self.featurizer, self.model))
+        self.register_buffer("norm_mean", mean_t)
+        self.register_buffer("norm_std", std_t)
+        self.normalize_fn = lambda x: _normalize_input(x, self.norm_mean, self.norm_std)
+        self.denormalize_fn = lambda x: _denormalize_input(x, self.norm_mean, self.norm_std)
         sup_view_pool = sup_view_pool.lower()
-        valid_pools = {"mean", "worst", "entropy", "top1", "cc", "cc_drop"}
-        valid_pools_with_match = valid_pools | {"matching"}
+        valid_pools = VIEW_POOL_STRATEGIES
+        valid_pools_with_match = VIEW_POOL_STRATEGIES_WITH_MATCHING
         if sup_view_pool not in valid_pools:
             raise ValueError(
                 f"Unknown view pooling strategy '{sup_view_pool}'. Expected one of {sorted(valid_pools)}."
@@ -1637,6 +1722,8 @@ class SAFER(nn.Module):
             max_ops=aug_max_ops,
             prob=aug_prob,
             seed=aug_seed,
+            force_noise_first=force_noise_first,
+            require_freq_or_blur=require_freq_or_blur,
         )
 
         if self.episodic:
@@ -1665,11 +1752,15 @@ class SAFER(nn.Module):
 
     def _build_views(self, x: torch.Tensor) -> torch.Tensor:
         views: list[torch.Tensor] = []
+        normalized = _detect_normalized_input(x, self.input_is_normalized)
+        x_raw, was_norm = _maybe_denormalize(x, self.norm_mean, self.norm_std, normalized)
         if self.include_original:
             views.append(x.unsqueeze(1))
 
         if self.num_aug_views > 0:
-            aug = self.augmenter.augment(x.detach(), num_views=self.num_aug_views)
+            aug = self.augmenter.augment(x_raw.detach(), num_views=self.num_aug_views)
+            if was_norm:
+                aug = _normalize_views(aug, self.norm_mean, self.norm_std)
             views.append(aug)
 
         if not views:
@@ -1773,6 +1864,10 @@ class SAFER(nn.Module):
                     impl=self.cc_impl,
                 )
 
+        cm_loss = torch.tensor(0.0, device=logits.device)
+        if self.cm_weight > 1e-8:
+            cm_loss = self.class_marginal(base_prob)
+
         sup_loss = torch.tensor(0.0, device=logits.device)
         sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
         if sup_active:
@@ -1806,6 +1901,7 @@ class SAFER(nn.Module):
         loss = (
             (self.js_weight * js_loss)
             + (self.cc_weight * cc_loss)
+            + (self.cm_weight * cm_loss)
             + (self.sup_weight * sup_loss)
             + (self.tta_weight * tta_loss)
         )
@@ -1814,6 +1910,7 @@ class SAFER(nn.Module):
                 "SAFER/Loss": loss.item(),
                 "SAFER/L_js": js_loss.item(),
                 "SAFER/L_cc": cc_loss.item(),
+                "SAFER/L_cm": cm_loss.item(),
                 "SAFER/L_sup": sup_loss.item(),
                 "SAFER/L_tta": tta_loss.item(),
             }
