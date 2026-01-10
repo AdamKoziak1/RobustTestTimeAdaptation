@@ -15,7 +15,8 @@ from unsupervise_adapt import (
     get_args,
     adapt_loader,
     make_adapt_model,
-    log_args
+    log_args,
+    resolve_source_checkpoint,
 )
 from utils.util import set_random_seed, load_ckpt, img_param_init
 from alg import alg
@@ -29,9 +30,7 @@ ATTACK_RATES = [0, 100]
 def evaluate_domain(args):
     dom_id = args.test_envs[0]
 
-    ckpt_path = os.path.join(
-        args.data_file, "train_output",
-        args.dataset, f"test_{dom_id}", f"seed_{SEED}", "model.pkl")
+    ckpt_path = resolve_source_checkpoint(args, dom_id)
 
     if not os.path.isfile(ckpt_path):
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")

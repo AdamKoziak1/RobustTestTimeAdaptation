@@ -5,10 +5,14 @@ import sys
 import time
 import numpy as np
 import argparse
+import torch
+import torch.nn.functional as F
 
 from alg.opt import *
 from alg import alg, modelopera
 from utils.util import set_random_seed, save_checkpoint, print_args, train_valid_target_eval_names, alg_loss_dict, Tee, img_param_init, print_environ
+from utils.attack_presets import resolve_attack_config, DEFAULT_ATTACK_PRESET
+from utils.adv_attack import build_attack_transform, pgd_attack
 from datautil.getdataloader import get_img_dataloader
 
 # python train.py --output train_output --dataset PACS
@@ -64,6 +68,15 @@ def get_args():
     parser.add_argument('--output', type=str,
                         default="train_output", help='result output path')
     parser.add_argument('--weight_decay', type=float, default=0)
+    parser.add_argument('--adv_train', action='store_true', help='Enable adversarial training on source domains.')
+    parser.add_argument('--adv_attack_preset', type=str, default=None, help='Named attack preset for adversarial training.')
+    parser.add_argument('--adv_attack_norm', type=str, choices=['linf', 'l2'], default=None)
+    parser.add_argument('--adv_attack_eps', type=float, default=None)
+    parser.add_argument('--adv_attack_steps', type=int, default=None)
+    parser.add_argument('--adv_attack_alpha', type=float, default=None)
+    parser.add_argument('--adv_attack_fft_rho', type=float, default=None)
+    parser.add_argument('--adv_attack_fft_alpha', type=float, default=None)
+    parser.add_argument('--adv_attack_rate', type=int, default=100, help='Percent of each batch to attack.')
     args = parser.parse_args()
     args.steps_per_epoch = 100
     args.data_dir = os.path.join(args.data_file,args.data_dir,args.dataset)
@@ -73,6 +86,25 @@ def get_args():
     sys.stdout = Tee(os.path.join(args.output, 'out.txt'))
     sys.stderr = Tee(os.path.join(args.output, 'err.txt'))
     args = img_param_init(args)
+    if args.adv_train:
+        preset = args.adv_attack_preset or DEFAULT_ATTACK_PRESET
+        adv_cfg = resolve_attack_config(
+            preset_name=preset,
+            attack_id=None,
+            norm=args.adv_attack_norm,
+            eps=args.adv_attack_eps,
+            steps=args.adv_attack_steps,
+            alpha=args.adv_attack_alpha,
+            fft_rho=args.adv_attack_fft_rho,
+            fft_alpha=args.adv_attack_fft_alpha,
+        )
+        args.adv_attack_norm = adv_cfg.norm
+        args.adv_attack_eps = adv_cfg.eps
+        args.adv_attack_steps = adv_cfg.steps
+        args.adv_attack_alpha = adv_cfg.alpha
+        args.adv_attack_fft_rho = adv_cfg.fft_rho
+        args.adv_attack_fft_alpha = adv_cfg.fft_alpha
+        args.adv_attack_tag = adv_cfg.attack_id
     print_environ()
     return args
 
@@ -95,11 +127,27 @@ if __name__ == '__main__':
     algorithm.train()
     opt = get_optimizer(algorithm, args)
     sch = get_scheduler(opt, args)
+    adv_transform = None
+    adv_rng = None
+    if args.adv_train:
+        if args.algorithm != "ERM":
+            print(f"[warn] adv_train is tuned for ERM; got {args.algorithm}.")
+        if args.adv_attack_fft_rho is not None and args.adv_attack_fft_rho < 1.0:
+            adv_transform = build_attack_transform(
+                fft_rho=args.adv_attack_fft_rho,
+                fft_alpha=args.adv_attack_fft_alpha,
+                device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            )
+        adv_rng = torch.Generator(device="cuda" if torch.cuda.is_available() else "cpu")
+        adv_rng.manual_seed(args.seed)
 
     wandb.config.update({
         "num_train_envs": len(train_loaders),
         "steps_per_epoch": args.steps_per_epoch,
-        "num_classes": args.num_classes
+        "num_classes": args.num_classes,
+        "adv_train": args.adv_train,
+        "adv_attack_tag": getattr(args, "adv_attack_tag", None),
+        "adv_attack_rate": args.adv_attack_rate,
     })
 
     s = print_args(args, [])
@@ -109,13 +157,61 @@ if __name__ == '__main__':
     acc_type_list = ['train', 'valid', 'target']
     train_minibatches_iterator = zip(*train_loaders)
     best_valid_acc, target_acc = 0, 0
+    ckpt_prefix = "model"
+    if args.adv_train:
+        ckpt_prefix = f"model_adv_{args.adv_attack_tag}"
     print('===========start training===========')
     sss = time.time()
     for epoch in range(args.max_epoch):                
         for iter_num in range(args.steps_per_epoch):
             minibatches_device = [(data)
                                   for data in next(train_minibatches_iterator)]
-            step_vals = algorithm.update(minibatches_device, opt, sch)
+            if args.adv_train:
+                all_x = torch.cat([data[0].cuda().float() for data in minibatches_device])
+                all_y = torch.cat([data[1].cuda().long() for data in minibatches_device])
+                if args.adv_attack_rate <= 0:
+                    adv_x = all_x
+                elif args.adv_attack_rate >= 100:
+                    adv_x = pgd_attack(
+                        algorithm,
+                        all_x,
+                        all_y,
+                        args.adv_attack_eps / 255.0,
+                        args.adv_attack_alpha / 255.0,
+                        args.adv_attack_steps,
+                        norm=args.adv_attack_norm,
+                        input_transform=adv_transform,
+                    )
+                else:
+                    mask = torch.rand(
+                        (all_x.size(0),),
+                        generator=adv_rng,
+                        device=all_x.device,
+                    ) < (args.adv_attack_rate / 100.0)
+                    if mask.any():
+                        adv = pgd_attack(
+                            algorithm,
+                            all_x[mask],
+                            all_y[mask],
+                            args.adv_attack_eps / 255.0,
+                            args.adv_attack_alpha / 255.0,
+                            args.adv_attack_steps,
+                            norm=args.adv_attack_norm,
+                            input_transform=adv_transform,
+                        )
+                        adv_x = all_x.clone()
+                        adv_x[mask] = adv
+                    else:
+                        adv_x = all_x
+                loss = F.cross_entropy(algorithm.predict(adv_x), all_y)
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                if sch:
+                    sch.step()
+                step_vals = {'class': loss.item()}
+            else:
+                step_vals = algorithm.update(minibatches_device, opt, sch)
 
             wandb.log({
                 f"train_loss": step_vals.get('class', step_vals.get('total', None)),
@@ -142,9 +238,9 @@ if __name__ == '__main__':
             if acc_record['valid'] > best_valid_acc:
                 best_valid_acc = acc_record['valid']
                 target_acc = acc_record['target']
-                save_checkpoint('model.pkl', algorithm, args)
+                save_checkpoint(f'{ckpt_prefix}.pkl', algorithm, args)
             if args.save_model_every_checkpoint:
-                save_checkpoint(f'model_epoch{epoch}.pkl', algorithm, args)
+                save_checkpoint(f'{ckpt_prefix}_epoch{epoch}.pkl', algorithm, args)
             print('total cost time: %.4f' % (time.time()-sss))
             algorithm_dict = algorithm.state_dict()
             wandb.log({
@@ -154,7 +250,7 @@ if __name__ == '__main__':
                 "acc_val": acc_record['valid'],
                 "acc_target": acc_record['target'],
             }, commit=True)
-    save_checkpoint('model_last.pkl', algorithm, args)
+    save_checkpoint(f'{ckpt_prefix}_last.pkl', algorithm, args)
 
     print('valid acc: %.4f' % best_valid_acc)
     print('DG result: %.4f' % target_acc)

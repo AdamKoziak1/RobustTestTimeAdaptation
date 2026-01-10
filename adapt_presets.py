@@ -3,6 +3,21 @@ from __future__ import annotations
 import sys
 from typing import Dict, Iterable, Mapping
 
+ADAPT_ALG_ORDER = [
+    "ERM",
+    "BN",
+    "Tent",
+    "PL",
+    "PLC",
+    "SHOT-IM",
+    "T3A",
+    "TSD",
+    "TTA3",
+    "SAFER",
+    "TeSLA",
+    "AMTDC",
+]
+
 ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "Tent": {
         #"lr": 1e-3,

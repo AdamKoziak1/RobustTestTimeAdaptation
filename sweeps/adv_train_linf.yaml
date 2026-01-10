@@ -1,0 +1,25 @@
+program: train.py
+project: tta3_adv_train
+name: adv_train_linf8_all
+method: grid
+metric:
+  name: acc_val
+  goal: maximize
+
+parameters:
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+  test_envs:
+    values: [0, 1, 2, 3]
+  adv_train:
+    value: true
+  adv_attack_preset:
+    value: linf8
+  adv_attack_rate:
+    value: 100
+  max_epoch:
+    value: 50
+  batch_size:
+    value: 32
+  lr:
+    value: 5e-5

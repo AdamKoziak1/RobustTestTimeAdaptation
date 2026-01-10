@@ -1,4 +1,5 @@
 import argparse
+import copy
 import os
 import sys
 import time
@@ -35,6 +36,8 @@ import statistics
 from peft import LoraConfig, get_peft_model
 import wandb
 from adapt_presets import apply_adapt_preset
+from utils.attack_presets import resolve_attack_config, DEFAULT_ATTACK_PRESET
+from utils.adv_attack import build_attack_transform, pgd_attack
 
 
 def get_args():
@@ -73,6 +76,7 @@ def get_args():
     parser.add_argument("--steps", type=int, default=1, help="steps of test time, default:1")
     parser.add_argument("--filter_K",type=int,default=100,help="M in T3A/TSD, in [1,5,20,50,100,-1],-1 denotes no selection",)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--seeds", type=str, default=None, help="Comma-separated seed list (overrides --seed).")
     parser.add_argument("--update_param", type=str, default="all", help="all / affine / body / head / lora / tent")
     # two hyper-parameters for EATA (ICML22)
     parser.add_argument("--e_margin",type=float,default=math.log(7) * 0.40,help="entropy margin E_0 in Eqn. (3) for filtering reliable samples",)
@@ -272,9 +276,26 @@ def get_args():
     parser.add_argument("--mt_mixup_beta", type=float, default=0.5, help="Beta distribution parameter for mixup.")
     parser.add_argument("--mt_use_teacher_pred", type=int, default=1, choices=[0,1], help="Use teacher predictions for evaluation (1 enables).")
 
-    parser.add_argument("--attack", choices=["linf_eps-8.0_steps-20", "clean", "l2_eps-112.0_steps-100", "linf_eps-8.0_steps-20_rho-0.3_a-1.0"], default="linf_eps-8.0_steps-20")
+    parser.add_argument("--attack", type=str, default="linf_eps-8.0_steps-20", help="Attack config suffix or 'clean'.")
+    parser.add_argument("--attack_preset", type=str, default=None, help="Named attack preset for on-the-fly attacks.")
+    parser.add_argument(
+        "--attack_source",
+        type=str,
+        default="precomputed",
+        choices=["precomputed", "on_the_fly", "live"],
+        help="Attack source: precomputed tensors, on-the-fly with frozen source model, or live with adapted model.",
+    )
+    parser.add_argument("--attack_norm", type=str, choices=["linf", "l2"], default=None)
+    parser.add_argument("--attack_eps", type=float, default=None)
+    parser.add_argument("--attack_steps", type=int, default=None)
+    parser.add_argument("--attack_alpha", type=float, default=None)
+    parser.add_argument("--attack_fft_rho", type=float, default=None)
+    parser.add_argument("--attack_fft_alpha", type=float, default=None)
     parser.add_argument("--eps", type=float, default=4)  
     parser.add_argument("--attack_rate", type=int, choices=[0, 25, 50, 75, 100], default=0)   
+    parser.add_argument("--use_adv_source", action="store_true", help="Use adversarially trained source weights.")
+    parser.add_argument("--adv_source_preset", type=str, default=None, help="Preset name used to locate adv source weights.")
+    parser.add_argument("--adv_source_tag", type=str, default=None, help="Override tag for adv source checkpoint filename.")
     parser.add_argument("--lora_r", type=int, default=4)  
     parser.add_argument("--lora_alpha", type=int, default=8)  
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
@@ -321,6 +342,37 @@ def get_args():
     if preset_overrides:
         print(f"Applying preset hyperparameters for {args.adapt_alg}: {preset_overrides}")
     args.preset_overrides = preset_overrides
+
+    attack_id_hint = None
+    if args.attack_preset or args.attack != "clean":
+        attack_id_hint = args.attack
+    attack_cfg = resolve_attack_config(
+        preset_name=args.attack_preset,
+        attack_id=attack_id_hint,
+        norm=args.attack_norm,
+        eps=args.attack_eps,
+        steps=args.attack_steps,
+        alpha=args.attack_alpha,
+        fft_rho=args.attack_fft_rho,
+        fft_alpha=args.attack_fft_alpha,
+    )
+    if args.attack == "clean" and not args.attack_preset:
+        args.attack_id = "clean"
+    else:
+        args.attack = attack_cfg.attack_id
+        args.attack_id = attack_cfg.attack_id
+    args.attack_norm = attack_cfg.norm
+    args.attack_eps = attack_cfg.eps
+    args.attack_steps = attack_cfg.steps
+    args.attack_alpha = attack_cfg.alpha
+    args.attack_fft_rho = attack_cfg.fft_rho
+    args.attack_fft_alpha = attack_cfg.fft_alpha
+    if args.use_adv_source:
+        if not args.adv_source_tag:
+            preset = args.adv_source_preset or DEFAULT_ATTACK_PRESET
+            adv_cfg = resolve_attack_config(preset_name=preset)
+            args.adv_source_tag = adv_cfg.attack_id
+
     args.steps_per_epoch = 100
     args.data_dir =  os.path.join(args.data_file, args.data_dir, args.dataset)
     args.use_mi = args.use_mi == 'mi'
@@ -389,6 +441,16 @@ def log_args(args, time_taken_s):
     wandb.log({
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
+        "attack_source": args.attack_source,
+        "attack_id": args.attack_id,
+        "attack_norm": args.attack_norm,
+        "attack_eps": args.attack_eps,
+        "attack_steps": args.attack_steps,
+        "attack_alpha": args.attack_alpha,
+        "attack_fft_rho": args.attack_fft_rho,
+        "attack_fft_alpha": args.attack_fft_alpha,
+        "use_adv_source": args.use_adv_source,
+        "adv_source_tag": args.adv_source_tag,
         # "svd_feat_rank_ratio": args.svd_feat_rank_ratio,
         # "svd_feat_max_layer": args.svd_feat_max_layer,
         # "svd_feat_mode": args.svd_feat_mode,
@@ -478,19 +540,36 @@ def log_args(args, time_taken_s):
             "mt_use_teacher_pred": args.mt_use_teacher_pred,
         }, commit=False)
 
+
+def resolve_source_checkpoint(args, dom_id: int) -> str:
+    base_dir = os.path.join(
+        args.data_file,
+        "train_output",
+        args.dataset,
+        f"test_{str(dom_id)}",
+        f"seed_{str(args.seed)}",
+    )
+    if args.use_adv_source:
+        tag = args.adv_source_tag or DEFAULT_ATTACK_PRESET
+        return os.path.join(base_dir, f"model_adv_{tag}.pkl")
+    return os.path.join(base_dir, "model.pkl")
+
 def adapt_loader(args):
     test_envs = args.test_envs[0]
     domain_name = args.img_dataset[args.dataset][test_envs]
     data_root = os.path.join(args.data_dir, args.img_dataset[args.dataset][test_envs])
+    normalize = transforms.Normalize(
+        mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+    )
+    clean_transform = transforms.Compose(
+        [transforms.Resize((224, 224)), transforms.ToTensor(), normalize]
+    )
+    attack_transform = transforms.Compose(
+        [transforms.Resize((224, 224)), transforms.ToTensor()]
+    )
     if args.attack == "clean":
-        normalize = transforms.Normalize(
-            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-        )
-        test_transform = transforms.Compose(
-            [transforms.Resize((224, 224)), transforms.ToTensor(), normalize]
-        )
-        testset = ImageFolder(root=data_root, transform=test_transform)
-    else:
+        testset = ImageFolder(root=data_root, transform=clean_transform)
+    elif args.attack_source == "precomputed":
         testset = AttackedImageFolder(
             root=data_root, # normal ImageFolder root
             transform=None,
@@ -499,7 +578,9 @@ def adapt_loader(args):
             domain=domain_name,
             config=f"{args.net}_{args.attack}",
             rate=args.attack_rate,                            
-            seed=args.seed)   
+            seed=args.seed)
+    else:
+        testset = ImageFolder(root=data_root, transform=attack_transform)
 
     testloader = DataLoader(
         testset,
@@ -882,7 +963,10 @@ def make_adapt_model(args, algorithm):
 
 
 def run_one_seed(args):
-    pretrain_model_path = os.path.join(args.data_file, "train_output", args.dataset, f"test_{str(dom_id)}", f"seed_{str(args.seed)}", "model.pkl")
+    dom_id = args.test_envs[0]
+    pretrain_model_path = resolve_source_checkpoint(args, dom_id)
+    if not os.path.isfile(pretrain_model_path):
+        raise FileNotFoundError(f"Checkpoint not found: {pretrain_model_path}")
     set_random_seed(args.seed)
     
     algorithm_class = alg.get_algorithm_class(args.algorithm)
@@ -894,22 +978,72 @@ def run_one_seed(args):
     adapt_model = make_adapt_model(args, algorithm)
 
     adapt_model.cuda()
+    attack_model = None
+    if args.attack != "clean" and args.attack_source in ("on_the_fly", "live"):
+        if args.attack_source == "on_the_fly":
+            attack_model = copy.deepcopy(algorithm).cuda().eval()
+            for param in attack_model.parameters():
+                param.requires_grad_(False)
+        else:
+            attack_model = getattr(adapt_model, "model", None)
+
     outputs_arr, labels_arr = [], []
     peak_vram_mb = 0.0
     use_cuda = torch.cuda.is_available()
+    attack_transform = None
+    if attack_model is not None and args.attack_fft_rho < 1.0:
+        attack_transform = build_attack_transform(
+            fft_rho=args.attack_fft_rho,
+            fft_alpha=args.attack_fft_alpha,
+            device=torch.device("cuda" if use_cuda else "cpu"),
+        )
     if use_cuda:
         torch.cuda.reset_peak_memory_stats()
+    attack_rng = torch.Generator(device="cuda" if use_cuda else "cpu")
+    attack_rng.manual_seed(args.seed)
 
     for _, sample in enumerate(dataloader):
         image, label = sample
         image = image.cuda()
+        label = label.cuda()
+        if attack_model is not None and args.attack_rate > 0:
+            if args.attack_rate >= 100:
+                image = pgd_attack(
+                    attack_model,
+                    image,
+                    label,
+                    args.attack_eps / 255.0,
+                    args.attack_alpha / 255.0,
+                    args.attack_steps,
+                    norm=args.attack_norm,
+                    input_transform=attack_transform,
+                )
+            else:
+                mask = torch.rand(
+                    (image.size(0),),
+                    generator=attack_rng,
+                    device=image.device,
+                ) < (args.attack_rate / 100.0)
+                if mask.any():
+                    adv = pgd_attack(
+                        attack_model,
+                        image[mask],
+                        label[mask],
+                        args.attack_eps / 255.0,
+                        args.attack_alpha / 255.0,
+                        args.attack_steps,
+                        norm=args.attack_norm,
+                        input_transform=attack_transform,
+                    )
+                    image = image.clone()
+                    image[mask] = adv
         logits = adapt_model(image)
         
         outputs = logits.detach().cpu()
-        batch_acc = 100*accuracy_score(label.numpy(), outputs.argmax(1).numpy())
+        batch_acc = 100*accuracy_score(label.detach().cpu().numpy(), outputs.argmax(1).numpy())
         wandb.log({"batch_acc": batch_acc})
         outputs_arr.append(outputs)
-        labels_arr.append(label)
+        labels_arr.append(label.detach().cpu())
 
     outputs_arr = torch.cat(outputs_arr, 0).numpy()
     labels_arr = torch.cat(labels_arr).numpy()
@@ -977,9 +1111,15 @@ if __name__ == "__main__":
         config=vars(args),
     )
 
+    seed_list = None
+    if args.seeds:
+        seed_list = [int(s.strip()) for s in args.seeds.split(",") if s.strip() != ""]
+    if not seed_list:
+        seed_list = [0, 1, 2]
+
     all_acc   = []
     time1 = time.time()
-    for s in (0,1,2):
+    for s in seed_list:
         args.seed = s   
         args.output = os.path.join(output_path, f"_s{args.seed}")
         os.makedirs(args.output, exist_ok=True)

@@ -1,0 +1,25 @@
+program: unsupervise_adapt.py
+project: tta3_live_tta
+name: live_linf8_all
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    values: ["ERM", "PL", "T3A", "Tent", "TSD", "TeSLA"]
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+  test_envs:
+    values: [0, 1, 2, 3]
+  attack_source:
+    value: live
+  attack_preset:
+    value: linf8
+  attack_rate:
+    value: 100
+  seeds:
+    value: "0"
+  batch_size:
+    value: 64

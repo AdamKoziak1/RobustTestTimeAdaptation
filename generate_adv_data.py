@@ -16,6 +16,7 @@ import torch.nn.functional as F
 from utils.util import set_random_seed, img_param_init, print_environ, img_param_init, get_config_id
 from utils.fft import FFTDrop2D
 from utils.safer_aug import SAFERAugmenter
+from utils.attack_presets import resolve_attack_config
 import wandb
 
 def get_args_adv():
@@ -71,6 +72,7 @@ def get_args_adv():
     parser.add_argument("--eps", type=float, default=8)    
     parser.add_argument("--alpha_adv", type=float, default=2)
     parser.add_argument("--steps", type=int, default=20)
+    parser.add_argument("--attack_preset", type=str, default=None, help="Named attack preset to apply.")
     parser.add_argument("--fft_rho", type=float, default=1.0,
                         help="Frequency keep ratio for FFT input transform (1.0 disables).")
     parser.add_argument("--fft_alpha", type=float, default=1.0,
@@ -94,6 +96,23 @@ def get_args_adv():
     
     args.data_dir = os.path.join(args.data_file, args.data_dir, args.dataset)
 
+    if args.attack_preset:
+        attack_cfg = resolve_attack_config(
+            preset_name=args.attack_preset,
+            attack_id=None,
+            norm=args.attack,
+            eps=args.eps,
+            steps=args.steps,
+            alpha=args.alpha_adv,
+            fft_rho=args.fft_rho,
+            fft_alpha=args.fft_alpha,
+        )
+        args.attack = attack_cfg.norm
+        args.eps = attack_cfg.eps
+        args.steps = attack_cfg.steps
+        args.alpha_adv = attack_cfg.alpha
+        args.fft_rho = attack_cfg.fft_rho
+        args.fft_alpha = attack_cfg.fft_alpha
     args = img_param_init(args)
     if args.attack_aug_max_ops is not None and args.attack_aug_max_ops <= 0:
         args.attack_aug_max_ops = None

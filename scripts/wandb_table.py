@@ -2,8 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +11,11 @@ try:
     import yaml  # type: ignore
 except Exception:
     yaml = None
+
+try:
+    from adapt_presets import ADAPT_ALG_ORDER
+except Exception:
+    ADAPT_ALG_ORDER = []
 
 
 DATASET_DOMAIN_LABELS: Mapping[str, List[str]] = {
@@ -126,123 +129,6 @@ def load_sweep_filters(path: Path) -> Dict[str, List[Any]]:
     return filters
 
 
-def parse_wandb_config_fallback(text: str) -> Dict[str, Any]:
-    config: Dict[str, Any] = {}
-    current_key: Optional[str] = None
-    in_value_block = False
-    list_values: List[Any] = []
-
-    for line in text.splitlines():
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if not line.startswith(" "):
-            current_key = line.split(":", 1)[0].strip()
-            in_value_block = False
-            list_values = []
-            continue
-        if current_key is None or current_key.startswith("_"):
-            continue
-        stripped = line.lstrip()
-        if stripped.startswith("value:"):
-            value_text = stripped[len("value:"):].strip()
-            if value_text == "":
-                in_value_block = True
-                list_values = []
-            else:
-                config[current_key] = coerce_value(value_text)
-                in_value_block = False
-            continue
-        if in_value_block:
-            if stripped.startswith("- "):
-                list_values.append(coerce_value(stripped[2:].strip()))
-                config[current_key] = list_values
-            elif not line.startswith(" "):
-                in_value_block = False
-    return config
-
-
-def load_wandb_config(path: Path) -> Dict[str, Any]:
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    if yaml is not None:
-        data = yaml.safe_load(text)
-        if isinstance(data, dict):
-            # W&B config stores actual values under the "value" key.
-            return {
-                key: val.get("value")
-                for key, val in data.items()
-                if key != "_wandb" and isinstance(val, dict) and "value" in val
-            }
-    return parse_wandb_config_fallback(text)
-
-
-def load_wandb_summary(path: Path) -> Dict[str, Any]:
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
-
-
-def discover_local_runs(wandb_dir: Path, allowed_ids: Optional[Sequence[str]] = None) -> List[RunRecord]:
-    records: List[RunRecord] = []
-    if not wandb_dir.exists():
-        return records
-    allowed: Optional[set[str]] = set(allowed_ids) if allowed_ids else None
-    for entry in os.scandir(wandb_dir):
-        if not entry.is_dir() or not entry.name.startswith("run-"):
-            continue
-        if allowed is not None:
-            run_id = entry.name.rsplit("-", 1)[-1]
-            if run_id not in allowed:
-                continue
-        run_dir = Path(entry.path)
-        record = load_run_dir(run_dir)
-        if record is not None:
-            records.append(record)
-    return records
-
-
-def load_sweep_run_ids(wandb_dir: Path, sweep_id: str) -> List[str]:
-    sweep_dir = wandb_dir / f"sweep-{sweep_id}"
-    if not sweep_dir.exists():
-        return []
-    run_ids: List[str] = []
-    for entry in os.scandir(sweep_dir):
-        if not entry.is_file():
-            continue
-        name = entry.name
-        if not (name.startswith("config-") and name.endswith(".yaml")):
-            continue
-        run_id = name[len("config-"):-len(".yaml")]
-        if run_id:
-            run_ids.append(run_id)
-    return run_ids
-
-
-def load_run_dir(run_dir: Path) -> Optional[RunRecord]:
-    config_path = run_dir / "files" / "config.yaml"
-    summary_path = run_dir / "files" / "wandb-summary.json"
-    if not config_path.exists() or not summary_path.exists():
-        return None
-    try:
-        config = load_wandb_config(config_path)
-        summary = load_wandb_summary(summary_path)
-    except Exception as exc:
-        print(f"[warn] Skipping {run_dir}: {exc}", file=sys.stderr)
-        return None
-    return RunRecord(
-        path=str(run_dir),
-        config=config,
-        summary=summary,
-        mtime=summary_path.stat().st_mtime,
-    )
-
-
-def load_runs_from_paths(paths: Sequence[str]) -> List[RunRecord]:
-    records: List[RunRecord] = []
-    for raw in paths:
-        run_dir = Path(raw)
-        record = load_run_dir(run_dir)
-        if record is not None:
-            records.append(record)
-    return records
 
 
 def load_runs_from_wandb_api(sweep_id: str, entity: Optional[str], project: Optional[str]) -> List[RunRecord]:
@@ -444,14 +330,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build LaTeX rows/tables from W&B runs of unsupervise_adapt.py."
     )
-    source = parser.add_mutually_exclusive_group()
-    source.add_argument(
+    parser.add_argument(
         "--sweep-id",
-        help="W&B sweep id or entity/project/sweep (uses local sweep folder if present).",
+        required=True,
+        help="W&B sweep id or entity/project/sweep.",
     )
-    source.add_argument("--run-dir", action="append", default=[], help="Specific W&B run directory (repeatable).")
-
-    parser.add_argument("--wandb-dir", default="wandb", help="Local wandb directory to scan.")
     parser.add_argument("--sweep-config", type=Path, help="Sweep YAML to restrict allowed values.")
     parser.add_argument("--entity", help="W&B entity for --sweep-id.")
     parser.add_argument("--project", help="W&B project for --sweep-id.")
@@ -467,6 +350,15 @@ def main() -> int:
     parser.add_argument("--filter", action="append", default=[], help="Filter runs: key=value (repeatable).")
     parser.add_argument("--methods-file", type=Path, help="YAML/JSON mapping of method name -> filters.")
     parser.add_argument("--method-name", help="Name for the output row.")
+    parser.add_argument(
+        "--algorithms",
+        help="Comma-separated adapt_alg list to print in order (overrides --method-name).",
+    )
+    parser.add_argument(
+        "--all-algorithms",
+        action="store_true",
+        help="Print all algorithms in the default order.",
+    )
 
     parser.add_argument("--mean-key", default="acc_mean", help="Summary key for the mean metric.")
     parser.add_argument("--std-key", default="acc_std", help="Summary key for the std metric.")
@@ -486,16 +378,7 @@ def main() -> int:
     for key, values in sweep_filters.items():
         filters.setdefault(key, []).extend(values)
 
-    if args.sweep_id:
-        local_ids = load_sweep_run_ids(Path(args.wandb_dir), args.sweep_id)
-        if local_ids:
-            records = discover_local_runs(Path(args.wandb_dir), allowed_ids=local_ids)
-        else:
-            records = load_runs_from_wandb_api(args.sweep_id, args.entity, args.project)
-    elif args.run_dir:
-        records = load_runs_from_paths(args.run_dir)
-    else:
-        records = discover_local_runs(Path(args.wandb_dir))
+    records = load_runs_from_wandb_api(args.sweep_id, args.entity, args.project)
 
     if args.verbose:
         print(f"[info] Loaded {len(records)} runs", file=sys.stderr)
@@ -508,6 +391,14 @@ def main() -> int:
     methods: Dict[str, Mapping[str, List[Any]]]
     if args.methods_file:
         methods = parse_methods_file(args.methods_file)
+    elif args.algorithms or args.all_algorithms:
+        if args.algorithms:
+            alg_list = parse_csv_strings(args.algorithms)
+        else:
+            alg_list = list(ADAPT_ALG_ORDER)
+        if not alg_list:
+            raise ValueError("No algorithms provided for --algorithms/--all-algorithms.")
+        methods = {name: {"adapt_alg": [name]} for name in alg_list}
     else:
         method_name = args.method_name
         if not method_name:
@@ -557,7 +448,7 @@ def main() -> int:
         #     print()
         for name, cells in rows:
             print(f"{name} & " + " & ".join(cells) + " \\\\")
-        #printed_any = True
+        printed_any = True
 
     if not printed_any:
         return 2
