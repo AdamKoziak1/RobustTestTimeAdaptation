@@ -68,7 +68,7 @@ def get_args():
     parser.add_argument('--output', type=str,
                         default="train_output", help='result output path')
     parser.add_argument('--weight_decay', type=float, default=0)
-    parser.add_argument('--adv_train', action='store_true', help='Enable adversarial training on source domains.')
+    parser.add_argument('--adv_train', type=int, default=0, choices=[0, 1], help='Enable adversarial training on source domains (1 enables).')
     parser.add_argument('--adv_attack_preset', type=str, default=None, help='Named attack preset for adversarial training.')
     parser.add_argument('--adv_attack_norm', type=str, choices=['linf', 'l2'], default=None)
     parser.add_argument('--adv_attack_eps', type=float, default=None)
@@ -86,6 +86,7 @@ def get_args():
     sys.stdout = Tee(os.path.join(args.output, 'out.txt'))
     sys.stderr = Tee(os.path.join(args.output, 'err.txt'))
     args = img_param_init(args)
+    args.adv_train = bool(args.adv_train)
     if args.adv_train:
         preset = args.adv_attack_preset or DEFAULT_ATTACK_PRESET
         adv_cfg = resolve_attack_config(

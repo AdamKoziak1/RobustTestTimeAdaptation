@@ -59,11 +59,38 @@ def _coerce_list(values: Iterable[Any]) -> List[Any]:
     return out
 
 
-def _wait_for_sweep(api: wandb.Api, sweep_path: str, poll_interval: int) -> None:
-    last_state = None
-    while True:
+def _fetch_sweep_runs(
+    api: wandb.Api,
+    sweep_path: str,
+    sweep_id: str,
+    entity: str,
+    project: str,
+) -> List[wandb.apis.public.Run]:
+    try:
         sweep = api.sweep(sweep_path)
         runs = list(sweep.runs)
+        if runs:
+            return runs
+    except Exception:
+        runs = []
+    try:
+        runs = list(api.runs(f"{entity}/{project}", filters={"sweep": sweep_id}))
+    except Exception:
+        runs = []
+    return runs
+
+
+def _wait_for_sweep(
+    api: wandb.Api,
+    sweep_path: str,
+    sweep_id: str,
+    entity: str,
+    project: str,
+    poll_interval: int,
+) -> None:
+    last_state = None
+    while True:
+        runs = _fetch_sweep_runs(api, sweep_path, sweep_id, entity, project)
         if runs:
             states = [run.state for run in runs]
             done = sum(state in TERMINAL_STATES for state in states)
@@ -142,7 +169,7 @@ def main() -> int:
     print(f"Start with: wandb agent {sweep_path}")
 
     if not args.no_wait:
-        _wait_for_sweep(api, sweep_path, args.poll_interval)
+        _wait_for_sweep(api, sweep_path, sweep_id, entity, project, args.poll_interval)
 
     records = wt.load_runs_from_wandb_api(sweep_path, entity, project)
     if args.verbose:

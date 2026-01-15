@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py
 project: safer_loss
-name: safer_tta_isolation
+name: safer_pareto_refine
 method: grid
 metric:
   name: acc_100
@@ -11,27 +11,21 @@ parameters:
     value: live
   attack_preset:
     value: linf8
-  attack_rate:
-    value: 100
 
   adapt_alg:
     value: "SAFER"
 
   update_param:
     value: "tent"
-
   lr:
     value: 0.0001
-
   steps:
     value: 1
 
-  # 5 total views: 1 original + 4 augmented (SAFER default)
   s_num_views:
     value: 4
   s_include_original:
     value: 1
-
   s_aug_prob:
     value: 0.7
   s_aug_max_ops:
@@ -45,23 +39,6 @@ parameters:
   s_input_is_normalized:
     value: -1
 
-  # Primary pool for matching strategies
-  s_sup_view_pool:
-    value: "mean"
-
-  # Auxiliary TTA loss isolation
-  s_tta_loss:
-    values: ["tent", "pl", "tsd"]
-  s_tta_weight:
-    values: [0.1, 0.3, 0.6]
-  s_tta_target:
-    values: ["views", "pooled"]
-  s_tta_view_pool:
-    values: ["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"]
-  s_view_weighting:
-    values: [0, 1]
-
-  # Disable JS/CC/CM and explicit supervision
   s_js_weight:
     value: 0.0
   s_js_mode:
@@ -75,10 +52,33 @@ parameters:
     value: "pairwise"
   s_cc_view_pool:
     value: "matching"
+  s_cc_offdiag:
+    value: 1.0
+  s_feat_normalize:
+    value: 0
+
   s_cm_weight:
     value: 0.0
 
   s_sup_type:
-    value: "none"
+    values: ["em", "pl"]
+  s_sup_view_pool:
+    values: ["cc", "cc_drop"]
   s_sup_weight:
+    values: [0.2, 0.3, 0.4]
+  s_sup_pl_weighted:
+    value: 0
+  s_sup_conf_scale:
+    value: 0
+
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
     value: 0.0
+  s_tta_target:
+    value: "views"
+  s_tta_view_pool:
+    value: "matching"
+
+  s_view_weighting:
+    values: [0, 1]

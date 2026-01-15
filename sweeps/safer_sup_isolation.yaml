@@ -3,10 +3,17 @@ project: safer_loss
 name: safer_supervision_isolation
 method: grid
 metric:
-  name: acc_0
+  name: acc_100
   goal: maximize
 
 parameters:
+  attack_source:
+    value: live
+  attack_preset:
+    value: linf8
+  attack_rate:
+    value: 100
+
   adapt_alg:
     value: "SAFER"
 
@@ -19,18 +26,24 @@ parameters:
   steps:
     value: 1
 
-  # 3 total views: 1 original + 2 augmented
+  # 5 total views: 1 original + 4 augmented (SAFER default)
   s_num_views:
-    value: 2
+    value: 4
   s_include_original:
     value: 1
 
   s_aug_prob:
-    value: 1.0
+    value: 0.7
   s_aug_max_ops:
     value: 4
   s_aug_seed:
     value: 123
+  s_aug_force_noise:
+    value: 1
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
 
   # Supervision isolation (pseudo-label / entropy minimization)
   s_sup_type:
@@ -38,15 +51,15 @@ parameters:
   s_sup_weight:
     values: [0.1, 0.3, 0.6]
   s_sup_view_pool:
-    values: ["mean", "entropy", "cc", "top1"]
+    values: ["mean", "worst", "entropy", "top1", "cc", "cc_drop"]
   s_sup_pl_weighted:
     values: [0, 1]
   s_sup_conf_scale:
     values: [0, 1]
   s_view_weighting:
-    value: 1
+    values: [0, 1]
 
-  # Disable JS/CC and aux TTA to focus on supervision
+  # Disable JS/CC/CM and aux TTA to focus on supervision
   s_js_weight:
     value: 0.0
   s_js_mode:
@@ -60,6 +73,8 @@ parameters:
     value: "pairwise"
   s_cc_view_pool:
     value: "matching"
+  s_cm_weight:
+    value: 0.0
 
   s_tta_loss:
     value: "none"

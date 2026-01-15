@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py
 project: safer_loss
-name: safer_tta_isolation
+name: safer_cm_isolation
 method: grid
 metric:
   name: acc_100
@@ -45,23 +45,15 @@ parameters:
   s_input_is_normalized:
     value: -1
 
-  # Primary pool for matching strategies
+  # Class-marginal isolation
+  s_cm_weight:
+    values: [0.01, 0.05, 0.1, 0.2, 0.5]
   s_sup_view_pool:
-    value: "mean"
-
-  # Auxiliary TTA loss isolation
-  s_tta_loss:
-    values: ["tent", "pl", "tsd"]
-  s_tta_weight:
-    values: [0.1, 0.3, 0.6]
-  s_tta_target:
-    values: ["views", "pooled"]
-  s_tta_view_pool:
-    values: ["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"]
+    values: ["mean", "worst", "entropy", "top1", "cc", "cc_drop"]
   s_view_weighting:
     values: [0, 1]
 
-  # Disable JS/CC/CM and explicit supervision
+  # Disable JS/CC/supervision/aux TTA
   s_js_weight:
     value: 0.0
   s_js_mode:
@@ -75,10 +67,13 @@ parameters:
     value: "pairwise"
   s_cc_view_pool:
     value: "matching"
-  s_cm_weight:
-    value: 0.0
 
   s_sup_type:
     value: "none"
   s_sup_weight:
+    value: 0.0
+
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
     value: 0.0

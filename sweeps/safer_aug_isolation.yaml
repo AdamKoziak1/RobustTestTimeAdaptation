@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py
 project: safer_loss
-name: safer_tta_isolation
+name: safer_aug_isolation
 method: grid
 metric:
   name: acc_100
@@ -26,59 +26,57 @@ parameters:
   steps:
     value: 1
 
-  # 5 total views: 1 original + 4 augmented (SAFER default)
+  # Augmentation pipeline sweep
   s_num_views:
-    value: 4
+    values: [2, 4]
   s_include_original:
-    value: 1
-
+    values: [0, 1]
   s_aug_prob:
-    value: 0.7
+    values: [0.5, 0.7, 1.0]
   s_aug_max_ops:
-    value: 4
+    values: [2, 4]
   s_aug_seed:
     value: 123
   s_aug_force_noise:
-    value: 1
+    values: [0, 1]
   s_aug_require_freq_blur:
-    value: 1
+    values: [0, 1]
   s_input_is_normalized:
     value: -1
 
-  # Primary pool for matching strategies
-  s_sup_view_pool:
-    value: "mean"
-
-  # Auxiliary TTA loss isolation
-  s_tta_loss:
-    values: ["tent", "pl", "tsd"]
-  s_tta_weight:
-    values: [0.1, 0.3, 0.6]
-  s_tta_target:
-    values: ["views", "pooled"]
-  s_tta_view_pool:
-    values: ["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"]
-  s_view_weighting:
-    values: [0, 1]
-
-  # Disable JS/CC/CM and explicit supervision
+  # Keep losses at SAFER defaults while varying augmentation
   s_js_weight:
-    value: 0.0
+    value: 1.0
   s_js_mode:
     value: "pooled"
   s_js_view_pool:
     value: "matching"
 
   s_cc_weight:
-    value: 0.0
+    value: 1.0
   s_cc_mode:
     value: "pairwise"
   s_cc_view_pool:
     value: "matching"
+  s_cc_offdiag:
+    value: 0.01
+  s_cc_impl:
+    value: "fast"
+  s_feat_normalize:
+    value: 0
+
   s_cm_weight:
     value: 0.0
-
   s_sup_type:
     value: "none"
   s_sup_weight:
     value: 0.0
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+
+  s_sup_view_pool:
+    value: "mean"
+  s_view_weighting:
+    value: 1

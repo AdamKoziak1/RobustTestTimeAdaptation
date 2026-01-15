@@ -5,6 +5,7 @@ import sys
 import time
 import math
 import time
+from PIL import ImageFile
 import torch
 import torch.nn as nn
 from torchvision.datasets import ImageFolder
@@ -38,6 +39,8 @@ import wandb
 from adapt_presets import apply_adapt_preset
 from utils.attack_presets import resolve_attack_config, DEFAULT_ATTACK_PRESET
 from utils.adv_attack import build_attack_transform, pgd_attack
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 def get_args():

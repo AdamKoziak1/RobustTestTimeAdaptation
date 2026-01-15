@@ -4,18 +4,18 @@ import sys
 from typing import Dict, Iterable, Mapping
 
 ADAPT_ALG_ORDER = [
-    "ERM",
-    "BN",
-    "Tent",
-    "PL",
-    "PLC",
-    "SHOT-IM",
-    "T3A",
-    "TSD",
-    "TTA3",
-    "SAFER",
     "TeSLA",
-    "AMTDC",
+    "TSD",
+    "Tent",
+    "T3A",
+    "PL",
+    "ERM",
+    # "BN",
+    # "PLC",
+    # "SHOT-IM",
+    # "TTA3",
+    # "SAFER",
+    # "AMTDC",
 ]
 
 ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
@@ -28,7 +28,7 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "lr": 1e-4,
     },
     "SHOT-IM": {
-        "lr": 1e-5,
+        "lr": 1e-4,
     },
     "T3A": {
         "filter_K": 100,

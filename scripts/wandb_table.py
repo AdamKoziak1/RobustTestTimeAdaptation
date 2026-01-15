@@ -6,6 +6,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+import json
 
 try:
     import yaml  # type: ignore
@@ -336,8 +337,8 @@ def main() -> int:
         help="W&B sweep id or entity/project/sweep.",
     )
     parser.add_argument("--sweep-config", type=Path, help="Sweep YAML to restrict allowed values.")
-    parser.add_argument("--entity", help="W&B entity for --sweep-id.")
-    parser.add_argument("--project", help="W&B project for --sweep-id.")
+    parser.add_argument("--entity", default="bigslav", help="W&B entity for --sweep-id.")
+    parser.add_argument("--project", default="safer_loss", help="W&B project for --sweep-id.")
 
     parser.add_argument("--dataset", help="Dataset name (e.g., PACS).")
     parser.add_argument(

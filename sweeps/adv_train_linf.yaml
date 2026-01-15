@@ -12,7 +12,7 @@ parameters:
   test_envs:
     values: [0, 1, 2, 3]
   adv_train:
-    value: true
+    value: 1
   adv_attack_preset:
     value: linf8
   adv_attack_rate:
@@ -23,3 +23,5 @@ parameters:
     value: 32
   lr:
     value: 5e-5
+  seed:
+    values: [1,2]
