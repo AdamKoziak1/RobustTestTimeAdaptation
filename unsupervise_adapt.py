@@ -8,6 +8,7 @@ import time
 from PIL import ImageFile
 import torch
 import torch.nn as nn
+from typing import Optional
 from torchvision.datasets import ImageFolder
 from torchvision import transforms
 from torch.utils.data import DataLoader
@@ -15,9 +16,9 @@ from sklearn.metrics import accuracy_score
 from alg.opt import *
 from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
-from utils.svd import SVDDrop2D, SVDLoader
-from utils.fft import FFTDrop2D, FFTLoader
-from utils.image_ops import GaussianBlur2D, GaussianBlurLoader, JPEGCompressionLoader
+from utils.svd import SVDDrop2D
+from utils.fft import FFTDrop2D
+from utils.image_ops import GaussianBlur2D, InputDefense
 from adapt_algorithm import collect_params, configure_model
 from adapt_algorithm import (
     PseudoLabel,
@@ -41,6 +42,65 @@ from utils.attack_presets import resolve_attack_config, DEFAULT_ATTACK_PRESET
 from utils.adv_attack import build_attack_transform, pgd_attack
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+
+class InputDefenseWrapper(nn.Module):
+    def __init__(self, model: nn.Module, defense: nn.Module) -> None:
+        super().__init__()
+        self.model = model
+        self.defense = defense
+        self.defense.requires_grad_(False)
+        self.defense.eval()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+        x = self.defense(x)
+        if hasattr(self.model, "predict"):
+            return self.model.predict(x)
+        return self.model(x)
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.defense(x)
+        if hasattr(self.model, "predict"):
+            return self.model.predict(x)
+        return self.model(x)
+
+    def __getattr__(self, name: str):
+        if name in {"model", "defense"}:
+            return super().__getattr__(name)
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.model, name)
+
+
+def _build_input_defense(args) -> Optional[nn.Module]:
+    use_jpeg = 1 <= args.jpeg_input_quality < 100
+    use_gauss = args.gauss_input_sigma > 0
+    use_svd = args.svd_input_rank_ratio < 1.0
+    use_fft = (not use_svd) and (args.fft_input_keep_ratio < 1.0)
+    if not (use_jpeg or use_gauss or use_svd or use_fft):
+        return None
+    return InputDefense(
+        jpeg_quality=args.jpeg_input_quality,
+        jpeg_backprop=args.jpeg_input_backprop,
+        gauss_sigma=args.gauss_input_sigma,
+        svd_rank_ratio=args.svd_input_rank_ratio,
+        svd_mode=args.svd_input_mode,
+        fft_keep_ratio=args.fft_input_keep_ratio,
+        fft_mode=args.fft_input_mode,
+        fft_alpha=args.fft_input_alpha,
+        fft_use_residual=bool(args.fft_input_use_residual),
+        fft_learn_alpha=bool(args.fft_input_learn_alpha),
+    )
+
+
+def wrap_with_input_defense(model: nn.Module, args) -> nn.Module:
+    if isinstance(model, InputDefenseWrapper):
+        return model
+    defense = _build_input_defense(args)
+    if defense is None:
+        return model
+    return InputDefenseWrapper(model, defense)
 
 
 def get_args():
@@ -296,7 +356,15 @@ def get_args():
     parser.add_argument("--attack_fft_alpha", type=float, default=None)
     parser.add_argument("--eps", type=float, default=4)  
     parser.add_argument("--attack_rate", type=int, choices=[0, 25, 50, 75, 100], default=0)   
-    parser.add_argument("--use_adv_source", action="store_true", help="Use adversarially trained source weights.")
+    parser.add_argument(
+        "--use_adv_source",
+        nargs="?",
+        const=1,
+        default=0,
+        type=int,
+        choices=[0, 1],
+        help="Use adversarially trained source weights (1 enables).",
+    )
     parser.add_argument("--adv_source_preset", type=str, default=None, help="Preset name used to locate adv source weights.")
     parser.add_argument("--adv_source_tag", type=str, default=None, help="Override tag for adv source checkpoint filename.")
     parser.add_argument("--lora_r", type=int, default=4)  
@@ -323,6 +391,13 @@ def get_args():
     parser.add_argument("--gauss_input_sigma", type=float, default=0.0, help="Gaussian blur σ for input preprocessing (0 disables).")
     parser.add_argument("--gauss_feat_sigma", type=float, default=0.0, help="Gaussian blur σ inserted after the first conv block (0 disables).")
     parser.add_argument("--jpeg_input_quality", type=int, default=100, help="JPEG quality (1-100) for input re-encoding (100 disables).")
+    parser.add_argument(
+        "--jpeg_input_backprop",
+        type=str,
+        default="bpda",
+        choices=["exact", "bpda"],
+        help="Backprop mode for input JPEG: exact (no grad) or bpda (identity backward).",
+    )
 
     parser.add_argument('--nuc_top', type=int, default=0, help='0..4 stages instrumented (bottom-up)')
     parser.add_argument('--nuc_after_stem', action='store_true', help='also insert after stem (post-maxpool)')
@@ -592,41 +667,7 @@ def adapt_loader(args):
         num_workers=args.N_WORKERS,
         pin_memory=True,
     )
-
-    loader = testloader
-    if 1 <= args.jpeg_input_quality < 100:
-        loader = JPEGCompressionLoader(
-            loader,
-            quality=args.jpeg_input_quality,
-            device="cuda",
-        )
-    if args.gauss_input_sigma > 0:
-        loader = GaussianBlurLoader(
-            loader,
-            sigma=args.gauss_input_sigma,
-            device="cuda",
-        )
-
-    if args.svd_input_rank_ratio < 1.0:
-        loader = SVDLoader(
-            loader,
-            rank_ratio=args.svd_input_rank_ratio,
-            device="cuda",
-            mode=args.svd_input_mode,
-            use_ste=False,
-        )
-    elif args.fft_input_keep_ratio < 1.0:
-        loader = FFTLoader(
-            loader,
-            keep_ratio=args.fft_input_keep_ratio,
-            device="cuda",
-            mode=args.fft_input_mode,
-            use_ste=False,
-            use_residual=args.fft_input_use_residual,
-            alpha=args.fft_input_alpha,
-            learn_alpha=args.fft_input_learn_alpha,
-        )
-    return loader
+    return testloader
 
 
 def make_adapt_model(args, algorithm):
@@ -664,31 +705,38 @@ def make_adapt_model(args, algorithm):
         algorithm = configure_model(algorithm)
         params, _ = collect_params(algorithm)
         optimizer = torch.optim.Adam(params, lr=args.lr)
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = Tent(
             algorithm, optimizer, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "ERM":
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = ERM(algorithm)
     elif args.adapt_alg == "PL":
         optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = PseudoLabel(
             algorithm, optimizer, args.beta, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "PLC":
         optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = PseudoLabel(
             algorithm, optimizer, args.beta, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "SHOT-IM":
         optimizer = torch.optim.Adam(algorithm.featurizer.parameters(), lr=args.lr)
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = SHOTIM(
             algorithm, optimizer, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "T3A":
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = T3A(
             algorithm, filter_K=args.filter_K, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "BN":
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = BN(algorithm)
     elif args.adapt_alg == "TSD":
         if args.update_param == "all":
@@ -713,6 +761,7 @@ def make_adapt_model(args, algorithm):
             print("Update classifier")
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = TSD(
             algorithm,
             optimizer,
@@ -775,7 +824,8 @@ def make_adapt_model(args, algorithm):
             optimizer = torch.optim.Adam(algorithm.featurizer.nuc_parameters(), lr=args.lr)
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
-        
+
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = TTA3(
             algorithm,
             optimizer,
@@ -828,6 +878,7 @@ def make_adapt_model(args, algorithm):
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
 
+        algorithm = wrap_with_input_defense(algorithm, args)
         augment_list = args.s_aug_list if args.s_aug_list else None
         adapt_model = SAFER(
             algorithm,
@@ -894,6 +945,7 @@ def make_adapt_model(args, algorithm):
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
 
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = TeSLA(
             algorithm,
             optimizer,
@@ -945,6 +997,7 @@ def make_adapt_model(args, algorithm):
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
 
+        algorithm = wrap_with_input_defense(algorithm, args)
         adapt_model = MeanTeacherCorrection(
             algorithm,
             optimizer,
@@ -984,7 +1037,9 @@ def run_one_seed(args):
     attack_model = None
     if args.attack != "clean" and args.attack_source in ("on_the_fly", "live"):
         if args.attack_source == "on_the_fly":
-            attack_model = copy.deepcopy(algorithm).cuda().eval()
+            attack_model = copy.deepcopy(algorithm)
+            attack_model = wrap_with_input_defense(attack_model, args)
+            attack_model = attack_model.cuda().eval()
             for param in attack_model.parameters():
                 param.requires_grad_(False)
         else:

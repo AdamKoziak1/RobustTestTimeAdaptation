@@ -19,6 +19,7 @@ from unsupervise_adapt import (
     make_adapt_model,
     log_args,
     resolve_source_checkpoint,
+    wrap_with_input_defense,
 )
 from utils.adv_attack import build_attack_transform, pgd_attack
 from utils.util import set_random_seed, load_ckpt, img_param_init
@@ -60,7 +61,9 @@ def evaluate_domain(args):
     attack_model = None
     if args.attack != "clean" and args.attack_source in ("on_the_fly", "live"):
         if args.attack_source == "on_the_fly":
-            attack_model = copy.deepcopy(base_model).cuda().eval()
+            attack_model = copy.deepcopy(base_model)
+            attack_model = wrap_with_input_defense(attack_model, args)
+            attack_model = attack_model.cuda().eval()
             for param in attack_model.parameters():
                 param.requires_grad_(False)
         else:

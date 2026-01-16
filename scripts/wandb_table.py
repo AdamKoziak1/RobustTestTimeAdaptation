@@ -8,15 +8,19 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 import json
 
-try:
-    import yaml  # type: ignore
-except Exception:
-    yaml = None
+import yaml  
 
-try:
-    from adapt_presets import ADAPT_ALG_ORDER
-except Exception:
-    ADAPT_ALG_ORDER = []
+ADAPT_ALG_ORDER = [
+    "TeSLA",
+    "TSD",
+    "Tent",
+    "T3A",
+    "PL",
+    "ERM",
+    # "TTA3",
+    # "SAFER",
+    # "AMTDC",
+]
 
 
 DATASET_DOMAIN_LABELS: Mapping[str, List[str]] = {
