@@ -113,8 +113,8 @@ def _build_registry() -> Dict[str, _OpSpec]:
     return {
         "gaussian_blur": _OpSpec(
             sample_params=lambda rng: {
-                "kernel_size": int(rng.choice([7,9])),
-                "sigma": _sample_uniform(rng, 0.1, 2.5),
+                "kernel_size": int(rng.choice([9])),
+                "sigma": _sample_uniform(rng, 0.1, 5.0),
             },
             apply=lambda x, p: TF.gaussian_blur(
                 x,
@@ -211,10 +211,16 @@ class SAFERAugmenter:
         max_ops: cap on how many operations to include in one pipeline (None = unlimited).
         prob: Bernoulli probability per augmentation.
         seed: optional seed for determinism.
+        sample_params_per_image: if True, resample augmentation parameters per image.
         force_noise_first: ensure the noise_op is the first operation in the pipeline.
         require_freq_or_blur: enforce at least one frequency/blur op per pipeline.
         noise_op: name of the noise operation to place first when forced.
         freq_or_blur_ops: candidate ops used to satisfy the frequency/blur requirement.
+        allow_noise: whether gaussian noise can be used in the pipeline.
+        noise_std: fixed std for gaussian noise (None keeps random sampling).
+        fixed_op: optional fixed op to apply (disables sampling other ops).
+        fixed_op_params: fixed parameters for the fixed op.
+        fixed_only: if True, only apply fixed op (and optional forced noise).
     """
 
     def __init__(
@@ -223,26 +229,39 @@ class SAFERAugmenter:
         augmentations: Optional[Sequence[str]] = None,
         max_ops: Optional[int] = None,
         prob: float = 0.7,
+        sample_params_per_image: bool = False,
         seed: Optional[int] = None,
         force_noise_first: bool = False,
         require_freq_or_blur: bool = False,
         noise_op: str = "gaussian_noise",
         freq_or_blur_ops: Optional[Sequence[str]] = None,
+        allow_noise: bool = True,
+        noise_std: Optional[float] = None,
+        fixed_op: Optional[str] = None,
+        fixed_op_params: Optional[Dict[str, float]] = None,
+        fixed_only: bool = False,
     ) -> None:
         assert num_views >= 1, "num_views must be ≥ 1"
         assert 0.0 <= prob <= 1.0, "prob must be in [0, 1]"
         self.num_views = num_views
         self.max_ops = max_ops
         self.prob = prob
+        self.sample_params_per_image = bool(sample_params_per_image)
         self.rng = random.Random(seed)
         self.registry = _build_registry()
-        self.force_noise_first = bool(force_noise_first)
+        self.allow_noise = bool(allow_noise)
+        self.force_noise_first = bool(force_noise_first) and self.allow_noise
         self.require_freq_or_blur = bool(require_freq_or_blur)
         self.noise_op = noise_op
         self.freq_or_blur_ops = list(freq_or_blur_ops) if freq_or_blur_ops is not None else [
             "fft_low_pass",
             "gaussian_blur",
         ]
+        if noise_std is not None:
+            self.registry[self.noise_op] = _OpSpec(
+                sample_params=lambda _: {"std": float(noise_std)},
+                apply=lambda x, p: _gaussian_noise(x, p["std"]),
+            )
         default_ops: Tuple[str, ...] = (
             "gaussian_blur",
             "gaussian_noise",
@@ -262,9 +281,30 @@ class SAFERAugmenter:
             "rotate",
         )
         self.augmentations = list(augmentations) if augmentations is not None else list(default_ops)
+        if not self.allow_noise and self.noise_op in self.augmentations:
+            self.augmentations = [op for op in self.augmentations if op != self.noise_op]
+
+        self.fixed_op = fixed_op.lower() if fixed_op is not None else None
+        self.fixed_only = bool(fixed_only) or self.fixed_op is not None
+        self.fixed_op_params = fixed_op_params
+        if self.fixed_op is not None:
+            if self.fixed_op not in self.registry:
+                raise ValueError(f"Unknown fixed_op '{self.fixed_op}'.")
+            if self.fixed_op_params is None:
+                self.fixed_op_params = self.registry[self.fixed_op].sample_params(self.rng)
 
     def _sample_pipeline(self) -> List[Tuple[str, Dict[str, float]]]:
         ops: List[Tuple[str, Dict[str, float]]] = []
+        if self.fixed_only:
+            if self.force_noise_first:
+                noise_spec = self.registry.get(self.noise_op)
+                if noise_spec is not None:
+                    noise_params = noise_spec.sample_params(self.rng)
+                    ops.append((self.noise_op, noise_params))
+            if self.fixed_op is not None:
+                fixed_params = dict(self.fixed_op_params or {})
+                ops.append((self.fixed_op, fixed_params))
+            return ops
         for name in self.augmentations:
             if name not in self.registry:
                 continue
@@ -320,6 +360,19 @@ class SAFERAugmenter:
             out = _clamp_img(out)
         return out
 
+    def _resample_params(self, ops: List[Tuple[str, Dict[str, float]]]) -> List[Tuple[str, Dict[str, float]]]:
+        resampled = []
+        for name, params in ops:
+            if self.fixed_op is not None and name == self.fixed_op and self.fixed_op_params is not None:
+                resampled.append((name, dict(self.fixed_op_params)))
+                continue
+            spec = self.registry.get(name)
+            if spec is None:
+                resampled.append((name, dict(params)))
+                continue
+            resampled.append((name, spec.sample_params(self.rng)))
+        return resampled
+
     def sample_pipelines(self, num_views: Optional[int] = None) -> List[List[Tuple[str, Dict[str, float]]]]:
         total_views = num_views or self.num_views
         return [self._sample_pipeline() for _ in range(total_views)]
@@ -338,7 +391,13 @@ class SAFERAugmenter:
         views = []
         pipelines = self.sample_pipelines(num_views)
         for ops in pipelines:
-            augmented = [self._apply_ops(x[i], ops) for i in range(b)]
+            if self.sample_params_per_image:
+                augmented = [
+                    self._apply_ops(x[i], self._resample_params(ops))
+                    for i in range(b)
+                ]
+            else:
+                augmented = [self._apply_ops(x[i], ops) for i in range(b)]
             if not augmented:
                 stacked = x.clone()
             else:

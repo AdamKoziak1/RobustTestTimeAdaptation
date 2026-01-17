@@ -32,7 +32,9 @@ from adapt_algorithm import (
     SAFER,
     TeSLA,
     MeanTeacherCorrection,
+    SAFERPooledPredictor,
 )
+from utils.safer_view import SAFERViewModule
 from datautil.attacked_imagefolder import AttackedImageFolder
 import statistics
 from peft import LoraConfig, get_peft_model
@@ -160,6 +162,13 @@ def get_args():
     parser.add_argument("--s_aug_prob", type=float, default=0.7, help="Probability of sampling each augmentation in the SAFER pipeline.")
     parser.add_argument("--s_aug_max_ops", type=int, default=4, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
     parser.add_argument("--s_aug_list", type=str, nargs="+", default=None, help="Optional custom list of SAFER augmentations to sample from.")
+    parser.add_argument(
+        "--s_aug_params_per_image",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Sample SAFER augmentation parameters per image instead of per batch.",
+    )
     parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
     parser.add_argument("--s_cc_weight", type=float, default=1.0, help="Weight for SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
@@ -179,6 +188,44 @@ def get_args():
         default=1,
         choices=[0, 1],
         help="Require FFT low-pass or Gaussian blur in each SAFER augmentation pipeline.",
+    )
+    parser.add_argument(
+        "--s_aug_use_noise",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="Allow Gaussian noise in SAFER augmentations (0 removes it).",
+    )
+    parser.add_argument(
+        "--s_aug_noise_std",
+        type=float,
+        default=-1.0,
+        help="Fixed std for SAFER Gaussian noise (-1 keeps random sampling).",
+    )
+    parser.add_argument(
+        "--s_aug_fixed_op",
+        type=str,
+        default="none",
+        choices=["none", "gaussian_blur", "fft_low_pass"],
+        help="Use a fixed SAFER op only (disables other sampled ops).",
+    )
+    parser.add_argument(
+        "--s_aug_fixed_blur_kernel",
+        type=int,
+        default=9,
+        help="Kernel size for fixed SAFER Gaussian blur (odd integer).",
+    )
+    parser.add_argument(
+        "--s_aug_fixed_blur_sigma",
+        type=float,
+        default=1.0,
+        help="Sigma for fixed SAFER Gaussian blur.",
+    )
+    parser.add_argument(
+        "--s_aug_fixed_fft_keep_ratio",
+        type=float,
+        default=0.5,
+        help="Keep ratio for fixed SAFER FFT low-pass.",
     )
     parser.add_argument(
         "--s_input_is_normalized",
@@ -288,6 +335,13 @@ def get_args():
         default="matching",
         choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
         help="Pooling strategy for pooled-feature cross-correlation; 'matching' reuses the supervision pool.",
+    )
+    parser.add_argument(
+        "--s_wrap_alg",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Use SAFER view pooling with non-SAFER algorithms (1 enables).",
     )
     # TeSLA
     parser.add_argument("--tesla_sub_policy_dim", type=int, default=2, help="Number of ops per TeSLA sub-policy.")
@@ -475,8 +529,26 @@ def get_args():
     args.s_tta_view_pool = args.s_tta_view_pool.lower()
     args.s_cc_mode = args.s_cc_mode.lower()
     args.s_cc_view_pool = args.s_cc_view_pool.lower()
+    args.s_wrap_alg = bool(args.s_wrap_alg)
     args.s_aug_force_noise = bool(args.s_aug_force_noise)
     args.s_aug_require_freq_blur = bool(args.s_aug_require_freq_blur)
+    args.s_aug_use_noise = bool(args.s_aug_use_noise)
+    args.s_aug_params_per_image = bool(args.s_aug_params_per_image)
+    if not args.s_aug_use_noise:
+        args.s_aug_force_noise = False
+    if args.s_aug_noise_std is not None and args.s_aug_noise_std < 0:
+        args.s_aug_noise_std = None
+    if args.s_aug_fixed_op is not None:
+        fixed_op = args.s_aug_fixed_op.lower()
+        args.s_aug_fixed_op = None if fixed_op == "none" else fixed_op
+    if args.s_aug_fixed_op == "gaussian_blur":
+        if args.s_aug_fixed_blur_kernel <= 0 or args.s_aug_fixed_blur_kernel % 2 == 0:
+            raise ValueError("s_aug_fixed_blur_kernel must be a positive odd integer.")
+        if args.s_aug_fixed_blur_sigma <= 0:
+            raise ValueError("s_aug_fixed_blur_sigma must be > 0.")
+    if args.s_aug_fixed_op == "fft_low_pass":
+        if not (0.0 < args.s_aug_fixed_fft_keep_ratio <= 1.0):
+            raise ValueError("s_aug_fixed_fft_keep_ratio must be in (0, 1].")
     if args.s_input_is_normalized < 0:
         args.s_input_is_normalized = None
     else:
@@ -557,6 +629,23 @@ def log_args(args, time_taken_s):
         # "x_lr": args.x_lr,
         # "x_steps": args.x_steps
     })
+    if args.s_wrap_alg:
+        wandb.log({
+            "s_wrap_alg": args.s_wrap_alg,
+            "s_num_views": args.s_num_views,
+            "s_include_original": args.s_include_original,
+            "s_aug_prob": args.s_aug_prob,
+            "s_aug_max_ops": -1 if args.s_aug_max_ops is None else args.s_aug_max_ops,
+            "s_aug_fixed_op": args.s_aug_fixed_op or "none",
+            "s_aug_fixed_fft_keep_ratio": args.s_aug_fixed_fft_keep_ratio,
+            "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
+            "s_aug_fixed_blur_sigma": args.s_aug_fixed_blur_sigma,
+            "s_aug_use_noise": args.s_aug_use_noise,
+            "s_aug_noise_std": args.s_aug_noise_std,
+            "s_aug_params_per_image": args.s_aug_params_per_image,
+            "s_sup_view_pool": args.s_sup_view_pool,
+            "s_view_weighting": args.s_view_weighting,
+        }, commit=False)
     if args.adapt_alg == "SAFER":
         wandb.log({
             "s_num_views": args.s_num_views,
@@ -570,6 +659,13 @@ def log_args(args, time_taken_s):
             "s_feat_normalize": args.s_feat_normalize,
             "s_aug_force_noise": args.s_aug_force_noise,
             "s_aug_require_freq_blur": args.s_aug_require_freq_blur,
+            "s_aug_use_noise": args.s_aug_use_noise,
+            "s_aug_noise_std": args.s_aug_noise_std,
+            "s_aug_params_per_image": args.s_aug_params_per_image,
+            "s_aug_fixed_op": args.s_aug_fixed_op or "none",
+            "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
+            "s_aug_fixed_blur_sigma": args.s_aug_fixed_blur_sigma,
+            "s_aug_fixed_fft_keep_ratio": args.s_aug_fixed_fft_keep_ratio,
             "s_input_is_normalized": args.s_input_is_normalized,
             "s_cm_weight": args.s_cm_weight,
             "s_sup_type": args.s_sup_type,
@@ -700,43 +796,97 @@ def make_adapt_model(args, algorithm):
         else:
             print("Warning: gauss_feat_sigma > 0 but featurizer lacks layer1; skipping blur.")
 
+    augment_list = args.s_aug_list if args.s_aug_list else None
+
+    def _build_safer_view_module(model: nn.Module) -> SAFERViewModule:
+        return SAFERViewModule(
+            num_aug_views=args.s_num_views,
+            include_original=args.s_include_original,
+            aug_prob=args.s_aug_prob,
+            aug_max_ops=args.s_aug_max_ops,
+            augmentations=augment_list,
+            force_noise_first=args.s_aug_force_noise,
+            require_freq_or_blur=args.s_aug_require_freq_blur,
+            sample_params_per_image=args.s_aug_params_per_image,
+            aug_seed=args.s_aug_seed,
+            fixed_op=args.s_aug_fixed_op,
+            fixed_blur_kernel=args.s_aug_fixed_blur_kernel,
+            fixed_blur_sigma=args.s_aug_fixed_blur_sigma,
+            fixed_fft_keep_ratio=args.s_aug_fixed_fft_keep_ratio,
+            allow_noise=args.s_aug_use_noise,
+            noise_std=args.s_aug_noise_std,
+            feature_normalize=args.s_feat_normalize,
+            view_weighting=args.s_view_weighting,
+            primary_view_pool=args.s_sup_view_pool,
+            js_weight=0.0,
+            js_mode="pooled",
+            js_view_pool=args.s_sup_view_pool,
+            cc_weight=0.0,
+            cc_mode="pairwise",
+            cc_view_pool=args.s_sup_view_pool,
+            cc_impl=args.s_cc_impl,
+            offdiag_weight=args.s_cc_offdiag,
+            mean=None,
+            std=None,
+            input_is_normalized=args.s_input_is_normalized,
+            stat_modules=(model.featurizer, model),
+        )
+
+    def _maybe_wrap_model(model: nn.Module) -> tuple[nn.Module, Optional[SAFERViewModule]]:
+        if not args.s_wrap_alg or args.adapt_alg == "SAFER":
+            return model, None
+        unsupported = {"TTA3", "TeSLA", "AMTDC"}
+        if args.adapt_alg in unsupported:
+            raise ValueError(f"s_wrap_alg is not supported for {args.adapt_alg}.")
+        view_module = _build_safer_view_module(model)
+        if args.adapt_alg in {"T3A", "TSD"}:
+            return model, view_module
+        return SAFERPooledPredictor(model, view_module), None
+
     # set adapt model and optimizer
     if args.adapt_alg == "Tent":
         algorithm = configure_model(algorithm)
         params, _ = collect_params(algorithm)
         optimizer = torch.optim.Adam(params, lr=args.lr)
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = Tent(
             algorithm, optimizer, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "ERM":
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = ERM(algorithm)
     elif args.adapt_alg == "PL":
         optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = PseudoLabel(
             algorithm, optimizer, args.beta, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "PLC":
         optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = PseudoLabel(
             algorithm, optimizer, args.beta, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "SHOT-IM":
         optimizer = torch.optim.Adam(algorithm.featurizer.parameters(), lr=args.lr)
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = SHOTIM(
             algorithm, optimizer, steps=args.steps, episodic=args.episodic
         )
     elif args.adapt_alg == "T3A":
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = T3A(
-            algorithm, filter_K=args.filter_K, steps=args.steps, episodic=args.episodic
+            algorithm, filter_K=args.filter_K, steps=args.steps, episodic=args.episodic, view_module=view_module
         )
     elif args.adapt_alg == "BN":
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = BN(algorithm)
     elif args.adapt_alg == "TSD":
         if args.update_param == "all":
@@ -762,12 +912,14 @@ def make_adapt_model(args, algorithm):
         else:
             raise Exception("Do not support update with %s manner." % args.update_param)
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = TSD(
             algorithm,
             optimizer,
             filter_K=args.filter_K,
             steps=args.steps,
             episodic=args.episodic,
+            view_module=view_module,
         )
 
     elif args.adapt_alg == "TTA3":
@@ -826,6 +978,7 @@ def make_adapt_model(args, algorithm):
             raise Exception("Do not support update with %s manner." % args.update_param)
 
         algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = TTA3(
             algorithm,
             optimizer,
@@ -879,7 +1032,6 @@ def make_adapt_model(args, algorithm):
             raise Exception("Do not support update with %s manner." % args.update_param)
 
         algorithm = wrap_with_input_defense(algorithm, args)
-        augment_list = args.s_aug_list if args.s_aug_list else None
         adapt_model = SAFER(
             algorithm,
             optimizer,
@@ -892,11 +1044,18 @@ def make_adapt_model(args, algorithm):
             augmentations=augment_list,
             force_noise_first=args.s_aug_force_noise,
             require_freq_or_blur=args.s_aug_require_freq_blur,
+            fixed_op=args.s_aug_fixed_op,
+            fixed_blur_kernel=args.s_aug_fixed_blur_kernel,
+            fixed_blur_sigma=args.s_aug_fixed_blur_sigma,
+            fixed_fft_keep_ratio=args.s_aug_fixed_fft_keep_ratio,
+            allow_noise=args.s_aug_use_noise,
+            noise_std=args.s_aug_noise_std,
             js_weight=args.s_js_weight,
             cc_weight=args.s_cc_weight,
             offdiag_weight=args.s_cc_offdiag,
             feature_normalize=args.s_feat_normalize,
             aug_seed=args.s_aug_seed,
+            sample_params_per_image=args.s_aug_params_per_image,
             sup_mode=args.s_sup_type,
             sup_weight=args.s_sup_weight,
             class_marginal_weight=args.s_cm_weight,

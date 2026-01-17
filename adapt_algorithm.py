@@ -14,7 +14,7 @@ from torch.distributions import Beta
 from utils.svd import SVDDrop2D
 from utils.fft import FFTDrop2D
 from utils.image_ops import GaussianBlur2D
-from utils.safer_aug import SAFERAugmenter
+from utils.safer_view import SAFERViewModule
 from utils.tesla_aug.optaug import OptAug
 from utils.tesla_losses import EntropyClassMarginals
 
@@ -270,6 +270,32 @@ class Tent(nn.Module):
         return outputs
 
 
+class SAFERPooledPredictor(nn.Module):
+    def __init__(self, model: nn.Module, view_module: nn.Module) -> None:
+        super().__init__()
+        self.model = model
+        self.view_module = view_module
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
+        return self.predict(x)
+
+    def predict(self, x: torch.Tensor) -> torch.Tensor:
+        defense = getattr(self.model, "defense", None)
+        if isinstance(defense, nn.Module):
+            x = defense(x)
+        view_out = self.view_module(x, self.model)
+        pooled_prob = view_out.pooled_prob.clamp_min(1e-6)
+        return pooled_prob.log()
+
+    def __getattr__(self, name: str):
+        if name in {"model", "view_module"}:
+            return super().__getattr__(name)
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.model, name)
+
+
 class PseudoLabel(nn.Module):
     def __init__(self, model, optimizer, beta=0.9,steps=1, episodic=False):
         super().__init__()
@@ -364,7 +390,7 @@ class T3A(nn.Module):
     """
     T3A, NeurIPS 2021
     """
-    def __init__(self,model,filter_K=100,steps=1,episodic=False):
+    def __init__(self,model,filter_K=100,steps=1,episodic=False, view_module: Optional[nn.Module] = None):
         super().__init__()
         self.model = model.eval()
         self.featurizer = model.featurizer
@@ -373,6 +399,7 @@ class T3A(nn.Module):
         assert steps > 0, "requires >= 1 step(s) to forward and update"
         self.episodic = episodic
         self.filter_K = filter_K
+        self.view_module = view_module
         
         warmup_supports = self.classifier.fc.weight.data
         self.num_classes = warmup_supports.size()[0]
@@ -386,8 +413,17 @@ class T3A(nn.Module):
              
     @torch.no_grad() 
     def forward(self,x):
-        z = self.featurizer(x)
-        p = self.classifier(z)
+        if self.view_module is None:
+            z = self.featurizer(x)
+            p = self.classifier(z)
+        else:
+            defense = getattr(self.model, "defense", None)
+            if isinstance(defense, nn.Module):
+                x = defense(x)
+            view_out = self.view_module(x, self.model)
+            z = _pool_features(view_out.features, view_out.pooled_weights)
+            pooled_prob = view_out.pooled_prob
+            p = pooled_prob.clamp_min(1e-6).log()
         yhat = torch.nn.functional.one_hot(p.argmax(1), num_classes=self.num_classes).float()
         ent = softmax_entropy(p)
 
@@ -430,7 +466,7 @@ class TSD(nn.Module):
     Test-time Self-Distillation (TSD)
     CVPR 2023
     """
-    def __init__(self,model,optimizer,lam=0,filter_K=100,steps=1,episodic=False):
+    def __init__(self,model,optimizer,lam=0,filter_K=100,steps=1,episodic=False, view_module: Optional[nn.Module] = None):
         super().__init__()
         self.model = model
         self.featurizer = model.featurizer
@@ -440,6 +476,7 @@ class TSD(nn.Module):
         assert steps > 0, "requires >= 1 step(s) to forward and update"
         self.episodic = episodic
         self.filter_K = filter_K
+        self.view_module = view_module
         
         warmup_supports = self.classifier.fc.weight.data.detach()
         self.num_classes = warmup_supports.size()[0]
@@ -458,12 +495,21 @@ class TSD(nn.Module):
         
         
     def forward(self,x):
-        z = self.featurizer(x)
-        p = self.classifier(z)
+        if self.view_module is None:
+            z = self.featurizer(x)
+            p = self.classifier(z)
+            scores = F.softmax(p,1)
+        else:
+            defense = getattr(self.model, "defense", None)
+            if isinstance(defense, nn.Module):
+                x = defense(x)
+            view_out = self.view_module(x, self.model)
+            z = _pool_features(view_out.features, view_out.pooled_weights)
+            scores = view_out.pooled_prob
+            p = scores.clamp_min(1e-6).log()
                        
         yhat = F.one_hot(p.argmax(1), num_classes=self.num_classes).float()
         ent = softmax_entropy(p)
-        scores = F.softmax(p,1)
 
         with torch.no_grad():
             self.supports = self.supports.to(z.device)
@@ -1605,11 +1651,18 @@ class SAFER(nn.Module):
         augmentations: Optional[Sequence[str]] = None,
         force_noise_first: bool = False,
         require_freq_or_blur: bool = False,
+        fixed_op: Optional[str] = None,
+        fixed_blur_kernel: Optional[int] = None,
+        fixed_blur_sigma: Optional[float] = None,
+        fixed_fft_keep_ratio: Optional[float] = None,
+        allow_noise: bool = True,
+        noise_std: Optional[float] = None,
         js_weight: float = 1.0,
         cc_weight: float = 1.0,
         offdiag_weight: float = 1.0,
         feature_normalize: bool = False,
         aug_seed: Optional[int] = None,
+        sample_params_per_image: bool = False,
         sup_mode: str = "none",
         sup_weight: float = 0.0,
         class_marginal_weight: float = 0.0,
@@ -1657,11 +1710,6 @@ class SAFER(nn.Module):
         self.sup_weight = sup_weight
         self.class_marginal = EntropyClassMarginals()
         self.input_is_normalized = input_is_normalized
-        mean_t, std_t = _resolve_input_stats(mean, std, (self.featurizer, self.model))
-        self.register_buffer("norm_mean", mean_t)
-        self.register_buffer("norm_std", std_t)
-        self.normalize_fn = lambda x: _normalize_input(x, self.norm_mean, self.norm_std)
-        self.denormalize_fn = lambda x: _denormalize_input(x, self.norm_mean, self.norm_std)
         sup_view_pool = sup_view_pool.lower()
         valid_pools = VIEW_POOL_STRATEGIES
         valid_pools_with_match = VIEW_POOL_STRATEGIES_WITH_MATCHING
@@ -1673,14 +1721,7 @@ class SAFER(nn.Module):
         self.sup_pl_weighted = sup_pl_weighted
         self.sup_confidence_scale = sup_confidence_scale
         cc_impl = cc_impl.lower()
-        cc_impls = {
-            "fast": _barlow_twins_loss,
-            "einsum": _barlow_twins_loss_einsum,
-        }
-        if cc_impl not in cc_impls:
-            raise ValueError(f"Unknown cross-correlation impl '{cc_impl}'. Expected one of {tuple(cc_impls)}.")
         self.cc_impl = cc_impl
-        self._cc_loss_fn = cc_impls[cc_impl]
         js_mode = js_mode.lower()
         if js_mode not in {"pooled", "pairwise"}:
             raise ValueError("js_mode must be 'pooled' or 'pairwise'.")
@@ -1715,15 +1756,37 @@ class SAFER(nn.Module):
         self.tta_view_pool = _validate_pool("tta_view_pool", tta_view_pool)
         self.cc_view_pool = _validate_pool("cc_view_pool", cc_view_pool)
 
-        aug_views = max(1, num_aug_views)
-        self.augmenter = SAFERAugmenter(
-            num_views=aug_views,
+        self.view_module = SAFERViewModule(
+            num_aug_views=num_aug_views,
+            include_original=include_original,
+            aug_prob=aug_prob,
+            aug_max_ops=aug_max_ops,
             augmentations=augmentations,
-            max_ops=aug_max_ops,
-            prob=aug_prob,
-            seed=aug_seed,
             force_noise_first=force_noise_first,
             require_freq_or_blur=require_freq_or_blur,
+            sample_params_per_image=sample_params_per_image,
+            aug_seed=aug_seed,
+            fixed_op=fixed_op,
+            fixed_blur_kernel=fixed_blur_kernel,
+            fixed_blur_sigma=fixed_blur_sigma,
+            fixed_fft_keep_ratio=fixed_fft_keep_ratio,
+            allow_noise=allow_noise,
+            noise_std=noise_std,
+            feature_normalize=feature_normalize,
+            view_weighting=view_weighting,
+            primary_view_pool=sup_view_pool,
+            js_weight=js_weight,
+            js_mode=js_mode,
+            js_view_pool=self.js_view_pool,
+            cc_weight=cc_weight,
+            cc_mode=self.cc_mode,
+            cc_view_pool=self.cc_view_pool,
+            cc_impl=self.cc_impl,
+            offdiag_weight=offdiag_weight,
+            mean=mean,
+            std=std,
+            input_is_normalized=input_is_normalized,
+            stat_modules=(self.featurizer, self.model),
         )
 
         if self.episodic:
@@ -1732,9 +1795,6 @@ class SAFER(nn.Module):
             )
         else:
             self.model_state, self.optimizer_state = None, None
-
-    def _resolve_pool_choice(self, choice: str) -> str:
-        return self.primary_view_pool if choice == "matching" else choice
 
     def reset(self):
         if self.model_state is None or self.optimizer_state is None:
@@ -1749,23 +1809,6 @@ class SAFER(nn.Module):
         for _ in range(self.steps):
             outputs = self.forward_and_adapt(x, self.model, self.optimizer)
         return outputs
-
-    def _build_views(self, x: torch.Tensor) -> torch.Tensor:
-        views: list[torch.Tensor] = []
-        normalized = _detect_normalized_input(x, self.input_is_normalized)
-        x_raw, was_norm = _maybe_denormalize(x, self.norm_mean, self.norm_std, normalized)
-        if self.include_original:
-            views.append(x.unsqueeze(1))
-
-        if self.num_aug_views > 0:
-            aug = self.augmenter.augment(x_raw.detach(), num_views=self.num_aug_views)
-            if was_norm:
-                aug = _normalize_views(aug, self.norm_mean, self.norm_std)
-            views.append(aug)
-
-        if not views:
-            raise RuntimeError("SAFER could not construct any views.")
-        return torch.cat(views, dim=1)
 
     def _compute_tta_loss(
         self,
@@ -1799,70 +1842,15 @@ class SAFER(nn.Module):
         return torch.tensor(0.0, device=logits.device)
 
     def forward_and_adapt(self, x, model, optimizer):
-        batch_views = self._build_views(x)
-        bsz, total_views, c, h, w = batch_views.shape
-        flat_input = batch_views.view(bsz * total_views, c, h, w)
-
-        feats = model.featurizer(flat_input)
-        if feats.dim() > 2:
-            feats_flat = torch.flatten(feats, start_dim=1)
-        else:
-            feats_flat = feats
-
-        logits = model.classifier(feats_flat)
-        logits = logits.view(bsz, total_views, -1)
-        feats_bt = feats_flat.view(bsz, total_views, -1)
-
-        if self.feature_normalize:
-            feats_bt = F.normalize(feats_bt, dim=-1)
-
-        probs = F.softmax(logits, dim=-1)
-        weight_cache: dict[str, torch.Tensor] = {}
-
-        def pool_probs(strategy: str) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-            strat = self._resolve_pool_choice(strategy)
-            weights = None
-            if self.use_view_weights:
-                if strat not in weight_cache:
-                    weight_cache[strat] = _view_pool_weights(
-                        probs=probs,
-                        features=feats_bt,
-                        strategy=strat,
-                    )
-                weights = weight_cache[strat]
-            if weights is None:
-                pooled = probs.mean(dim=1)
-            else:
-                pooled = (probs * weights.unsqueeze(-1)).sum(dim=1)
-            return pooled, weights
-
-        base_prob, base_weights = pool_probs(self.sup_view_pool)
-
-        js_loss = torch.tensor(0.0, device=logits.device)
-        if self.js_weight > 1e-8:
-            js_prob, js_weights = pool_probs(self.js_view_pool)
-            js_loss = _js_divergence(
-                probs,
-                ref_probs=js_prob if self.js_mode == "pooled" else None,
-                view_weights=js_weights if self.use_view_weights else None,
-                mode=self.js_mode,
-            )
-
-        cc_loss = torch.tensor(0.0, device=logits.device)
-        if self.cc_weight > 1e-8:
-            if self.cc_mode == "pairwise":
-                cc_loss = self._cc_loss_fn(feats_bt, self.offdiag_weight)
-            else:
-                _, cc_weights = pool_probs(self.cc_view_pool)
-                pooled_feats = _pool_features(feats_bt, cc_weights if self.use_view_weights else None)
-                cc_loss = _barlow_twins_against_pooled(
-                    feats_bt,
-                    pooled_feats,
-                    offdiag_weight=self.offdiag_weight,
-                    eps=1e-12,
-                    view_weights=cc_weights if self.use_view_weights else None,
-                    impl=self.cc_impl,
-                )
+        view_out = self.view_module(x, model)
+        logits = view_out.logits
+        probs = view_out.probs
+        feats_bt = view_out.features
+        base_prob = view_out.pooled_prob
+        base_weights = view_out.pooled_weights
+        pooler = view_out.pooler
+        js_loss = view_out.js_loss
+        cc_loss = view_out.cc_loss
 
         cm_loss = torch.tensor(0.0, device=logits.device)
         if self.cm_weight > 1e-8:
@@ -1889,8 +1877,7 @@ class SAFER(nn.Module):
 
         tta_loss = torch.tensor(0.0, device=logits.device)
         if self.tta_loss != "none" and self.tta_weight > 1e-8:
-            tta_prob, tta_weights = pool_probs(self.tta_view_pool)
-            tta_weights = tta_weights if self.use_view_weights else None
+            tta_prob, tta_weights = pooler.pool(self.tta_view_pool)
             tta_loss = self._compute_tta_loss(
                 logits=logits,
                 probs=probs,

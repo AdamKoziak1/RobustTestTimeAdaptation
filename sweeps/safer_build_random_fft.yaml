@@ -1,0 +1,54 @@
+program: unsupervised_adapt_dataset.py
+project: safer_loss
+name: safer_build_random_fft
+method: grid
+metric:
+  name: acc_0
+  goal: maximize
+
+parameters:
+  attack_source:
+    value: live
+  attack_preset:
+    value: linf8
+
+  adapt_alg:
+    values: ["ERM", "Tent", "PL", "TSD"]
+  update_param:
+    value: "tent"
+  lr:
+    value: 0.0001
+  steps:
+    value: 1
+
+  s_wrap_alg:
+    value: 1
+  s_num_views:
+    value: 1
+  s_include_original:
+    values: [0,1]
+  s_sup_view_pool:
+    value: "mean"
+  s_view_weighting:
+    value: 0
+
+  s_aug_fixed_op:
+    value: "none"
+  s_aug_list:
+    value: ["fft_low_pass"]
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 1
+  s_aug_seed:
+    value: -1
+  s_aug_use_noise:
+    value: 0
+  s_aug_force_noise:
+    value: 0
+  s_aug_require_freq_blur:
+    value: 0
+  s_input_is_normalized:
+    value: -1
+  s_aug_params_per_image:
+    values: [0,1]

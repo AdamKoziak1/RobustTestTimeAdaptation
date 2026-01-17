@@ -337,8 +337,15 @@ def main() -> int:
     )
     parser.add_argument(
         "--sweep-id",
-        required=True,
         help="W&B sweep id or entity/project/sweep.",
+    )
+    parser.add_argument(
+        "--sweep-ids",
+        help="Comma-separated sweep ids or entity/project/sweep values.",
+    )
+    parser.add_argument(
+        "--sweep-names",
+        help="Comma-separated names to label each sweep in output rows.",
     )
     parser.add_argument("--sweep-config", type=Path, help="Sweep YAML to restrict allowed values.")
     parser.add_argument("--entity", default="bigslav", help="W&B entity for --sweep-id.")
@@ -383,10 +390,31 @@ def main() -> int:
     for key, values in sweep_filters.items():
         filters.setdefault(key, []).extend(values)
 
-    records = load_runs_from_wandb_api(args.sweep_id, args.entity, args.project)
+    if args.sweep_ids:
+        if args.sweep_id:
+            raise ValueError("Use --sweep-ids or --sweep-id (not both).")
+        sweep_ids = parse_csv_strings(args.sweep_ids)
+    elif args.sweep_id:
+        sweep_ids = [args.sweep_id]
+    else:
+        raise ValueError("Provide --sweep-id or --sweep-ids.")
 
-    if args.verbose:
-        print(f"[info] Loaded {len(records)} runs", file=sys.stderr)
+    if not sweep_ids:
+        raise ValueError("No sweep ids provided.")
+
+    if args.sweep_names:
+        sweep_names = parse_csv_strings(args.sweep_names)
+        if len(sweep_names) != len(sweep_ids):
+            raise ValueError("--sweep-names must match the number of sweep ids.")
+    else:
+        sweep_names = list(sweep_ids)
+
+    sweep_records: List[List[RunRecord]] = []
+    for sweep_id in sweep_ids:
+        records = load_runs_from_wandb_api(sweep_id, args.entity, args.project)
+        if args.verbose:
+            print(f"[info] Loaded {len(records)} runs from {sweep_id}", file=sys.stderr)
+        sweep_records.append(records)
 
     if args.attack_rates:
         attack_rates = parse_csv_ints(args.attack_rates)
@@ -436,23 +464,31 @@ def main() -> int:
         else:
             domain_ids = [0, 1, 2, 3]
 
-        rows = build_rows(
-            records=records,
-            methods=methods,
-            filters=dataset_filters,
-            domain_ids=domain_ids,
-            attack_rates=attack_rates,
-            mean_key=args.mean_key,
-            std_key=args.std_key,
-            select_mode=args.select,
-            select_metric=select_metric,
-            precision=args.precision,
-            verbose=args.verbose,
-        )
-        # if printed_any:
-        #     print()
-        for name, cells in rows:
-            print(f"{name} & " + " & ".join(cells) + " \\\\")
+        rows_by_sweep: List[Dict[str, List[str]]] = []
+        for records in sweep_records:
+            rows = build_rows(
+                records=records,
+                methods=methods,
+                filters=dataset_filters,
+                domain_ids=domain_ids,
+                attack_rates=attack_rates,
+                mean_key=args.mean_key,
+                std_key=args.std_key,
+                select_mode=args.select,
+                select_metric=select_metric,
+                precision=args.precision,
+                verbose=args.verbose,
+            )
+            rows_by_sweep.append({name: cells for name, cells in rows})
+
+        use_sweep_names = args.sweep_names is not None or len(sweep_ids) > 1
+        for method_name in methods.keys():
+            if use_sweep_names:
+                print(method_name)
+            for sweep_name, rows_map in zip(sweep_names, rows_by_sweep):
+                row_cells = rows_map.get(method_name, [])
+                row_name = sweep_name if use_sweep_names else method_name
+                print(f"{row_name} & " + " & ".join(row_cells) + " \\\\")
         printed_any = True
 
     if not printed_any:
