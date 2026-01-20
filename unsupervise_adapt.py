@@ -169,6 +169,13 @@ def get_args():
         choices=[0, 1],
         help="Sample SAFER augmentation parameters per image instead of per batch.",
     )
+    parser.add_argument(
+        "--s_aug_debug",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Print sampled SAFER augmentation pipelines once per run.",
+    )
     parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
     parser.add_argument("--s_cc_weight", type=float, default=1.0, help="Weight for SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
@@ -208,6 +215,14 @@ def get_args():
         default="none",
         choices=["none", "gaussian_blur", "fft_low_pass"],
         help="Use a fixed SAFER op only (disables other sampled ops).",
+    )
+    parser.add_argument(
+        "--s_aug_fixed_ops",
+        type=str,
+        nargs="+",
+        default=None,
+        choices=["none", "gaussian_blur", "fft_low_pass"],
+        help="Optional fixed SAFER ops (one per augmented view).",
     )
     parser.add_argument(
         "--s_aug_fixed_blur_kernel",
@@ -534,21 +549,36 @@ def get_args():
     args.s_aug_require_freq_blur = bool(args.s_aug_require_freq_blur)
     args.s_aug_use_noise = bool(args.s_aug_use_noise)
     args.s_aug_params_per_image = bool(args.s_aug_params_per_image)
+    args.s_aug_debug = bool(args.s_aug_debug)
     if not args.s_aug_use_noise:
         args.s_aug_force_noise = False
     if args.s_aug_noise_std is not None and args.s_aug_noise_std < 0:
         args.s_aug_noise_std = None
-    if args.s_aug_fixed_op is not None:
-        fixed_op = args.s_aug_fixed_op.lower()
-        args.s_aug_fixed_op = None if fixed_op == "none" else fixed_op
-    if args.s_aug_fixed_op == "gaussian_blur":
-        if args.s_aug_fixed_blur_kernel <= 0 or args.s_aug_fixed_blur_kernel % 2 == 0:
-            raise ValueError("s_aug_fixed_blur_kernel must be a positive odd integer.")
-        if args.s_aug_fixed_blur_sigma <= 0:
-            raise ValueError("s_aug_fixed_blur_sigma must be > 0.")
-    if args.s_aug_fixed_op == "fft_low_pass":
-        if not (0.0 < args.s_aug_fixed_fft_keep_ratio <= 1.0):
-            raise ValueError("s_aug_fixed_fft_keep_ratio must be in (0, 1].")
+    if args.s_aug_fixed_ops:
+        fixed_ops = []
+        for op in args.s_aug_fixed_ops:
+            op_name = op.lower()
+            fixed_ops.append(None if op_name == "none" else op_name)
+        if args.s_aug_fixed_op is not None and args.s_aug_fixed_op.lower() != "none":
+            raise ValueError("s_aug_fixed_ops overrides s_aug_fixed_op; set s_aug_fixed_op=none.")
+        if args.s_num_views <= 0:
+            raise ValueError("s_num_views must be > 0 when s_aug_fixed_ops is set.")
+        if len(fixed_ops) != args.s_num_views:
+            raise ValueError("s_aug_fixed_ops length must match s_num_views.")
+        args.s_aug_fixed_ops = fixed_ops
+        args.s_aug_fixed_op = None
+    else:
+        if args.s_aug_fixed_op is not None:
+            fixed_op = args.s_aug_fixed_op.lower()
+            args.s_aug_fixed_op = None if fixed_op == "none" else fixed_op
+        if args.s_aug_fixed_op == "gaussian_blur":
+            if args.s_aug_fixed_blur_kernel <= 0 or args.s_aug_fixed_blur_kernel % 2 == 0:
+                raise ValueError("s_aug_fixed_blur_kernel must be a positive odd integer.")
+            if args.s_aug_fixed_blur_sigma <= 0:
+                raise ValueError("s_aug_fixed_blur_sigma must be > 0.")
+        if args.s_aug_fixed_op == "fft_low_pass":
+            if not (0.0 < args.s_aug_fixed_fft_keep_ratio <= 1.0):
+                raise ValueError("s_aug_fixed_fft_keep_ratio must be in (0, 1].")
     if args.s_input_is_normalized < 0:
         args.s_input_is_normalized = None
     else:
@@ -587,7 +617,14 @@ def get_args():
     return args
 
 
+def _format_fixed_ops(fixed_ops):
+    if not fixed_ops:
+        return "none"
+    return ",".join(op if op is not None else "none" for op in fixed_ops)
+
+
 def log_args(args, time_taken_s):
+    fixed_ops_label = _format_fixed_ops(args.s_aug_fixed_ops)
     wandb.log({
         "adapt_algorithm": args.adapt_alg,
         "attack_rate": args.attack_rate,
@@ -637,6 +674,7 @@ def log_args(args, time_taken_s):
             "s_aug_prob": args.s_aug_prob,
             "s_aug_max_ops": -1 if args.s_aug_max_ops is None else args.s_aug_max_ops,
             "s_aug_fixed_op": args.s_aug_fixed_op or "none",
+            "s_aug_fixed_ops": fixed_ops_label,
             "s_aug_fixed_fft_keep_ratio": args.s_aug_fixed_fft_keep_ratio,
             "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
             "s_aug_fixed_blur_sigma": args.s_aug_fixed_blur_sigma,
@@ -663,6 +701,7 @@ def log_args(args, time_taken_s):
             "s_aug_noise_std": args.s_aug_noise_std,
             "s_aug_params_per_image": args.s_aug_params_per_image,
             "s_aug_fixed_op": args.s_aug_fixed_op or "none",
+            "s_aug_fixed_ops": fixed_ops_label,
             "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
             "s_aug_fixed_blur_sigma": args.s_aug_fixed_blur_sigma,
             "s_aug_fixed_fft_keep_ratio": args.s_aug_fixed_fft_keep_ratio,
@@ -809,12 +848,14 @@ def make_adapt_model(args, algorithm):
             require_freq_or_blur=args.s_aug_require_freq_blur,
             sample_params_per_image=args.s_aug_params_per_image,
             aug_seed=args.s_aug_seed,
+            fixed_ops=args.s_aug_fixed_ops,
             fixed_op=args.s_aug_fixed_op,
             fixed_blur_kernel=args.s_aug_fixed_blur_kernel,
             fixed_blur_sigma=args.s_aug_fixed_blur_sigma,
             fixed_fft_keep_ratio=args.s_aug_fixed_fft_keep_ratio,
             allow_noise=args.s_aug_use_noise,
             noise_std=args.s_aug_noise_std,
+            debug=args.s_aug_debug,
             feature_normalize=args.s_feat_normalize,
             view_weighting=args.s_view_weighting,
             primary_view_pool=args.s_sup_view_pool,
@@ -900,6 +941,11 @@ def make_adapt_model(args, algorithm):
             for m in algorithm.modules():
                 if isinstance(m, nn.BatchNorm2d):
                     m.requires_grad_(True)
+            sum_params = sum([p.nelement() for p in params])
+        elif args.update_param == "tent":
+            algorithm = configure_model(algorithm)
+            params, _ = collect_params(algorithm)
+            optimizer = torch.optim.Adam(params, lr=args.lr)
             sum_params = sum([p.nelement() for p in params])
         elif args.update_param == "body":
             # only update encoder
@@ -1044,6 +1090,7 @@ def make_adapt_model(args, algorithm):
             augmentations=augment_list,
             force_noise_first=args.s_aug_force_noise,
             require_freq_or_blur=args.s_aug_require_freq_blur,
+            fixed_ops=args.s_aug_fixed_ops,
             fixed_op=args.s_aug_fixed_op,
             fixed_blur_kernel=args.s_aug_fixed_blur_kernel,
             fixed_blur_sigma=args.s_aug_fixed_blur_sigma,
@@ -1073,6 +1120,7 @@ def make_adapt_model(args, algorithm):
             cc_mode=args.s_cc_mode,
             cc_view_pool=args.s_cc_view_pool,
             input_is_normalized=args.s_input_is_normalized,
+            debug=args.s_aug_debug,
         )
     elif args.adapt_alg == "TeSLA":
         if args.update_param == "all":

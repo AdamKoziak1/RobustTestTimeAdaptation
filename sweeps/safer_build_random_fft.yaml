@@ -24,7 +24,7 @@ parameters:
   s_wrap_alg:
     value: 1
   s_num_views:
-    value: 1
+    values: [1,2,3]
   s_include_original:
     values: [0,1]
   s_sup_view_pool:
@@ -35,7 +35,7 @@ parameters:
   s_aug_fixed_op:
     value: "none"
   s_aug_list:
-    value: ["fft_low_pass"]
+    values: ["fft_low_pass"]
   s_aug_prob:
     value: 1.0
   s_aug_max_ops:
@@ -52,3 +52,5 @@ parameters:
     value: -1
   s_aug_params_per_image:
     values: [0,1]
+  s_aug_debug:
+    value: 0

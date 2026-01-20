@@ -354,12 +354,14 @@ class SAFERViewModule(nn.Module):
         std: Optional[Sequence[float]] = None,
         input_is_normalized: Optional[bool] = None,
         stat_modules: Optional[Sequence[nn.Module]] = None,
+        fixed_ops: Optional[Sequence[str]] = None,
         fixed_op: Optional[str] = None,
         fixed_blur_kernel: Optional[int] = None,
         fixed_blur_sigma: Optional[float] = None,
         fixed_fft_keep_ratio: Optional[float] = None,
         allow_noise: bool = True,
         noise_std: Optional[float] = None,
+        debug: bool = False,
     ) -> None:
         super().__init__()
         self.include_original = bool(include_original)
@@ -404,28 +406,66 @@ class SAFERViewModule(nn.Module):
 
         aug_views = max(1, self.num_aug_views)
         fixed_params = None
-        if fixed_op is not None:
-            fixed_op = fixed_op.lower()
-            if fixed_op == "none":
-                fixed_op = None
-        if fixed_op is not None:
-            if fixed_op == "gaussian_blur":
+        fixed_ops_list = None
+        fixed_ops_params = None
+        if fixed_ops is not None and fixed_op is not None:
+            raise ValueError("fixed_ops and fixed_op are mutually exclusive.")
+        if fixed_ops is not None:
+            fixed_ops_list = []
+            for op in fixed_ops:
+                if op is None:
+                    fixed_ops_list.append(None)
+                    continue
+                op_name = op.lower()
+                if op_name == "none":
+                    fixed_ops_list.append(None)
+                    continue
+                if op_name not in {"gaussian_blur", "fft_low_pass"}:
+                    raise ValueError("fixed_ops must be one of ['gaussian_blur', 'fft_low_pass', 'none'].")
+                fixed_ops_list.append(op_name)
+            if self.num_aug_views <= 0:
+                raise ValueError("fixed_ops requires num_aug_views > 0.")
+            if len(fixed_ops_list) != self.num_aug_views:
+                raise ValueError("fixed_ops length must match num_aug_views.")
+            params_map = {}
+            if "gaussian_blur" in fixed_ops_list and fixed_blur_sigma is not None and fixed_blur_sigma > 0:
                 if fixed_blur_kernel is None or fixed_blur_kernel <= 0:
                     raise ValueError("fixed_blur_kernel must be a positive odd integer.")
                 if fixed_blur_kernel % 2 == 0:
                     raise ValueError("fixed_blur_kernel must be odd.")
-                if fixed_blur_sigma is None:
-                    raise ValueError("fixed_blur_sigma must be provided for fixed gaussian blur.")
-                fixed_params = {
+                params_map["gaussian_blur"] = {
                     "kernel_size": int(fixed_blur_kernel),
                     "sigma": float(fixed_blur_sigma),
                 }
-            elif fixed_op == "fft_low_pass":
-                if fixed_fft_keep_ratio is None:
-                    raise ValueError("fixed_fft_keep_ratio must be provided for fixed FFT low-pass.")
-                fixed_params = {"keep_ratio": float(fixed_fft_keep_ratio)}
-            else:
-                raise ValueError("fixed_op must be one of ['gaussian_blur', 'fft_low_pass'].")
+            if "fft_low_pass" in fixed_ops_list and fixed_fft_keep_ratio is not None and fixed_fft_keep_ratio > 0:
+                if not (0.0 < fixed_fft_keep_ratio <= 1.0):
+                    raise ValueError("fixed_fft_keep_ratio must be in (0, 1].")
+                params_map["fft_low_pass"] = {"keep_ratio": float(fixed_fft_keep_ratio)}
+            fixed_ops_params = params_map or None
+            fixed_op = None
+        else:
+            if fixed_op is not None:
+                fixed_op = fixed_op.lower()
+                if fixed_op == "none":
+                    fixed_op = None
+            if fixed_op is not None:
+                if fixed_op == "gaussian_blur":
+                    if fixed_blur_kernel is None or fixed_blur_kernel <= 0:
+                        raise ValueError("fixed_blur_kernel must be a positive odd integer.")
+                    if fixed_blur_kernel % 2 == 0:
+                        raise ValueError("fixed_blur_kernel must be odd.")
+                    if fixed_blur_sigma is None:
+                        raise ValueError("fixed_blur_sigma must be provided for fixed gaussian blur.")
+                    fixed_params = {
+                        "kernel_size": int(fixed_blur_kernel),
+                        "sigma": float(fixed_blur_sigma),
+                    }
+                elif fixed_op == "fft_low_pass":
+                    if fixed_fft_keep_ratio is None:
+                        raise ValueError("fixed_fft_keep_ratio must be provided for fixed FFT low-pass.")
+                    fixed_params = {"keep_ratio": float(fixed_fft_keep_ratio)}
+                else:
+                    raise ValueError("fixed_op must be one of ['gaussian_blur', 'fft_low_pass'].")
 
         self.augmenter = SAFERAugmenter(
             num_views=aug_views,
@@ -436,10 +476,13 @@ class SAFERViewModule(nn.Module):
             seed=aug_seed,
             force_noise_first=force_noise_first,
             require_freq_or_blur=require_freq_or_blur,
+            fixed_ops=fixed_ops_list,
+            fixed_ops_params=fixed_ops_params,
             fixed_op=fixed_op,
             fixed_op_params=fixed_params,
             allow_noise=allow_noise,
             noise_std=noise_std,
+            debug=debug,
         )
 
         mean_t, std_t = _resolve_input_stats(mean, std, stat_modules or [])

@@ -1651,6 +1651,7 @@ class SAFER(nn.Module):
         augmentations: Optional[Sequence[str]] = None,
         force_noise_first: bool = False,
         require_freq_or_blur: bool = False,
+        fixed_ops: Optional[Sequence[str]] = None,
         fixed_op: Optional[str] = None,
         fixed_blur_kernel: Optional[int] = None,
         fixed_blur_sigma: Optional[float] = None,
@@ -1682,6 +1683,7 @@ class SAFER(nn.Module):
         mean: Optional[Sequence[float]] = None,
         std: Optional[Sequence[float]] = None,
         input_is_normalized: Optional[bool] = None,
+        debug: bool = False,
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -1764,6 +1766,7 @@ class SAFER(nn.Module):
             augmentations=augmentations,
             force_noise_first=force_noise_first,
             require_freq_or_blur=require_freq_or_blur,
+            fixed_ops=fixed_ops,
             sample_params_per_image=sample_params_per_image,
             aug_seed=aug_seed,
             fixed_op=fixed_op,
@@ -1787,6 +1790,7 @@ class SAFER(nn.Module):
             std=std,
             input_is_normalized=input_is_normalized,
             stat_modules=(self.featurizer, self.model),
+            debug=debug,
         )
 
         if self.episodic:

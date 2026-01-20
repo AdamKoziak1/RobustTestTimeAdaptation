@@ -29,8 +29,6 @@ parameters:
   # Augmentation pipeline sweep
   s_num_views:
     values: [2, 4]
-  s_include_original:
-    values: [0, 1]
   s_aug_prob:
     values: [0.5, 0.7, 1.0]
   s_aug_max_ops:

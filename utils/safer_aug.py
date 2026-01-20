@@ -113,8 +113,8 @@ def _build_registry() -> Dict[str, _OpSpec]:
     return {
         "gaussian_blur": _OpSpec(
             sample_params=lambda rng: {
-                "kernel_size": int(rng.choice([9])),
-                "sigma": _sample_uniform(rng, 0.1, 5.0),
+                "kernel_size": 9,
+                "sigma": _sample_uniform(rng, 1.0, 3.0),
             },
             apply=lambda x, p: TF.gaussian_blur(
                 x,
@@ -127,7 +127,7 @@ def _build_registry() -> Dict[str, _OpSpec]:
             apply=lambda x, p: _gaussian_noise(x, p["std"]),
         ),
         "fft_low_pass": _OpSpec(
-            sample_params=lambda rng: {"keep_ratio": _sample_uniform(rng, 0.2, 0.7)},
+            sample_params=lambda rng: {"keep_ratio": _sample_uniform(rng, 0.2, 0.6)},
             apply=lambda x, p: _fft_low_pass(x, p["keep_ratio"]),
         ),
         "equalize": _OpSpec(
@@ -220,6 +220,8 @@ class SAFERAugmenter:
         noise_std: fixed std for gaussian noise (None keeps random sampling).
         fixed_op: optional fixed op to apply (disables sampling other ops).
         fixed_op_params: fixed parameters for the fixed op.
+        fixed_ops: optional fixed ops (one per view) to apply (disables sampling other ops).
+        fixed_ops_params: fixed parameters keyed by op name for fixed_ops.
         fixed_only: if True, only apply fixed op (and optional forced noise).
     """
 
@@ -239,7 +241,10 @@ class SAFERAugmenter:
         noise_std: Optional[float] = None,
         fixed_op: Optional[str] = None,
         fixed_op_params: Optional[Dict[str, float]] = None,
+        fixed_ops: Optional[Sequence[str]] = None,
+        fixed_ops_params: Optional[Dict[str, Dict[str, float]]] = None,
         fixed_only: bool = False,
+        debug: bool = False,
     ) -> None:
         assert num_views >= 1, "num_views must be ≥ 1"
         assert 0.0 <= prob <= 1.0, "prob must be in [0, 1]"
@@ -247,12 +252,18 @@ class SAFERAugmenter:
         self.max_ops = max_ops
         self.prob = prob
         self.sample_params_per_image = bool(sample_params_per_image)
-        self.rng = random.Random(seed)
+        seed_value = None if seed is None or seed < 0 else int(seed)
+        self.rng = random.Random(seed_value)
         self.registry = _build_registry()
         self.allow_noise = bool(allow_noise)
         self.force_noise_first = bool(force_noise_first) and self.allow_noise
         self.require_freq_or_blur = bool(require_freq_or_blur)
         self.noise_op = noise_op
+        self.debug = bool(debug)
+        self._debug_pipelines_printed = False
+        self._debug_images_printed = False
+        self._debug_max_images = 3
+        self._dedupe_max_attempts = 5
         self.freq_or_blur_ops = list(freq_or_blur_ops) if freq_or_blur_ops is not None else [
             "fft_low_pass",
             "gaussian_blur",
@@ -284,8 +295,38 @@ class SAFERAugmenter:
         if not self.allow_noise and self.noise_op in self.augmentations:
             self.augmentations = [op for op in self.augmentations if op != self.noise_op]
 
+        if fixed_ops is not None and fixed_op is not None:
+            raise ValueError("fixed_ops and fixed_op are mutually exclusive.")
+
+        self.fixed_ops = None
+        self.fixed_ops_params = None
+        if fixed_ops is not None:
+            normalized_ops = []
+            for op in fixed_ops:
+                if op is None:
+                    normalized_ops.append(None)
+                    continue
+                op_name = op.lower()
+                if op_name == "none":
+                    normalized_ops.append(None)
+                    continue
+                if op_name not in self.registry:
+                    raise ValueError(f"Unknown fixed op '{op_name}'.")
+                normalized_ops.append(op_name)
+            self.fixed_ops = normalized_ops
+            if fixed_ops_params:
+                params_map = {}
+                for name, params in fixed_ops_params.items():
+                    if name is None:
+                        continue
+                    name_lower = name.lower()
+                    if name_lower not in self.registry:
+                        raise ValueError(f"Unknown fixed op '{name_lower}'.")
+                    params_map[name_lower] = dict(params)
+                self.fixed_ops_params = params_map or None
+
         self.fixed_op = fixed_op.lower() if fixed_op is not None else None
-        self.fixed_only = bool(fixed_only) or self.fixed_op is not None
+        self.fixed_only = bool(fixed_only) or self.fixed_op is not None or self.fixed_ops is not None
         self.fixed_op_params = fixed_op_params
         if self.fixed_op is not None:
             if self.fixed_op not in self.registry:
@@ -350,6 +391,25 @@ class SAFERAugmenter:
         self.rng.shuffle(ops)
         return mandatory + ops
 
+    def _build_fixed_ops_pipeline(self, op_name: Optional[str]) -> List[Tuple[str, Dict[str, float]]]:
+        ops: List[Tuple[str, Dict[str, float]]] = []
+        if self.force_noise_first:
+            noise_spec = self.registry.get(self.noise_op)
+            if noise_spec is not None:
+                noise_params = noise_spec.sample_params(self.rng)
+                ops.append((self.noise_op, noise_params))
+        if op_name is None:
+            return ops
+        spec = self.registry.get(op_name)
+        if spec is None:
+            return ops
+        if self.fixed_ops_params and op_name in self.fixed_ops_params:
+            params = dict(self.fixed_ops_params[op_name])
+        else:
+            params = spec.sample_params(self.rng)
+        ops.append((op_name, params))
+        return ops
+
     def _apply_ops(self, x: Tensor, ops: List[Tuple[str, Dict[str, float]]]) -> Tensor:
         out = x.clone()
         for name, params in ops:
@@ -366,6 +426,9 @@ class SAFERAugmenter:
             if self.fixed_op is not None and name == self.fixed_op and self.fixed_op_params is not None:
                 resampled.append((name, dict(self.fixed_op_params)))
                 continue
+            if self.fixed_ops_params and name in self.fixed_ops_params:
+                resampled.append((name, dict(self.fixed_ops_params[name])))
+                continue
             spec = self.registry.get(name)
             if spec is None:
                 resampled.append((name, dict(params)))
@@ -373,9 +436,72 @@ class SAFERAugmenter:
             resampled.append((name, spec.sample_params(self.rng)))
         return resampled
 
+    def _pipeline_signature(self, ops: List[Tuple[str, Dict[str, float]]]) -> Tuple[Tuple[str, Tuple[Tuple[str, float], ...]], ...]:
+        signature = []
+        for name, params in ops:
+            items = tuple(sorted((key, params[key]) for key in params))
+            signature.append((name, items))
+        return tuple(signature)
+
+    def _dedupe_pipelines(
+        self,
+        pipelines: List[List[Tuple[str, Dict[str, float]]]],
+    ) -> List[List[Tuple[str, Dict[str, float]]]]:
+        seen = set()
+        for idx, ops in enumerate(pipelines):
+            if not ops:
+                seen.add(())
+                continue
+            sig = self._pipeline_signature(ops)
+            if sig in seen:
+                for _ in range(self._dedupe_max_attempts):
+                    candidate = self._sample_pipeline()
+                    if not candidate:
+                        continue
+                    cand_sig = self._pipeline_signature(candidate)
+                    if cand_sig not in seen:
+                        pipelines[idx] = candidate
+                        sig = cand_sig
+                        break
+            seen.add(sig)
+        return pipelines
+
+    def _format_param_value(self, value: float) -> str:
+        if isinstance(value, float):
+            return f"{value:.4f}"
+        return str(value)
+
+    def _format_pipeline(self, ops: List[Tuple[str, Dict[str, float]]]) -> str:
+        if not ops:
+            return "none"
+        parts = []
+        for name, params in ops:
+            if params:
+                formatted = ", ".join(
+                    f"{key}={self._format_param_value(params[key])}" for key in sorted(params)
+                )
+                parts.append(f"{name}({formatted})")
+            else:
+                parts.append(name)
+        return " -> ".join(parts)
+
     def sample_pipelines(self, num_views: Optional[int] = None) -> List[List[Tuple[str, Dict[str, float]]]]:
         total_views = num_views or self.num_views
-        return [self._sample_pipeline() for _ in range(total_views)]
+        if self.fixed_ops is not None:
+            if len(self.fixed_ops) != total_views:
+                raise ValueError(
+                    f"fixed_ops length ({len(self.fixed_ops)}) must match num_views ({total_views})."
+                )
+            pipelines = [self._build_fixed_ops_pipeline(op) for op in self.fixed_ops]
+        else:
+            pipelines = [self._sample_pipeline() for _ in range(total_views)]
+            if total_views > 1 and not self.fixed_only:
+                pipelines = self._dedupe_pipelines(pipelines)
+        if self.debug and not self._debug_pipelines_printed:
+            self._debug_pipelines_printed = True
+            for idx, ops in enumerate(pipelines):
+                print(f"SAFERAugmenter view {idx}: {self._format_pipeline(ops)}")
+        return pipelines
 
     def apply_pipeline(self, x: Tensor, pipeline: List[Tuple[str, Dict[str, float]]]) -> Tensor:
         return self._apply_ops(x, pipeline)
@@ -390,17 +516,30 @@ class SAFERAugmenter:
         b = x.size(0)
         views = []
         pipelines = self.sample_pipelines(num_views)
-        for ops in pipelines:
+        debug_images = self.debug and not self._debug_images_printed
+        debug_count = min(b, self._debug_max_images)
+        for view_idx, ops in enumerate(pipelines):
             if self.sample_params_per_image:
-                augmented = [
-                    self._apply_ops(x[i], self._resample_params(ops))
-                    for i in range(b)
-                ]
+                augmented = []
+                for i in range(b):
+                    image_ops = self._resample_params(ops)
+                    if debug_images and i < debug_count:
+                        print(
+                            f"SAFERAugmenter view {view_idx} image {i}: "
+                            f"{self._format_pipeline(image_ops)}"
+                        )
+                    augmented.append(self._apply_ops(x[i], image_ops))
             else:
+                if debug_images:
+                    formatted = self._format_pipeline(ops)
+                    for i in range(debug_count):
+                        print(f"SAFERAugmenter view {view_idx} image {i}: {formatted}")
                 augmented = [self._apply_ops(x[i], ops) for i in range(b)]
             if not augmented:
                 stacked = x.clone()
             else:
                 stacked = torch.stack(augmented, dim=0)
             views.append(stacked)
+        if debug_images:
+            self._debug_images_printed = True
         return torch.stack(views, dim=1)

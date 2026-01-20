@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py
 project: safer_loss
-name: safer_build_full_aug
+name: safer_build_random_blur_fft
 method: grid
 metric:
   name: acc_100
@@ -13,7 +13,7 @@ parameters:
     value: linf8
 
   adapt_alg:
-    value: "ERM"
+    values: ["ERM", "Tent", "PL", "TSD"]
   update_param:
     value: "tent"
   lr:
@@ -24,7 +24,9 @@ parameters:
   s_wrap_alg:
     value: 1
   s_num_views:
-    value: 1
+    value: 2
+  s_include_original:
+    values: [0,1]
   s_sup_view_pool:
     value: "mean"
   s_view_weighting:
@@ -32,17 +34,27 @@ parameters:
 
   s_aug_fixed_op:
     value: "none"
+  s_aug_fixed_ops:
+    value: ["gaussian_blur", "fft_low_pass"]
+  s_aug_fixed_blur_kernel:
+    value: 9
+  s_aug_fixed_blur_sigma:
+    value: 0.5
+  s_aug_fixed_fft_keep_ratio:
+    value: 1
   s_aug_prob:
-    value: 0.7
+    value: 1.0
   s_aug_max_ops:
-    value: 4
+    value: 1
   s_aug_seed:
     value: -1
   s_aug_use_noise:
-    value: 1
+    value: 0
   s_aug_force_noise:
-    value: 1
+    value: 0
   s_aug_require_freq_blur:
-    value: 1
+    value: 0
   s_input_is_normalized:
     value: -1
+  s_aug_params_per_image:
+    values: [0,1]
