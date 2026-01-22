@@ -8,6 +8,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+try:
+    import wandb
+except Exception:
+    wandb = None
+
 from utils.safer_aug import SAFERAugmenter
 
 
@@ -362,6 +367,7 @@ class SAFERViewModule(nn.Module):
         allow_noise: bool = True,
         noise_std: Optional[float] = None,
         debug: bool = False,
+        log_pipelines: bool = False,
     ) -> None:
         super().__init__()
         self.include_original = bool(include_original)
@@ -390,6 +396,7 @@ class SAFERViewModule(nn.Module):
             raise ValueError("cc_impl must be 'fast' or 'einsum'.")
         self.cc_impl = cc_impl
         self.offdiag_weight = float(offdiag_weight)
+        self.log_pipelines = bool(log_pipelines)
 
         if primary_view_pool not in VIEW_POOL_STRATEGIES:
             raise ValueError(
@@ -483,6 +490,7 @@ class SAFERViewModule(nn.Module):
             allow_noise=allow_noise,
             noise_std=noise_std,
             debug=debug,
+            log_pipelines=log_pipelines,
         )
 
         mean_t, std_t = _resolve_input_stats(mean, std, stat_modules or [])
@@ -501,10 +509,25 @@ class SAFERViewModule(nn.Module):
             if was_norm:
                 aug = _normalize_views(aug, self.norm_mean, self.norm_std)
             views.append(aug)
+            self._maybe_log_pipelines()
 
         if not views:
             raise RuntimeError("SAFER could not construct any views.")
         return torch.cat(views, dim=1)
+
+    def _maybe_log_pipelines(self) -> None:
+        if not self.log_pipelines:
+            return
+        lines = self.augmenter.pop_log_lines()
+        if not lines:
+            return
+        payload = "\n".join(lines)
+        if wandb is not None and wandb.run is not None:
+            summary = wandb.run.summary
+            if "SAFER/aug_pipelines" not in summary:
+                summary["SAFER/aug_pipelines"] = payload
+        else:
+            print(payload)
 
     def _cc_loss(self, feats: torch.Tensor, pooler: SAFERViewPooler) -> torch.Tensor:
         if self.cc_weight <= 1e-8:

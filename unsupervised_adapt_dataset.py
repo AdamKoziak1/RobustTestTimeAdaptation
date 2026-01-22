@@ -21,6 +21,7 @@ from unsupervise_adapt import (
     resolve_source_checkpoint,
     wrap_with_input_defense,
 )
+from adapt_algorithm import SAFERPooledPredictor
 from utils.adv_attack import build_attack_transform, pgd_attack
 from utils.util import set_random_seed, load_ckpt, img_param_init
 from alg import alg
@@ -67,7 +68,15 @@ def evaluate_domain(args):
             for param in attack_model.parameters():
                 param.requires_grad_(False)
         else:
-            attack_model = getattr(adapt_model, "model", None)
+            if args.adapt_alg == "SAFER" and args.s_attack_use_views:
+                base_model = getattr(adapt_model, "model", None)
+                view_module = getattr(adapt_model, "view_module", None)
+                if base_model is not None and view_module is not None:
+                    attack_model = SAFERPooledPredictor(base_model, view_module)
+                else:
+                    attack_model = getattr(adapt_model, "model", None)
+            else:
+                attack_model = getattr(adapt_model, "model", None)
 
     attack_transform = None
     if attack_model is not None and args.attack_fft_rho < 1.0:

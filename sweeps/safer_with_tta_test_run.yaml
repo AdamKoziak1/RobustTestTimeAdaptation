@@ -1,9 +1,9 @@
-program: unsupervised_adapt_dataset.py
+program: unsupervise_adapt.py
 project: safer_loss
-name: safer_aug_with_tta
+name: safer_with_tta_test_run
 method: grid
 metric:
-  name: acc_0
+  name: acc_mean
   goal: maximize
 
 parameters:
@@ -13,7 +13,16 @@ parameters:
     value: linf8
 
   adapt_alg:
-    values: ["ERM", "Tent", "PL", "TSD"]
+    values: ["ERM", "Tent", "PL", "TSD", "TeSLA"]
+
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+
+  test_envs:
+    values: [0, 1, 2, 3]
+
+  attack_rate:
+    values: [0,50,100]
 
   update_param:
     value: "tent"
@@ -27,11 +36,11 @@ parameters:
   s_wrap_alg:
     value: 1
   s_num_views:
-    values: [3, 5]
+    values: [3]
   s_aug_prob:
     value: 1.0
   s_aug_max_ops:
-    values: [2, 4]
+    values: [2]
   s_aug_seed:
     value: 123
   s_aug_force_noise:
@@ -85,6 +94,6 @@ parameters:
     value: "matching"
 
   s_sup_view_pool:
-    values: ["mean", "entropy", "cc", "cc_drop"]
+    values: ["entropy"]
   s_view_weighting:
     value: 1

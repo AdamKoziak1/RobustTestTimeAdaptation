@@ -1684,6 +1684,7 @@ class SAFER(nn.Module):
         std: Optional[Sequence[float]] = None,
         input_is_normalized: Optional[bool] = None,
         debug: bool = False,
+        log_pipelines: bool = False,
     ):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
@@ -1791,6 +1792,7 @@ class SAFER(nn.Module):
             input_is_normalized=input_is_normalized,
             stat_modules=(self.featurizer, self.model),
             debug=debug,
+            log_pipelines=log_pipelines,
         )
 
         if self.episodic:

@@ -223,6 +223,7 @@ class SAFERAugmenter:
         fixed_ops: optional fixed ops (one per view) to apply (disables sampling other ops).
         fixed_ops_params: fixed parameters keyed by op name for fixed_ops.
         fixed_only: if True, only apply fixed op (and optional forced noise).
+        log_pipelines: store one batch of sampled pipelines for logging.
     """
 
     def __init__(
@@ -245,6 +246,7 @@ class SAFERAugmenter:
         fixed_ops_params: Optional[Dict[str, Dict[str, float]]] = None,
         fixed_only: bool = False,
         debug: bool = False,
+        log_pipelines: bool = False,
     ) -> None:
         assert num_views >= 1, "num_views must be ≥ 1"
         assert 0.0 <= prob <= 1.0, "prob must be in [0, 1]"
@@ -260,10 +262,13 @@ class SAFERAugmenter:
         self.require_freq_or_blur = bool(require_freq_or_blur)
         self.noise_op = noise_op
         self.debug = bool(debug)
+        self.log_pipelines = bool(log_pipelines)
         self._debug_pipelines_printed = False
         self._debug_images_printed = False
         self._debug_max_images = 3
         self._dedupe_max_attempts = 5
+        self._log_lines: List[str] = []
+        self._log_emitted = False
         self.freq_or_blur_ops = list(freq_or_blur_ops) if freq_or_blur_ops is not None else [
             "fft_low_pass",
             "gaussian_blur",
@@ -506,6 +511,11 @@ class SAFERAugmenter:
     def apply_pipeline(self, x: Tensor, pipeline: List[Tuple[str, Dict[str, float]]]) -> Tensor:
         return self._apply_ops(x, pipeline)
 
+    def pop_log_lines(self) -> List[str]:
+        lines = self._log_lines
+        self._log_lines = []
+        return lines
+
     def augment(self, x: Tensor, num_views: Optional[int] = None) -> Tensor:
         """
         Generate augmentation views for a batch.
@@ -518,6 +528,10 @@ class SAFERAugmenter:
         pipelines = self.sample_pipelines(num_views)
         debug_images = self.debug and not self._debug_images_printed
         debug_count = min(b, self._debug_max_images)
+        log_images = self.log_pipelines and not self._log_emitted
+        log_count = min(b, self._debug_max_images)
+        if log_images:
+            self._log_lines = []
         for view_idx, ops in enumerate(pipelines):
             if self.sample_params_per_image:
                 augmented = []
@@ -528,12 +542,20 @@ class SAFERAugmenter:
                             f"SAFERAugmenter view {view_idx} image {i}: "
                             f"{self._format_pipeline(image_ops)}"
                         )
+                    if log_images and i < log_count:
+                        self._log_lines.append(
+                            f"SAFERAugmenter view {view_idx} image {i}: {self._format_pipeline(image_ops)}"
+                        )
                     augmented.append(self._apply_ops(x[i], image_ops))
             else:
                 if debug_images:
                     formatted = self._format_pipeline(ops)
                     for i in range(debug_count):
                         print(f"SAFERAugmenter view {view_idx} image {i}: {formatted}")
+                if log_images:
+                    self._log_lines.append(
+                        f"SAFERAugmenter view {view_idx}: {self._format_pipeline(ops)}"
+                    )
                 augmented = [self._apply_ops(x[i], ops) for i in range(b)]
             if not augmented:
                 stacked = x.clone()
@@ -542,4 +564,6 @@ class SAFERAugmenter:
             views.append(stacked)
         if debug_images:
             self._debug_images_printed = True
+        if log_images and self._log_lines:
+            self._log_emitted = True
         return torch.stack(views, dim=1)

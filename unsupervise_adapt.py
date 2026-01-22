@@ -176,6 +176,13 @@ def get_args():
         choices=[0, 1],
         help="Print sampled SAFER augmentation pipelines once per run.",
     )
+    parser.add_argument(
+        "--s_aug_log",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Log sampled SAFER augmentation pipelines once per run.",
+    )
     parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
     parser.add_argument("--s_cc_weight", type=float, default=1.0, help="Weight for SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
@@ -357,6 +364,13 @@ def get_args():
         default=0,
         choices=[0, 1],
         help="Use SAFER view pooling with non-SAFER algorithms (1 enables).",
+    )
+    parser.add_argument(
+        "--s_attack_use_views",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Use SAFER view pooling during live attacks when adapt_alg=SAFER.",
     )
     # TeSLA
     parser.add_argument("--tesla_sub_policy_dim", type=int, default=2, help="Number of ops per TeSLA sub-policy.")
@@ -545,11 +559,13 @@ def get_args():
     args.s_cc_mode = args.s_cc_mode.lower()
     args.s_cc_view_pool = args.s_cc_view_pool.lower()
     args.s_wrap_alg = bool(args.s_wrap_alg)
+    args.s_attack_use_views = bool(args.s_attack_use_views)
     args.s_aug_force_noise = bool(args.s_aug_force_noise)
     args.s_aug_require_freq_blur = bool(args.s_aug_require_freq_blur)
     args.s_aug_use_noise = bool(args.s_aug_use_noise)
     args.s_aug_params_per_image = bool(args.s_aug_params_per_image)
     args.s_aug_debug = bool(args.s_aug_debug)
+    args.s_aug_log = bool(args.s_aug_log)
     if not args.s_aug_use_noise:
         args.s_aug_force_noise = False
     if args.s_aug_noise_std is not None and args.s_aug_noise_std < 0:
@@ -856,6 +872,7 @@ def make_adapt_model(args, algorithm):
             allow_noise=args.s_aug_use_noise,
             noise_std=args.s_aug_noise_std,
             debug=args.s_aug_debug,
+            log_pipelines=args.s_aug_log,
             feature_normalize=args.s_feat_normalize,
             view_weighting=args.s_view_weighting,
             primary_view_pool=args.s_sup_view_pool,
@@ -881,7 +898,8 @@ def make_adapt_model(args, algorithm):
             raise ValueError(f"s_wrap_alg is not supported for {args.adapt_alg}.")
         view_module = _build_safer_view_module(model)
         if args.adapt_alg in {"T3A", "TSD"}:
-            return model, view_module
+            # Keep SAFER view pooling for feature-based algorithms while exposing pooled predict().
+            return SAFERPooledPredictor(model, view_module), view_module
         return SAFERPooledPredictor(model, view_module), None
 
     # set adapt model and optimizer
@@ -1121,6 +1139,7 @@ def make_adapt_model(args, algorithm):
             cc_view_pool=args.s_cc_view_pool,
             input_is_normalized=args.s_input_is_normalized,
             debug=args.s_aug_debug,
+            log_pipelines=args.s_aug_log,
         )
     elif args.adapt_alg == "TeSLA":
         if args.update_param == "all":
@@ -1250,7 +1269,15 @@ def run_one_seed(args):
             for param in attack_model.parameters():
                 param.requires_grad_(False)
         else:
-            attack_model = getattr(adapt_model, "model", None)
+            if args.adapt_alg == "SAFER" and args.s_attack_use_views:
+                base_model = getattr(adapt_model, "model", None)
+                view_module = getattr(adapt_model, "view_module", None)
+                if base_model is not None and view_module is not None:
+                    attack_model = SAFERPooledPredictor(base_model, view_module)
+                else:
+                    attack_model = getattr(adapt_model, "model", None)
+            else:
+                attack_model = getattr(adapt_model, "model", None)
 
     outputs_arr, labels_arr = [], []
     peak_vram_mb = 0.0
