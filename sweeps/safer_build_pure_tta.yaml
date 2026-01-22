@@ -1,9 +1,9 @@
 program: unsupervised_adapt_dataset.py
 project: safer_loss
-name: safer_pool_ablation
+name: safer_build_pure_tta
 method: grid
 metric:
-  name: acc_100
+  name: acc_0
   goal: maximize
 
 parameters:
@@ -13,7 +13,7 @@ parameters:
     value: linf8
 
   adapt_alg:
-    value: "ERM"
+    values: ["ERM", "Tent", "PL", "TSD"]
   update_param:
     value: "tent"
   lr:
@@ -22,30 +22,29 @@ parameters:
     value: 1
 
   s_wrap_alg:
-    value: 1
+    value: 0
   s_num_views:
-    value: 4
+    value: 0
   s_include_original:
     value: 1
-
   s_sup_view_pool:
-    values: ["mean", "entropy", "top1", "cc", "cc_drop", "worst"]
+    value: "mean"
   s_view_weighting:
-    values: [0, 1]
+    value: 0
 
+  s_aug_prob:
+    value: 0.0
+  s_aug_max_ops:
+    value: 0
+  s_aug_seed:
+    value: 123
+  s_aug_use_noise:
+    value: 0
+  s_aug_force_noise:
+    value: 0
   s_aug_fixed_op:
     value: "none"
-  s_aug_prob:
-    value: 0.7
-  s_aug_max_ops:
-    value: 4
-  s_aug_seed:
-    value: -1
-  s_aug_use_noise:
-    value: 1
-  s_aug_force_noise:
-    value: 1
   s_aug_require_freq_blur:
-    value: 1
+    value: 0
   s_input_is_normalized:
     value: -1

@@ -3,7 +3,7 @@ project: safer_loss
 name: safer_aug_isolation
 method: grid
 metric:
-  name: acc_100
+  name: acc_0
   goal: maximize
 
 parameters:
@@ -18,7 +18,7 @@ parameters:
     value: "SAFER"
 
   update_param:
-    value: "tent"
+    values: ["tent", "all"]
 
   lr:
     value: 0.0001
@@ -27,20 +27,26 @@ parameters:
     value: 1
 
   # Augmentation pipeline sweep
+  s_wrap_alg:
+    value: 0
   s_num_views:
-    values: [2, 4]
+    values: [2, 3, 4, 5]
   s_aug_prob:
-    values: [0.5, 0.7, 1.0]
+    values: [1.0]
   s_aug_max_ops:
-    values: [2, 4]
+    values: [2, 4, 8, 16]
   s_aug_seed:
     value: 123
   s_aug_force_noise:
-    values: [0, 1]
+    #values: [0, 1]
+    value: 0
   s_aug_require_freq_blur:
-    values: [0, 1]
+    value: 1
+    #values: [0, 1]
   s_input_is_normalized:
     value: -1
+  s_aug_params_per_image:
+    values: [0,1]
 
   # Keep losses at SAFER defaults while varying augmentation
   s_js_weight:
@@ -48,7 +54,8 @@ parameters:
   s_js_mode:
     value: "pooled"
   s_js_view_pool:
-    value: "matching"
+    #values: ["matching", "entropy", "cc", "cc_drop"]
+    values: ["matching", "cc_drop"]
 
   s_cc_weight:
     value: 1.0
@@ -69,10 +76,18 @@ parameters:
     value: "none"
   s_sup_weight:
     value: 0.0
+  s_sup_pl_weighted:
+    value: 0
+  s_sup_conf_scale:
+    value: 1
   s_tta_loss:
     value: "none"
   s_tta_weight:
     value: 0.0
+  s_tta_target:
+    value: "views"
+  s_tta_view_pool:
+    value: "matching"
 
   s_sup_view_pool:
     value: "mean"

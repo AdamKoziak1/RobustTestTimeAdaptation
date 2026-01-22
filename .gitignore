@@ -186,3 +186,4 @@ svd_files/
 *.png
 *.sh
 .gemini
+.gpu-queues/

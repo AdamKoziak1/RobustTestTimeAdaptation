@@ -3,7 +3,7 @@ project: safer_loss
 name: safer_build_random_blur_fft
 method: grid
 metric:
-  name: acc_100
+  name: acc_0
   goal: maximize
 
 parameters:
@@ -24,7 +24,7 @@ parameters:
   s_wrap_alg:
     value: 1
   s_num_views:
-    value: 2
+    values: [1,2,3]
   s_include_original:
     values: [0,1]
   s_sup_view_pool:
@@ -34,8 +34,11 @@ parameters:
 
   s_aug_fixed_op:
     value: "none"
-  s_aug_fixed_ops:
-    value: ["gaussian_blur", "fft_low_pass"]
+  # s_aug_fixed_ops:
+  #   value: ["gaussian_blur", "fft_low_pass"]
+  s_aug_list:
+    #value: ["gaussian_blur", "fft_low_pass"]
+    value: "gaussian_blur,fft_low_pass"
   s_aug_fixed_blur_kernel:
     value: 9
   s_aug_fixed_blur_sigma:
