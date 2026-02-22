@@ -24,7 +24,7 @@ def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     return -(x.softmax(1) * x.log_softmax(1)).sum(1)
 
 
-VIEW_POOL_STRATEGIES = {"mean", "worst", "entropy", "top1", "cc", "cc_drop"}
+VIEW_POOL_STRATEGIES = {"mean", "entropy", "top1", "cc", "cc_drop"}
 VIEW_POOL_STRATEGIES_WITH_MATCHING = VIEW_POOL_STRATEGIES | {"matching"}
 
 
@@ -1143,11 +1143,6 @@ def _view_pool_weights(
             raise ValueError("Feature tensor is required for cc-based pooling.")
         rel = _cross_view_reliability(features, eps=eps).clamp_min(0.0)
         weights = rel.unsqueeze(0).expand(bsz, -1)
-    elif strategy == "worst":
-        entropy = -(probs * torch.log(probs.clamp_min(eps))).sum(dim=-1)
-        worst_idx = entropy.argmax(dim=1)
-        weights = torch.zeros(bsz, num_views, device=probs.device, dtype=probs.dtype)
-        weights.scatter_(1, worst_idx.unsqueeze(1), 1.0)
     else:
         raise ValueError(f"Unknown SAFER view pooling strategy '{strategy}'.")
 

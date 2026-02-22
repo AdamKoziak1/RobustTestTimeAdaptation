@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
-project: tta3_live_tta
-name: live_linf8_all
+project: safer_final
+name: precomputed_linf8_tta_algs_all_domains_rates_0_50_100
 method: grid
 metric:
   name: acc_mean
@@ -8,18 +8,16 @@ metric:
 
 parameters:
   adapt_alg:
-    values: ["ERM", "PL", "T3A", "Tent", "TSD", "TeSLA"]
+    values: ["ERM", "Tent", "PL", "TSD", "TeSLA", "SAFER"] 
   dataset:
     values: ["PACS", "VLCS", "office-home"]
   test_envs:
     values: [0, 1, 2, 3]
   attack_source:
-    value: live
-  attack_preset:
-    value: linf8
+    value: precomputed
+  attack:
+    value: linf_eps-8.0_steps-20
   attack_rate:
-    values: [0,50,100]
+    values: [0, 50, 100]
   seeds:
     value: "0,1,2"
-  batch_size:
-    value: 64

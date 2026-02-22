@@ -49,7 +49,7 @@ def parse_args() -> argparse.Namespace:
     pa.add_argument("--cpu", action="store_true")
     pa.add_argument("--no_label_lookup", action="store_true", help="Skip ImageFolder label resolution.")
     pa.add_argument("--max_images", type=int, default=50, help="Max images to plot (-1 for all).")
-    pa.add_argument("--topk", type=int, default=10, help="Top-k classes to plot (<=0 plots all).")
+    pa.add_argument("--topk", type=int, default=0, help="Top-k classes to plot (<=0 plots all).")
     pa.add_argument("--sample_seed", type=int, default=0, help="Seed for sampling plot indices.")
     pa.add_argument("--indices", type=int, nargs="*", default=None, help="Explicit indices to plot.")
     pa.add_argument("--out_dir", default="label_dist_plots", help="Output directory.")
@@ -187,6 +187,24 @@ def _entropy(probs: torch.Tensor) -> torch.Tensor:
     return -(probs * torch.log(probs.clamp_min(1e-12))).sum(dim=1)
 
 
+def _to_probabilities(outputs: torch.Tensor) -> torch.Tensor:
+    """Convert model outputs to class probabilities.
+
+    If outputs already look like probabilities (rows in [0, 1] and summing to ~1),
+    keep them as-is. Otherwise treat outputs as logits and apply softmax.
+    """
+    if outputs.ndim != 2:
+        raise ValueError(f"Expected [batch, classes] outputs, got shape {tuple(outputs.shape)}")
+
+    row_sums = outputs.sum(dim=1)
+    looks_like_probs = (
+        torch.all(outputs >= 0.0)
+        and torch.all(outputs <= 1.0)
+        and torch.allclose(row_sums, torch.ones_like(row_sums), atol=1e-4, rtol=1e-4)
+    )
+    return outputs if looks_like_probs else torch.softmax(outputs, dim=1)
+
+
 def _kl_divergence(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     p = p.clamp_min(1e-12)
     q = q.clamp_min(1e-12)
@@ -253,10 +271,10 @@ def main() -> None:
         for clean, adv, idxs, lbls in loader:
             clean = clean.to(device)
             adv = adv.to(device)
-            logits_clean = model.predict(clean) if hasattr(model, "predict") else model(clean)
-            logits_adv = model.predict(adv) if hasattr(model, "predict") else model(adv)
-            probs_clean = torch.softmax(logits_clean, dim=1)
-            probs_adv = torch.softmax(logits_adv, dim=1)
+            out_clean = model.predict(clean) if hasattr(model, "predict") else model(clean)
+            out_adv = model.predict(adv) if hasattr(model, "predict") else model(adv)
+            probs_clean = _to_probabilities(out_clean)
+            probs_adv = _to_probabilities(out_adv)
 
             ent_clean = _entropy(probs_clean)
             ent_adv = _entropy(probs_adv)

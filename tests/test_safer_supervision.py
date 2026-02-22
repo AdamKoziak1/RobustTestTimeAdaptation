@@ -21,7 +21,7 @@ def _rand_probs(batch: int = 4, views: int = 3, classes: int = 5):
     return probs, logits
 
 
-@pytest.mark.parametrize("strategy", ["mean", "entropy", "top1", "cc", "cc_drop", "worst"])
+@pytest.mark.parametrize("strategy", ["mean", "entropy", "top1", "cc", "cc_drop"])
 def test_aggregate_view_probs_shapes_and_weights(strategy):
     probs, _ = _rand_probs()
     features = torch.randn(probs.size(0), probs.size(1), 8)
@@ -32,12 +32,6 @@ def test_aggregate_view_probs_shapes_and_weights(strategy):
 
     weight_sums = weights.sum(dim=1)
     torch.testing.assert_close(weight_sums, torch.ones_like(weight_sums), atol=1e-4, rtol=1e-4)
-
-    if strategy == "worst":
-        entropy = -(probs * torch.log(probs.clamp_min(1e-9))).sum(dim=-1)
-        worst_idx = entropy.argmax(dim=1)
-        pooled_ref = probs[torch.arange(probs.size(0)), worst_idx]
-        torch.testing.assert_close(pooled, pooled_ref, atol=1e-5, rtol=1e-5)
 
 
 def test_weighted_pseudo_label_loss_supports_cc_weights():

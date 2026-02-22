@@ -159,7 +159,7 @@ def get_args():
     # SAFER
     parser.add_argument("--s_num_views", type=int, default=4, help="Number of augmented SAFER views per input.")
     parser.add_argument("--s_include_original", type=int, default=1, choices=[0,1], help="Include original sample as one of the SAFER views (1 enables).")
-    parser.add_argument("--s_aug_prob", type=float, default=0.7, help="Probability of sampling each augmentation in the SAFER pipeline.")
+    parser.add_argument("--s_aug_prob", type=float, default=1, help="Probability of sampling each augmentation in the SAFER pipeline.")
     parser.add_argument("--s_aug_max_ops", type=int, default=4, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
     parser.add_argument("--s_aug_list", type=str, nargs="+", default=None, help="Optional custom list of SAFER augmentations to sample from.")
     parser.add_argument(
@@ -185,7 +185,7 @@ def get_args():
     )
     parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
     parser.add_argument("--s_cc_weight", type=float, default=1.0, help="Weight for SAFER cross-correlation loss.")
-    parser.add_argument("--s_cc_offdiag", type=float, default=1.0, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
+    parser.add_argument("--s_cc_offdiag", type=float, default=0.005, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_impl", type=str, default="fast", choices=["fast", "einsum"], help="Cross-correlation implementation: fast pairwise or einsum-based.")
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
     parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
@@ -279,7 +279,7 @@ def get_args():
         "--s_sup_view_pool",
         type=str.lower,
         default="mean",
-        choices=["mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        choices=["mean", "entropy", "top1", "cc", "cc_drop"],
         help="Pooling strategy for combining SAFER view predictions.",
     )
     parser.add_argument(
@@ -307,7 +307,7 @@ def get_args():
         "--s_js_view_pool",
         type=str.lower,
         default="matching",
-        choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        choices=["matching", "mean", "entropy", "top1", "cc", "cc_drop"],
         help="Pooling strategy for JS reference; 'matching' reuses the supervision pool.",
     )
     parser.add_argument(
@@ -341,7 +341,7 @@ def get_args():
         "--s_tta_view_pool",
         type=str.lower,
         default="matching",
-        choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        choices=["matching", "mean", "entropy", "top1", "cc", "cc_drop"],
         help="Pooling strategy for TTA losses; 'matching' reuses the supervision pool.",
     )
     parser.add_argument(
@@ -355,7 +355,7 @@ def get_args():
         "--s_cc_view_pool",
         type=str.lower,
         default="matching",
-        choices=["matching", "mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        choices=["matching", "mean", "entropy", "top1", "cc", "cc_drop"],
         help="Pooling strategy for pooled-feature cross-correlation; 'matching' reuses the supervision pool.",
     )
     parser.add_argument(
@@ -402,7 +402,7 @@ def get_args():
         "--tesla_view_pool",
         type=str.lower,
         default="mean",
-        choices=["mean", "worst", "entropy", "top1", "cc", "cc_drop"],
+        choices=["mean", "entropy", "top1", "cc", "cc_drop"],
         help="View pooling strategy for TeSLA teacher view aggregation.",
     )
     parser.add_argument(

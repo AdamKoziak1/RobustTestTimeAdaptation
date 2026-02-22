@@ -1,0 +1,122 @@
+{
+  "num_rows": 2048,
+  "pred_changed_rate": 0.9931640625,
+  "mean_conf_clean": 0.9847288672463037,
+  "mean_conf_adv": 0.999999999476131,
+  "mean_entropy_clean": 0.06025173654237473,
+  "mean_entropy_adv": 1.0657590461294913e-08,
+  "mean_js_div": 0.6755119527981037,
+  "top_clean_to_adv_flips": [
+    {
+      "clean_pred": 6,
+      "adv_pred": 0,
+      "count": 251
+    },
+    {
+      "clean_pred": 2,
+      "adv_pred": 0,
+      "count": 123
+    },
+    {
+      "clean_pred": 0,
+      "adv_pred": 6,
+      "count": 119
+    },
+    {
+      "clean_pred": 4,
+      "adv_pred": 0,
+      "count": 110
+    },
+    {
+      "clean_pred": 5,
+      "adv_pred": 0,
+      "count": 107
+    },
+    {
+      "clean_pred": 0,
+      "adv_pred": 4,
+      "count": 106
+    },
+    {
+      "clean_pred": 1,
+      "adv_pred": 0,
+      "count": 92
+    },
+    {
+      "clean_pred": 0,
+      "adv_pred": 2,
+      "count": 76
+    },
+    {
+      "clean_pred": 5,
+      "adv_pred": 6,
+      "count": 74
+    },
+    {
+      "clean_pred": 5,
+      "adv_pred": 3,
+      "count": 64
+    },
+    {
+      "clean_pred": 0,
+      "adv_pred": 1,
+      "count": 61
+    },
+    {
+      "clean_pred": 3,
+      "adv_pred": 0,
+      "count": 56
+    }
+  ],
+  "worst_classes_by_acc_drop": [
+    {
+      "class": 5,
+      "count": 295,
+      "acc_clean": 0.9966101694915255,
+      "acc_adv": 0.0,
+      "acc_drop": 0.9966101694915255
+    },
+    {
+      "class": 0,
+      "count": 379,
+      "acc_clean": 0.9947229551451188,
+      "acc_adv": 0.0,
+      "acc_drop": 0.9947229551451188
+    },
+    {
+      "class": 3,
+      "count": 184,
+      "acc_clean": 0.9945652173913043,
+      "acc_adv": 0.0,
+      "acc_drop": 0.9945652173913043
+    },
+    {
+      "class": 6,
+      "count": 449,
+      "acc_clean": 0.9910913140311804,
+      "acc_adv": 0.0,
+      "acc_drop": 0.9910913140311804
+    },
+    {
+      "class": 2,
+      "count": 285,
+      "acc_clean": 0.9894736842105263,
+      "acc_adv": 0.0,
+      "acc_drop": 0.9894736842105263
+    },
+    {
+      "class": 4,
+      "count": 201,
+      "acc_clean": 0.9850746268656716,
+      "acc_adv": 0.0,
+      "acc_drop": 0.9850746268656716
+    },
+    {
+      "class": 1,
+      "count": 255,
+      "acc_clean": 0.984313725490196,
+      "acc_adv": 0.0,
+      "acc_drop": 0.984313725490196
+    }
+  ]
+}

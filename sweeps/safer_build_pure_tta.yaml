@@ -8,9 +8,9 @@ metric:
 
 parameters:
   attack_source:
-    value: live
-  attack_preset:
-    value: linf8
+    value: precomputed
+  attack:
+    value: linf_eps-8.0_steps-20
 
   adapt_alg:
     values: ["ERM", "Tent", "PL", "TSD"]

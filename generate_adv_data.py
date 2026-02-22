@@ -78,10 +78,10 @@ def get_args_adv():
     parser.add_argument("--fft_alpha", type=float, default=1.0,
                         help="Residual mixing weight for FFT attack transform.")
     parser.add_argument("--attack_variant", type=str, default="baseline",
-                        choices=["baseline", "random_aug", "worst_aug", "easy_aug"],
+                        choices=["baseline", "random_aug", "easy_aug"],
                         help="Strategy for adversarial example generation with augmentations.")
     parser.add_argument("--attack_aug_views", type=int, default=4,
-                        help="Number of augmentation candidates to evaluate for worst-case attacks.")
+                        help="Number of augmentation candidates to sample per attack step.")
     parser.add_argument("--attack_aug_prob", type=float, default=0.7,
                         help="Per-augmentation application probability in attack pipelines.")
     parser.add_argument("--attack_aug_max_ops", type=int, default=3,
@@ -173,26 +173,6 @@ def _attack_forward(
             aug = _apply_pipeline_batch(augmenter, x, pipeline)
         else:
             aug = x
-        x_in = _transform(aug)
-        logits = model.predict(x_in)
-        loss = F.cross_entropy(logits, y)
-        return logits, loss
-
-    if variant == "worst_aug":
-        num_candidates = max(1, candidates)
-        pipelines = augmenter.sample_pipelines(num_views=num_candidates)
-        best_pipeline = []
-        best_val = None
-        for pipeline in pipelines:
-            aug = _apply_pipeline_batch(augmenter, x, pipeline)
-            x_in = _transform(aug)
-            with torch.no_grad():
-                logits = model.predict(x_in)
-                loss_val = F.cross_entropy(logits, y)
-            if best_val is None or loss_val.item() > best_val:
-                best_val = loss_val.item()
-                best_pipeline = pipeline
-        aug = _apply_pipeline_batch(augmenter, x, best_pipeline)
         x_in = _transform(aug)
         logits = model.predict(x_in)
         loss = F.cross_entropy(logits, y)

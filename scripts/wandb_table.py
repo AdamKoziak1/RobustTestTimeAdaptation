@@ -11,14 +11,14 @@ import json
 import yaml  
 
 ADAPT_ALG_ORDER = [
+    "SAFER",
     "TeSLA",
     "TSD",
     "Tent",
-    "T3A",
+    #"T3A",
     "PL",
     "ERM",
     # "TTA3",
-    # "SAFER",
     # "AMTDC",
 ]
 
