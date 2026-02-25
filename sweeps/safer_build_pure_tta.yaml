@@ -1,5 +1,5 @@
 program: unsupervised_adapt_dataset.py
-project: safer_loss
+project: safer_final
 name: safer_build_pure_tta
 method: grid
 metric:

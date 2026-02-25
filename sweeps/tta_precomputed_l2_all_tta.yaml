@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
 project: safer_final
-name: bb_linf8_all_tta_baseline
+name: bb_l2_all_tta_baseline
 method: grid
 metric:
   name: acc_mean
@@ -8,7 +8,7 @@ metric:
 
 parameters:
   adapt_alg:
-    values: ["ERM", "Tent", "PL", "TSD", "TeSLA", "SAFER"] 
+    values: ["ERM", "Tent", "PL", "TSD", "TeSLA", "SAFER"]
   dataset:
     values: ["PACS", "VLCS", "office-home"]
   test_envs:
@@ -16,7 +16,7 @@ parameters:
   attack_source:
     value: precomputed
   attack:
-    value: linf_eps-8.0_steps-20
+    value: l2_eps-112.0_steps-100
   attack_rate:
     values: [0, 50, 100]
   seeds:

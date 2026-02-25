@@ -1,5 +1,5 @@
 program: unsupervised_adapt_dataset.py
-project: safer_loss
+project: safer_final
 name: safer_aug_isolation
 method: grid
 metric:

@@ -147,7 +147,8 @@ def main():
     #run_name = f"{args.adapt_alg}_steps{args.steps}_lr{args.lr}_input{args.svd_input_rank_ratio}_feat{args.svd_feat_rank_ratio}_svdmode-{args.svd_feat_mode}"
     run_name = f"{args.adapt_alg}"
 
-    wandb.init(name=run_name, config=vars(args), project="tta3_sweeps")
+    wandb_project = os.environ.get("WANDB_PROJECT", "tta3_sweeps")
+    wandb.init(name=run_name, config=vars(args), project=wandb_project)
 
     start = time.time()
     results = {}

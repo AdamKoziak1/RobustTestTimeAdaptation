@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import statistics
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
@@ -196,13 +197,21 @@ def select_run(runs: Sequence[RunRecord], mode: str, metric: str) -> RunRecord:
     return max(runs, key=lambda r: r.summary.get(metric, float("-inf")))
 
 
-def format_cell(mean: Optional[float], std: Optional[float], precision: int) -> str:
+def format_cell(
+    mean: Optional[float],
+    std: Optional[float],
+    precision: int,
+    show_std: bool = True,
+) -> str:
     if mean is None:
         return "--"
     try:
         mean_val = float(mean)
     except (TypeError, ValueError):
         return str(mean)
+    fmt = f"{{:.{precision}f}}"
+    if not show_std:
+        return fmt.format(mean_val)
     if std is None:
         std_val = 0.0
     else:
@@ -210,7 +219,6 @@ def format_cell(mean: Optional[float], std: Optional[float], precision: int) -> 
             std_val = float(std)
         except (TypeError, ValueError):
             std_val = 0.0
-    fmt = f"{{:.{precision}f}}"
     return f"{fmt.format(mean_val)}$\\pm${fmt.format(std_val)}"
 
 
@@ -255,6 +263,7 @@ def build_rows(
     select_metric: str,
     precision: int,
     verbose: bool,
+    include_std: bool = True,
 ) -> List[Tuple[str, List[str]]]:
     rows: List[Tuple[str, List[str]]] = []
     for method_name, method_filters in methods.items():
@@ -290,7 +299,97 @@ def build_rows(
                 chosen = select_run(runs, select_mode, select_metric)
                 mean = chosen.summary.get(mean_key)
                 std = chosen.summary.get(std_key)
-                cells.append(format_cell(mean, std, precision))
+                cells.append(format_cell(mean, std, precision, show_std=include_std))
+        rows.append((method_name, cells))
+    return rows
+
+
+def build_rows_dataset_domain_avg(
+    records: Sequence[RunRecord],
+    methods: Mapping[str, Mapping[str, List[Any]]],
+    filters: Mapping[str, List[Any]],
+    datasets: Sequence[str],
+    domain_ids: Sequence[int],
+    attack_rates: Sequence[int],
+    mean_key: str,
+    select_mode: str,
+    select_metric: str,
+    precision: int,
+    verbose: bool,
+    include_domain_std: bool = False,
+) -> List[Tuple[str, List[str]]]:
+    rows: List[Tuple[str, List[str]]] = []
+    for method_name, method_filters in methods.items():
+        merged = dict(filters)
+        merged.update(method_filters)
+        matched = [
+            record
+            for record in records
+            if mean_key in record.summary and record_matches_filters(record, merged)
+        ]
+        if verbose:
+            print(f"[info] {method_name}: {len(matched)} runs matched", file=sys.stderr)
+
+        grouped: Dict[Tuple[str, int, int], List[RunRecord]] = {}
+        for record in matched:
+            dataset_name = get_value(record, "dataset")
+            if not isinstance(dataset_name, str):
+                continue
+            dom_val = get_value(record, "test_envs", "test_env")
+            if isinstance(dom_val, list):
+                dom_val = dom_val[0] if dom_val else None
+            dom_id = to_int(dom_val)
+            rate = to_int(get_value(record, "attack_rate"))
+            if dom_id is None or rate is None:
+                continue
+            grouped.setdefault((dataset_name, dom_id, rate), []).append(record)
+
+        cells: List[str] = []
+        for dataset in datasets:
+            for rate in attack_rates:
+                domain_means: List[float] = []
+                for dom_id in domain_ids:
+                    runs = grouped.get((dataset, dom_id, rate), [])
+                    if not runs:
+                        continue
+                    chosen = select_run(runs, select_mode, select_metric)
+                    mean_val = chosen.summary.get(mean_key)
+                    try:
+                        domain_means.append(float(mean_val))
+                    except (TypeError, ValueError):
+                        continue
+
+                if not domain_means:
+                    if verbose:
+                        print(
+                            f"[warn] Missing dataset {dataset} rate {rate} for {method_name}",
+                            file=sys.stderr,
+                        )
+                    cells.append("--")
+                    continue
+
+                if verbose and len(domain_means) < len(domain_ids):
+                    print(
+                        f"[warn] Partial dataset {dataset} rate {rate} for {method_name}: "
+                        f"{len(domain_means)}/{len(domain_ids)} domains",
+                        file=sys.stderr,
+                    )
+
+                mean_val = statistics.mean(domain_means)
+                std_val = (
+                    statistics.pstdev(domain_means)
+                    if include_domain_std and len(domain_means) > 1
+                    else None
+                )
+                cells.append(
+                    format_cell(
+                        mean_val,
+                        std_val,
+                        precision,
+                        show_std=include_domain_std,
+                    )
+                )
+
         rows.append((method_name, cells))
     return rows
 
@@ -349,7 +448,7 @@ def main() -> int:
     )
     parser.add_argument("--sweep-config", type=Path, help="Sweep YAML to restrict allowed values.")
     parser.add_argument("--entity", default="bigslav", help="W&B entity for --sweep-id.")
-    parser.add_argument("--project", default="safer_loss", help="W&B project for --sweep-id.")
+    parser.add_argument("--project", default="safer_final", help="W&B project for --sweep-id.")
 
     parser.add_argument("--dataset", help="Dataset name (e.g., PACS).")
     parser.add_argument(
@@ -358,6 +457,11 @@ def main() -> int:
     )
     parser.add_argument("--attack-rates", help="Comma-separated attack rates (e.g., 0,50,100).")
     parser.add_argument("--domain-ids", help="Comma-separated domain indices (e.g., 0,1,2,3).")
+    parser.add_argument(
+        "--dataset-domain-avg",
+        action="store_true",
+        help="Aggregate over domains so columns are dataset averages (per attack rate).",
+    )
 
     parser.add_argument("--filter", action="append", default=[], help="Filter runs: key=value (repeatable).")
     parser.add_argument("--methods-file", type=Path, help="YAML/JSON mapping of method name -> filters.")
@@ -374,6 +478,11 @@ def main() -> int:
 
     parser.add_argument("--mean-key", default="acc_mean", help="Summary key for the mean metric.")
     parser.add_argument("--std-key", default="acc_std", help="Summary key for the std metric.")
+    parser.add_argument(
+        "--include-domain-std",
+        action="store_true",
+        help="With --dataset-domain-avg, include std across domain means in each cell.",
+    )
     parser.add_argument("--select", choices=["best", "latest", "first"], default="best")
     parser.add_argument("--select-metric", help="Metric used to select runs (defaults to mean key).")
     parser.add_argument("--precision", type=int, default=2, help="Decimal precision in table cells.")
@@ -453,35 +562,32 @@ def main() -> int:
         datasets = ["PACS", "VLCS", "office-home"]
 
     select_metric = args.select_metric or args.mean_key
+    if args.domain_ids:
+        domain_ids = parse_csv_ints(args.domain_ids)
+    else:
+        domain_ids = [0, 1, 2, 3]
+
     printed_any = False
-    for dataset in datasets:
-        print(dataset)
-        dataset_filters = dict(filters)
-        dataset_filters["dataset"] = [dataset]
-
-        if args.domain_ids:
-            domain_ids = parse_csv_ints(args.domain_ids)
-        else:
-            domain_ids = [0, 1, 2, 3]
-
+    use_sweep_names = args.sweep_names is not None or len(sweep_ids) > 1
+    if args.dataset_domain_avg:
         rows_by_sweep: List[Dict[str, List[str]]] = []
         for records in sweep_records:
-            rows = build_rows(
+            rows = build_rows_dataset_domain_avg(
                 records=records,
                 methods=methods,
-                filters=dataset_filters,
+                filters=filters,
+                datasets=datasets,
                 domain_ids=domain_ids,
                 attack_rates=attack_rates,
                 mean_key=args.mean_key,
-                std_key=args.std_key,
                 select_mode=args.select,
                 select_metric=select_metric,
                 precision=args.precision,
                 verbose=args.verbose,
+                include_domain_std=args.include_domain_std,
             )
             rows_by_sweep.append({name: cells for name, cells in rows})
 
-        use_sweep_names = args.sweep_names is not None or len(sweep_ids) > 1
         for method_name in methods.keys():
             if use_sweep_names:
                 print(method_name)
@@ -489,7 +595,38 @@ def main() -> int:
                 row_cells = rows_map.get(method_name, [])
                 row_name = sweep_name if use_sweep_names else method_name
                 print(f"{row_name} & " + " & ".join(row_cells) + " \\\\")
-        printed_any = True
+            printed_any = True
+    else:
+        for dataset in datasets:
+            print(dataset)
+            dataset_filters = dict(filters)
+            dataset_filters["dataset"] = [dataset]
+
+            rows_by_sweep: List[Dict[str, List[str]]] = []
+            for records in sweep_records:
+                rows = build_rows(
+                    records=records,
+                    methods=methods,
+                    filters=dataset_filters,
+                    domain_ids=domain_ids,
+                    attack_rates=attack_rates,
+                    mean_key=args.mean_key,
+                    std_key=args.std_key,
+                    select_mode=args.select,
+                    select_metric=select_metric,
+                    precision=args.precision,
+                    verbose=args.verbose,
+                )
+                rows_by_sweep.append({name: cells for name, cells in rows})
+
+            for method_name in methods.keys():
+                if use_sweep_names:
+                    print(method_name)
+                for sweep_name, rows_map in zip(sweep_names, rows_by_sweep):
+                    row_cells = rows_map.get(method_name, [])
+                    row_name = sweep_name if use_sweep_names else method_name
+                    print(f"{row_name} & " + " & ".join(row_cells) + " \\\\")
+            printed_any = True
 
     if not printed_any:
         return 2

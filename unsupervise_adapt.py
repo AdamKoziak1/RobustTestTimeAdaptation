@@ -184,7 +184,7 @@ def get_args():
         help="Log sampled SAFER augmentation pipelines once per run.",
     )
     parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
-    parser.add_argument("--s_cc_weight", type=float, default=1.0, help="Weight for SAFER cross-correlation loss.")
+    parser.add_argument("--s_cc_weight", type=float, default=0.01, help="Weight for SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_offdiag", type=float, default=0.005, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_impl", type=str, default="fast", choices=["fast", "einsum"], help="Cross-correlation implementation: fast pairwise or einsum-based.")
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")

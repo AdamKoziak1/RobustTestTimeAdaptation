@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer_loss
+project: safer_final
 name: safer_with_tta_test_run
 method: grid
 metric:
@@ -13,7 +13,7 @@ parameters:
     value: linf_eps-8.0_steps-20
 
   adapt_alg:
-    values: ["ERM", "Tent", "PL", "TSD", "TeSLA"]
+    values: ["ERM", "Tent", "PL", "TSD"]
 
   dataset:
     values: ["PACS", "VLCS", "office-home"]
