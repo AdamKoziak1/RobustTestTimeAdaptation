@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer_final
+project: safer
 name: live_linf8_all_tta_baseline
 method: grid
 metric:

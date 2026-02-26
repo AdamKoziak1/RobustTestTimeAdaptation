@@ -1402,7 +1402,7 @@ if __name__ == "__main__":
         )
 
     wandb.init(
-        project="fft_runs",
+        project="safer",
         name=run_name,
         config=vars(args),
     )

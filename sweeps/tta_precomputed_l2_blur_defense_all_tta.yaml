@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer_final
+project: safer
 name: bb_l2_blur_defense_all_tta
 method: grid
 metric:

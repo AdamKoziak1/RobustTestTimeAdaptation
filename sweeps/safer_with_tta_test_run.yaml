@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer_final
+project: safer
 name: safer_with_tta_test_run
 method: grid
 metric:
