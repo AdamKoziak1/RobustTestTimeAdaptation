@@ -163,13 +163,6 @@ def get_args():
     parser.add_argument("--s_aug_max_ops", type=int, default=4, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
     parser.add_argument("--s_aug_list", type=str, nargs="+", default=None, help="Optional custom list of SAFER augmentations to sample from.")
     parser.add_argument(
-        "--s_aug_params_per_image",
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="Sample SAFER augmentation parameters per image instead of per batch.",
-    )
-    parser.add_argument(
         "--s_aug_debug",
         type=int,
         default=0,
@@ -316,6 +309,38 @@ def get_args():
         default=1,
         choices=[0, 1],
         help="Enable view-weighting when pooling for SAFER losses.",
+    )
+    parser.add_argument(
+        "--s_alpha_mode",
+        type=str.lower,
+        default="none",
+        choices=["none", "fixed_conf_threshold"],
+        help="Adaptive alpha mode for original-view mixing in pooling/loss weighting.",
+    )
+    parser.add_argument(
+        "--s_alpha_conf_threshold",
+        type=float,
+        default=0.99,
+        help="Confidence threshold used by fixed_conf_threshold alpha mode.",
+    )
+    parser.add_argument(
+        "--s_alpha_attack_value",
+        type=float,
+        default=0.0,
+        help="Alpha value used when an input is considered attacked.",
+    )
+    parser.add_argument(
+        "--s_alpha_clean_value",
+        type=float,
+        default=1.0,
+        help="Alpha value used when an input is considered clean.",
+    )
+    parser.add_argument(
+        "--s_alpha_attack_high_conf",
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help="If 1, confidence >= threshold means attacked; otherwise confidence < threshold means attacked.",
     )
     parser.add_argument(
         "--s_tta_loss",
@@ -553,6 +578,8 @@ def get_args():
     args.s_js_view_pool = args.s_js_view_pool.lower()
     args.s_js_mode = args.s_js_mode.lower()
     args.s_view_weighting = bool(args.s_view_weighting)
+    args.s_alpha_mode = args.s_alpha_mode.lower()
+    args.s_alpha_attack_high_conf = bool(args.s_alpha_attack_high_conf)
     args.s_tta_loss = args.s_tta_loss.lower()
     args.s_tta_target = args.s_tta_target.lower()
     args.s_tta_view_pool = args.s_tta_view_pool.lower()
@@ -563,7 +590,6 @@ def get_args():
     args.s_aug_force_noise = bool(args.s_aug_force_noise)
     args.s_aug_require_freq_blur = bool(args.s_aug_require_freq_blur)
     args.s_aug_use_noise = bool(args.s_aug_use_noise)
-    args.s_aug_params_per_image = bool(args.s_aug_params_per_image)
     args.s_aug_debug = bool(args.s_aug_debug)
     args.s_aug_log = bool(args.s_aug_log)
     if not args.s_aug_use_noise:
@@ -614,6 +640,12 @@ def get_args():
     if args.s_tta_loss == "none" or args.s_tta_weight <= 0.0:
         args.s_tta_loss = "none"
         args.s_tta_weight = 0.0
+    if not (0.0 <= args.s_alpha_conf_threshold <= 1.0):
+        raise ValueError("s_alpha_conf_threshold must be in [0, 1].")
+    if not (0.0 <= args.s_alpha_attack_value <= 1.0):
+        raise ValueError("s_alpha_attack_value must be in [0, 1].")
+    if not (0.0 <= args.s_alpha_clean_value <= 1.0):
+        raise ValueError("s_alpha_clean_value must be in [0, 1].")
     args.mt_use_teacher_pred = bool(args.mt_use_teacher_pred)
     if args.mt_mixup_beta <= 0:
         args.mt_mixup_beta = 0.5
@@ -696,9 +728,13 @@ def log_args(args, time_taken_s):
             "s_aug_fixed_blur_sigma": args.s_aug_fixed_blur_sigma,
             "s_aug_use_noise": args.s_aug_use_noise,
             "s_aug_noise_std": args.s_aug_noise_std,
-            "s_aug_params_per_image": args.s_aug_params_per_image,
             "s_sup_view_pool": args.s_sup_view_pool,
             "s_view_weighting": args.s_view_weighting,
+            "s_alpha_mode": args.s_alpha_mode,
+            "s_alpha_conf_threshold": args.s_alpha_conf_threshold,
+            "s_alpha_attack_value": args.s_alpha_attack_value,
+            "s_alpha_clean_value": args.s_alpha_clean_value,
+            "s_alpha_attack_high_conf": args.s_alpha_attack_high_conf,
         }, commit=False)
     if args.adapt_alg == "SAFER":
         wandb.log({
@@ -715,7 +751,6 @@ def log_args(args, time_taken_s):
             "s_aug_require_freq_blur": args.s_aug_require_freq_blur,
             "s_aug_use_noise": args.s_aug_use_noise,
             "s_aug_noise_std": args.s_aug_noise_std,
-            "s_aug_params_per_image": args.s_aug_params_per_image,
             "s_aug_fixed_op": args.s_aug_fixed_op or "none",
             "s_aug_fixed_ops": fixed_ops_label,
             "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
@@ -731,6 +766,11 @@ def log_args(args, time_taken_s):
             "s_js_mode": args.s_js_mode,
             "s_js_view_pool": args.s_js_view_pool,
             "s_view_weighting": args.s_view_weighting,
+            "s_alpha_mode": args.s_alpha_mode,
+            "s_alpha_conf_threshold": args.s_alpha_conf_threshold,
+            "s_alpha_attack_value": args.s_alpha_attack_value,
+            "s_alpha_clean_value": args.s_alpha_clean_value,
+            "s_alpha_attack_high_conf": args.s_alpha_attack_high_conf,
             "s_tta_loss": args.s_tta_loss,
             "s_tta_weight": args.s_tta_weight,
             "s_tta_target": args.s_tta_target,
@@ -862,7 +902,6 @@ def make_adapt_model(args, algorithm):
             augmentations=augment_list,
             force_noise_first=args.s_aug_force_noise,
             require_freq_or_blur=args.s_aug_require_freq_blur,
-            sample_params_per_image=args.s_aug_params_per_image,
             aug_seed=args.s_aug_seed,
             fixed_ops=args.s_aug_fixed_ops,
             fixed_op=args.s_aug_fixed_op,
@@ -875,6 +914,11 @@ def make_adapt_model(args, algorithm):
             log_pipelines=args.s_aug_log,
             feature_normalize=args.s_feat_normalize,
             view_weighting=args.s_view_weighting,
+            adaptive_alpha_mode=args.s_alpha_mode,
+            adaptive_alpha_conf_threshold=args.s_alpha_conf_threshold,
+            adaptive_alpha_attack_value=args.s_alpha_attack_value,
+            adaptive_alpha_clean_value=args.s_alpha_clean_value,
+            adaptive_alpha_attack_high_conf=args.s_alpha_attack_high_conf,
             primary_view_pool=args.s_sup_view_pool,
             js_weight=0.0,
             js_mode="pooled",
@@ -1120,7 +1164,6 @@ def make_adapt_model(args, algorithm):
             offdiag_weight=args.s_cc_offdiag,
             feature_normalize=args.s_feat_normalize,
             aug_seed=args.s_aug_seed,
-            sample_params_per_image=args.s_aug_params_per_image,
             sup_mode=args.s_sup_type,
             sup_weight=args.s_sup_weight,
             class_marginal_weight=args.s_cm_weight,
@@ -1137,6 +1180,11 @@ def make_adapt_model(args, algorithm):
             tta_view_pool=args.s_tta_view_pool,
             cc_mode=args.s_cc_mode,
             cc_view_pool=args.s_cc_view_pool,
+            adaptive_alpha_mode=args.s_alpha_mode,
+            adaptive_alpha_conf_threshold=args.s_alpha_conf_threshold,
+            adaptive_alpha_attack_value=args.s_alpha_attack_value,
+            adaptive_alpha_clean_value=args.s_alpha_clean_value,
+            adaptive_alpha_attack_high_conf=args.s_alpha_attack_high_conf,
             input_is_normalized=args.s_input_is_normalized,
             debug=args.s_aug_debug,
             log_pipelines=args.s_aug_log,

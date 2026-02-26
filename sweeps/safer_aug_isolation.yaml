@@ -45,8 +45,6 @@ parameters:
     #values: [0, 1]
   s_input_is_normalized:
     value: -1
-  s_aug_params_per_image:
-    values: [0,1]
 
   # Keep losses at SAFER defaults while varying augmentation
   s_js_weight:

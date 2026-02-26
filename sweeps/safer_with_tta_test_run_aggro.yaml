@@ -51,8 +51,6 @@ parameters:
     #values: [0, 1]
   s_input_is_normalized:
     value: -1
-  s_aug_params_per_image:
-    value: 1
 
   s_js_weight:
     value: 0.0

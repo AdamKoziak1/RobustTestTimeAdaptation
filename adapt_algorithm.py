@@ -1658,7 +1658,6 @@ class SAFER(nn.Module):
         offdiag_weight: float = 1.0,
         feature_normalize: bool = False,
         aug_seed: Optional[int] = None,
-        sample_params_per_image: bool = False,
         sup_mode: str = "none",
         sup_weight: float = 0.0,
         class_marginal_weight: float = 0.0,
@@ -1675,6 +1674,11 @@ class SAFER(nn.Module):
         tta_view_pool: str = "matching",
         cc_mode: str = "pairwise",
         cc_view_pool: str = "matching",
+        adaptive_alpha_mode: str = "none",
+        adaptive_alpha_conf_threshold: float = 0.99,
+        adaptive_alpha_attack_value: float = 0.0,
+        adaptive_alpha_clean_value: float = 1.0,
+        adaptive_alpha_attack_high_conf: bool = True,
         mean: Optional[Sequence[float]] = None,
         std: Optional[Sequence[float]] = None,
         input_is_normalized: Optional[bool] = None,
@@ -1700,7 +1704,8 @@ class SAFER(nn.Module):
         self.offdiag_weight = offdiag_weight
         self.feature_normalize = feature_normalize
         self.cm_weight = class_marginal_weight
-        self.use_view_weights = bool(view_weighting)
+        adaptive_alpha_mode = adaptive_alpha_mode.lower()
+        self.use_view_weights = bool(view_weighting) or (adaptive_alpha_mode != "none")
         sup_mode = sup_mode.lower()
         if sup_mode not in {"none", "pl", "em"}:
             raise ValueError(f"Unknown supervision mode: {sup_mode}")
@@ -1763,7 +1768,6 @@ class SAFER(nn.Module):
             force_noise_first=force_noise_first,
             require_freq_or_blur=require_freq_or_blur,
             fixed_ops=fixed_ops,
-            sample_params_per_image=sample_params_per_image,
             aug_seed=aug_seed,
             fixed_op=fixed_op,
             fixed_blur_kernel=fixed_blur_kernel,
@@ -1782,6 +1786,11 @@ class SAFER(nn.Module):
             cc_view_pool=self.cc_view_pool,
             cc_impl=self.cc_impl,
             offdiag_weight=offdiag_weight,
+            adaptive_alpha_mode=adaptive_alpha_mode,
+            adaptive_alpha_conf_threshold=adaptive_alpha_conf_threshold,
+            adaptive_alpha_attack_value=adaptive_alpha_attack_value,
+            adaptive_alpha_clean_value=adaptive_alpha_clean_value,
+            adaptive_alpha_attack_high_conf=adaptive_alpha_attack_high_conf,
             mean=mean,
             std=std,
             input_is_normalized=input_is_normalized,
@@ -1852,6 +1861,9 @@ class SAFER(nn.Module):
         pooler = view_out.pooler
         js_loss = view_out.js_loss
         cc_loss = view_out.cc_loss
+        adaptive_alpha = view_out.adaptive_alpha
+        attack_confidence = view_out.attack_confidence
+        attack_detected = view_out.attack_detected
 
         cm_loss = torch.tensor(0.0, device=logits.device)
         if self.cm_weight > 1e-8:
@@ -1893,16 +1905,23 @@ class SAFER(nn.Module):
             + (self.sup_weight * sup_loss)
             + (self.tta_weight * tta_loss)
         )
-        wandb.log(
-            {
-                "SAFER/Loss": loss.item(),
-                "SAFER/L_js": js_loss.item(),
-                "SAFER/L_cc": cc_loss.item(),
-                "SAFER/L_cm": cm_loss.item(),
-                "SAFER/L_sup": sup_loss.item(),
-                "SAFER/L_tta": tta_loss.item(),
-            }
-        )
+        log_payload = {
+            "SAFER/Loss": loss.item(),
+            "SAFER/L_js": js_loss.item(),
+            "SAFER/L_cc": cc_loss.item(),
+            "SAFER/L_cm": cm_loss.item(),
+            "SAFER/L_sup": sup_loss.item(),
+            "SAFER/L_tta": tta_loss.item(),
+        }
+        if adaptive_alpha is not None:
+            log_payload["SAFER/alpha_mean"] = adaptive_alpha.mean().item()
+            log_payload["SAFER/alpha_min"] = adaptive_alpha.min().item()
+            log_payload["SAFER/alpha_max"] = adaptive_alpha.max().item()
+        if attack_confidence is not None:
+            log_payload["SAFER/orig_conf_mean"] = attack_confidence.mean().item()
+        if attack_detected is not None:
+            log_payload["SAFER/attack_detect_rate"] = attack_detected.float().mean().item()
+        wandb.log(log_payload)
 
         optimizer.zero_grad()
         loss.backward()

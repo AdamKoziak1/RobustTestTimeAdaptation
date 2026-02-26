@@ -269,6 +269,29 @@ def _view_pool_weights(
     return weights / weight_sum
 
 
+def _adaptive_alpha_from_confidence(
+    probs: torch.Tensor,
+    threshold: float,
+    attack_alpha: float,
+    clean_alpha: float,
+    attack_when_high_conf: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Compute per-sample alpha from confidence on the original view.
+    """
+    if probs.ndim != 3 or probs.size(1) < 1:
+        raise ValueError("Expected probs with shape (B, V, C) and at least one view.")
+    orig_conf = probs[:, 0].max(dim=-1).values
+    if attack_when_high_conf:
+        attacked = orig_conf >= threshold
+    else:
+        attacked = orig_conf < threshold
+    attack_alpha_t = torch.full_like(orig_conf, float(attack_alpha))
+    clean_alpha_t = torch.full_like(orig_conf, float(clean_alpha))
+    alpha = torch.where(attacked, attack_alpha_t, clean_alpha_t).clamp(0.0, 1.0)
+    return alpha, orig_conf, attacked
+
+
 def _pool_features(
     features: torch.Tensor,
     view_weights: Optional[torch.Tensor],
@@ -287,12 +310,53 @@ class SAFERViewPooler:
         features: torch.Tensor,
         primary_pool: str,
         use_weights: bool = True,
+        include_original: bool = True,
+        adaptive_alpha_mode: str = "none",
+        adaptive_alpha_conf_threshold: float = 0.99,
+        adaptive_alpha_attack_value: float = 0.0,
+        adaptive_alpha_clean_value: float = 1.0,
+        adaptive_alpha_attack_high_conf: bool = True,
     ) -> None:
         self.probs = probs
         self.features = features
         self.primary_pool = primary_pool
         self.use_weights = bool(use_weights)
+        self.include_original = bool(include_original)
+        self.adaptive_alpha_mode = adaptive_alpha_mode.lower()
         self._cache: dict[str, torch.Tensor] = {}
+        self.adaptive_alpha: Optional[torch.Tensor] = None
+        self.attack_confidence: Optional[torch.Tensor] = None
+        self.attack_detected: Optional[torch.Tensor] = None
+
+        if self.adaptive_alpha_mode == "fixed_conf_threshold":
+            if self.include_original and probs.size(1) > 1:
+                alpha, conf, attacked = _adaptive_alpha_from_confidence(
+                    probs=probs,
+                    threshold=adaptive_alpha_conf_threshold,
+                    attack_alpha=adaptive_alpha_attack_value,
+                    clean_alpha=adaptive_alpha_clean_value,
+                    attack_when_high_conf=adaptive_alpha_attack_high_conf,
+                )
+                self.adaptive_alpha = alpha
+                self.attack_confidence = conf
+                self.attack_detected = attacked
+        elif self.adaptive_alpha_mode != "none":
+            raise ValueError(
+                f"Unknown adaptive alpha mode '{adaptive_alpha_mode}'. Expected one of ['none', 'fixed_conf_threshold']."
+            )
+
+    def _apply_adaptive_alpha(self, weights: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+        if self.adaptive_alpha is None or not self.include_original or weights.size(1) < 2:
+            return weights
+        alpha = self.adaptive_alpha.to(weights.dtype).unsqueeze(1).clamp(0.0, 1.0)
+        other = weights[:, 1:].clamp_min(0.0)
+        other_sum = other.sum(dim=1, keepdim=True)
+        uniform_other = torch.full_like(other, 1.0 / float(other.size(1)))
+        other_norm = torch.where(other_sum > eps, other / other_sum.clamp_min(eps), uniform_other)
+        mixed = torch.zeros_like(weights)
+        mixed[:, 0] = alpha.squeeze(1)
+        mixed[:, 1:] = (1.0 - alpha) * other_norm
+        return mixed
 
     def pool(self, strategy: str) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
         strategy = strategy.lower()
@@ -301,11 +365,19 @@ class SAFERViewPooler:
         weights = None
         if self.use_weights:
             if strategy not in self._cache:
-                self._cache[strategy] = _view_pool_weights(
+                base_weights = _view_pool_weights(
                     probs=self.probs,
                     features=self.features,
                     strategy=strategy,
                 )
+                self._cache[strategy] = self._apply_adaptive_alpha(base_weights)
+            weights = self._cache[strategy]
+        elif self.adaptive_alpha is not None and self.include_original and self.probs.size(1) > 1:
+            if strategy not in self._cache:
+                bsz, num_views, _ = self.probs.shape
+                uniform = torch.ones(bsz, num_views, device=self.probs.device, dtype=self.probs.dtype)
+                uniform = uniform / uniform.sum(dim=1, keepdim=True)
+                self._cache[strategy] = self._apply_adaptive_alpha(uniform)
             weights = self._cache[strategy]
         if weights is None:
             pooled = self.probs.mean(dim=1)
@@ -325,6 +397,9 @@ class SAFERViewOutput:
     js_loss: torch.Tensor
     cc_loss: torch.Tensor
     pooler: SAFERViewPooler
+    adaptive_alpha: Optional[torch.Tensor] = None
+    attack_confidence: Optional[torch.Tensor] = None
+    attack_detected: Optional[torch.Tensor] = None
 
 
 class SAFERViewModule(nn.Module):
@@ -337,7 +412,6 @@ class SAFERViewModule(nn.Module):
         augmentations: Optional[Sequence[str]],
         force_noise_first: bool,
         require_freq_or_blur: bool,
-        sample_params_per_image: bool,
         aug_seed: Optional[int],
         feature_normalize: bool,
         view_weighting: bool,
@@ -350,6 +424,11 @@ class SAFERViewModule(nn.Module):
         cc_view_pool: str,
         cc_impl: str,
         offdiag_weight: float,
+        adaptive_alpha_mode: str = "none",
+        adaptive_alpha_conf_threshold: float = 0.99,
+        adaptive_alpha_attack_value: float = 0.0,
+        adaptive_alpha_clean_value: float = 1.0,
+        adaptive_alpha_attack_high_conf: bool = True,
         mean: Optional[Sequence[float]] = None,
         std: Optional[Sequence[float]] = None,
         input_is_normalized: Optional[bool] = None,
@@ -392,6 +471,23 @@ class SAFERViewModule(nn.Module):
         self.cc_impl = cc_impl
         self.offdiag_weight = float(offdiag_weight)
         self.log_pipelines = bool(log_pipelines)
+        adaptive_alpha_mode = adaptive_alpha_mode.lower()
+        if adaptive_alpha_mode not in {"none", "fixed_conf_threshold"}:
+            raise ValueError(
+                "adaptive_alpha_mode must be one of ['none', 'fixed_conf_threshold']."
+            )
+        if not (0.0 <= adaptive_alpha_conf_threshold <= 1.0):
+            raise ValueError("adaptive_alpha_conf_threshold must be in [0, 1].")
+        if not (0.0 <= adaptive_alpha_attack_value <= 1.0):
+            raise ValueError("adaptive_alpha_attack_value must be in [0, 1].")
+        if not (0.0 <= adaptive_alpha_clean_value <= 1.0):
+            raise ValueError("adaptive_alpha_clean_value must be in [0, 1].")
+        self.adaptive_alpha_mode = adaptive_alpha_mode
+        self.adaptive_alpha_conf_threshold = float(adaptive_alpha_conf_threshold)
+        self.adaptive_alpha_attack_value = float(adaptive_alpha_attack_value)
+        self.adaptive_alpha_clean_value = float(adaptive_alpha_clean_value)
+        self.adaptive_alpha_attack_high_conf = bool(adaptive_alpha_attack_high_conf)
+        self.use_pool_weights_for_losses = self.use_view_weights or (self.adaptive_alpha_mode != "none")
 
         if primary_view_pool not in VIEW_POOL_STRATEGIES:
             raise ValueError(
@@ -474,7 +570,6 @@ class SAFERViewModule(nn.Module):
             augmentations=augmentations,
             max_ops=aug_max_ops,
             prob=aug_prob,
-            sample_params_per_image=sample_params_per_image,
             seed=aug_seed,
             force_noise_first=force_noise_first,
             require_freq_or_blur=require_freq_or_blur,
@@ -531,13 +626,13 @@ class SAFERViewModule(nn.Module):
             impl = _barlow_twins_loss if self.cc_impl == "fast" else _barlow_twins_loss_einsum
             return impl(feats, self.offdiag_weight)
         _, cc_weights = pooler.pool(self.cc_view_pool)
-        pooled_feats = _pool_features(feats, cc_weights if self.use_view_weights else None)
+        pooled_feats = _pool_features(feats, cc_weights if self.use_pool_weights_for_losses else None)
         return _barlow_twins_against_pooled(
             feats,
             pooled_feats,
             offdiag_weight=self.offdiag_weight,
             eps=1e-12,
-            view_weights=cc_weights if self.use_view_weights else None,
+            view_weights=cc_weights if self.use_pool_weights_for_losses else None,
             impl=self.cc_impl,
         )
 
@@ -548,7 +643,7 @@ class SAFERViewModule(nn.Module):
         return _js_divergence(
             probs,
             ref_probs=js_prob if self.js_mode == "pooled" else None,
-            view_weights=js_weights if self.use_view_weights else None,
+            view_weights=js_weights if self.use_pool_weights_for_losses else None,
             mode=self.js_mode,
         )
 
@@ -588,6 +683,12 @@ class SAFERViewModule(nn.Module):
             features=feats_bt,
             primary_pool=self.primary_view_pool,
             use_weights=self.use_view_weights,
+            include_original=self.include_original,
+            adaptive_alpha_mode=self.adaptive_alpha_mode,
+            adaptive_alpha_conf_threshold=self.adaptive_alpha_conf_threshold,
+            adaptive_alpha_attack_value=self.adaptive_alpha_attack_value,
+            adaptive_alpha_clean_value=self.adaptive_alpha_clean_value,
+            adaptive_alpha_attack_high_conf=self.adaptive_alpha_attack_high_conf,
         )
         base_prob, base_weights = pooler.pool(self.primary_view_pool)
         js_loss = self._js_loss(probs, pooler)
@@ -603,4 +704,7 @@ class SAFERViewModule(nn.Module):
             js_loss=js_loss,
             cc_loss=cc_loss,
             pooler=pooler,
+            adaptive_alpha=pooler.adaptive_alpha,
+            attack_confidence=pooler.attack_confidence,
+            attack_detected=pooler.attack_detected,
         )

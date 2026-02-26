@@ -211,7 +211,6 @@ class SAFERAugmenter:
         max_ops: cap on how many operations to include in one pipeline (None = unlimited).
         prob: Bernoulli probability per augmentation.
         seed: optional seed for determinism.
-        sample_params_per_image: if True, resample augmentation parameters per image.
         force_noise_first: ensure the noise_op is the first operation in the pipeline.
         require_freq_or_blur: enforce at least one frequency/blur op per pipeline.
         noise_op: name of the noise operation to place first when forced.
@@ -232,7 +231,6 @@ class SAFERAugmenter:
         augmentations: Optional[Sequence[str]] = None,
         max_ops: Optional[int] = None,
         prob: float = 0.7,
-        sample_params_per_image: bool = False,
         seed: Optional[int] = None,
         force_noise_first: bool = False,
         require_freq_or_blur: bool = False,
@@ -253,7 +251,6 @@ class SAFERAugmenter:
         self.num_views = num_views
         self.max_ops = max_ops
         self.prob = prob
-        self.sample_params_per_image = bool(sample_params_per_image)
         seed_value = None if seed is None or seed < 0 else int(seed)
         self.rng = random.Random(seed_value)
         self.registry = _build_registry()
@@ -533,30 +530,19 @@ class SAFERAugmenter:
         if log_images:
             self._log_lines = []
         for view_idx, ops in enumerate(pipelines):
-            if self.sample_params_per_image:
-                augmented = []
-                for i in range(b):
-                    image_ops = self._resample_params(ops)
-                    if debug_images and i < debug_count:
-                        print(
-                            f"SAFERAugmenter view {view_idx} image {i}: "
-                            f"{self._format_pipeline(image_ops)}"
-                        )
-                    if log_images and i < log_count:
-                        self._log_lines.append(
-                            f"SAFERAugmenter view {view_idx} image {i}: {self._format_pipeline(image_ops)}"
-                        )
-                    augmented.append(self._apply_ops(x[i], image_ops))
-            else:
-                if debug_images:
-                    formatted = self._format_pipeline(ops)
-                    for i in range(debug_count):
-                        print(f"SAFERAugmenter view {view_idx} image {i}: {formatted}")
-                if log_images:
-                    self._log_lines.append(
-                        f"SAFERAugmenter view {view_idx}: {self._format_pipeline(ops)}"
+            augmented = []
+            for i in range(b):
+                image_ops = self._resample_params(ops)
+                if debug_images and i < debug_count:
+                    print(
+                        f"SAFERAugmenter view {view_idx} image {i}: "
+                        f"{self._format_pipeline(image_ops)}"
                     )
-                augmented = [self._apply_ops(x[i], ops) for i in range(b)]
+                if log_images and i < log_count:
+                    self._log_lines.append(
+                        f"SAFERAugmenter view {view_idx} image {i}: {self._format_pipeline(image_ops)}"
+                    )
+                augmented.append(self._apply_ops(x[i], image_ops))
             if not augmented:
                 stacked = x.clone()
             else:

@@ -22,6 +22,7 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "Tent": {
         #"lr": 1e-3,
         "lr": 1e-4,
+        "update_param": "tent",
     },
     "PL": {
         #"lr": 1e-5,
@@ -36,21 +37,6 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "TSD": {
         "lr": 1e-4,
         "filter_K": 100,
-    },
-    "TTA3": {
-        "lr": 1e-3,
-        "lam_flat": 0,
-        "lam_adv": 0,
-        "lam_cr": 0,
-        "lam_pl": 0,
-        "cr_start": 0,
-        "update_param": "tent",
-        "use_mi": "em",
-        "ema": 0.9,
-        "lam_reg": 0.001,
-        "reg_type": "klprob",
-        "x_lr": 0.0001,
-        "x_steps": 3,
     },
     "SAFER": {
         "lr": 1e-4,
@@ -72,6 +58,11 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "s_js_mode": "pooled",
         "s_js_view_pool": "matching",
         "s_view_weighting": 1,
+        "s_alpha_mode": "none",
+        "s_alpha_conf_threshold": 0.99,
+        "s_alpha_attack_value": 0.0,
+        "s_alpha_clean_value": 1.0,
+        "s_alpha_attack_high_conf": 1,
         "s_cc_mode": "pairwise",
         "s_cc_view_pool": "matching",
         "s_tta_loss": "none",
