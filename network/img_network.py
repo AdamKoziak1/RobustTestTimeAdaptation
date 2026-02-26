@@ -270,10 +270,9 @@ class ResBaseNuc(nn.Module):
         """
         B, C, H, W = feat.shape
         M = feat.view(B, C, H * W)                    # (B, C, HW)
-        # svdvals is batched over B
-        s = torch.linalg.svdvals(M)                   # (B, min(C, HW))
-        nuc_norm = (s.sum(-1)/(C*H*W)).mean()   
-        return nuc_norm              
+        nuc_per_sample = torch.linalg.matrix_norm(M, ord="nuc", dim=(-2, -1))
+        nuc_norm = (nuc_per_sample / (C * H * W)).mean()
+        return nuc_norm
 
     def _accumulate(self, x: torch.Tensor, x_after: torch.Tensor):
         nuc= self._batch_nuclear_norm(x)
@@ -322,4 +321,3 @@ class ResBaseNuc(nn.Module):
         x = self.avgpool(x)
         x = x.view(x.size(0), -1)
         return x
-

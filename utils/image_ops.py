@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.io import image as tv_image
 from utils.fft import FFTDrop2D
-from utils.svd import SVDDrop2D
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -208,8 +207,6 @@ class InputDefense(nn.Module):
         jpeg_quality: int = 100,
         jpeg_backprop: str = "exact",
         gauss_sigma: float = 0.0,
-        svd_rank_ratio: float = 1.0,
-        svd_mode: str = "spatial",
         fft_keep_ratio: float = 1.0,
         fft_mode: str = "spatial",
         fft_alpha: float = 1.0,
@@ -224,15 +221,7 @@ class InputDefense(nn.Module):
         )
         self.blur = GaussianBlur2D(gauss_sigma) if gauss_sigma > 0 else None
 
-        if svd_rank_ratio < 1.0:
-            self.svd = SVDDrop2D(
-                rank_ratio=svd_rank_ratio,
-                mode=svd_mode,
-                backprop_mode="exact",
-            )
-            self.fft = None
-        elif fft_keep_ratio < 1.0:
-            self.svd = None
+        if fft_keep_ratio < 1.0:
             self.fft = FFTDrop2D(
                 keep_ratio=fft_keep_ratio,
                 mode=fft_mode,
@@ -242,7 +231,6 @@ class InputDefense(nn.Module):
                 learn_alpha=fft_learn_alpha,
             )
         else:
-            self.svd = None
             self.fft = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
@@ -250,8 +238,6 @@ class InputDefense(nn.Module):
             x = self.jpeg(x)
         if self.blur is not None:
             x = self.blur(x)
-        if self.svd is not None:
-            x = self.svd(x)
         if self.fft is not None:
             x = self.fft(x)
         return x

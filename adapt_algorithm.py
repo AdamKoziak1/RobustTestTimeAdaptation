@@ -11,7 +11,6 @@ import torchvision.transforms as tvT
 import torchvision.transforms.functional as tvF
 from torchvision.models.feature_extraction import create_feature_extractor
 from torch.distributions import Beta
-from utils.svd import SVDDrop2D
 from utils.fft import FFTDrop2D
 from utils.image_ops import GaussianBlur2D
 from utils.safer_view import SAFERViewModule
@@ -722,7 +721,7 @@ class TTA3(nn.Module):
         self.feat_extractor = create_feature_extractor(
             self.model.featurizer,
             return_nodes,
-            tracer_kwargs={"leaf_modules": [SVDDrop2D, FFTDrop2D, GaussianBlur2D]},
+            tracer_kwargs={"leaf_modules": [FFTDrop2D, GaussianBlur2D]},
         )
         
         self.lam_reg=lam_reg

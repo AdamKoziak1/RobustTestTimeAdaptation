@@ -212,9 +212,6 @@ def build_algorithm(args: argparse.Namespace) -> torch.nn.Module:
     alg_args.fft_feat_use_residual = False
     alg_args.fft_feat_alpha = 1.0
     alg_args.fft_feat_learn_alpha = False
-    alg_args.svd_feat_max_layer = 0
-    alg_args.svd_feat_rank_ratio = 1.0
-    alg_args.svd_feat_mode = "spatial"
     alg_args.nuc_top = 0
     alg_args.nuc_kernel = 3
     alg_args.nuc_after_stem = False

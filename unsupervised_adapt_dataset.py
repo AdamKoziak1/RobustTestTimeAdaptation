@@ -144,7 +144,6 @@ def main():
     args.seed = SEED 
     set_random_seed(args.seed)
     
-    #run_name = f"{args.adapt_alg}_steps{args.steps}_lr{args.lr}_input{args.svd_input_rank_ratio}_feat{args.svd_feat_rank_ratio}_svdmode-{args.svd_feat_mode}"
     run_name = f"{args.adapt_alg}"
 
     wandb_project = os.environ.get("WANDB_PROJECT", "tta3_sweeps")

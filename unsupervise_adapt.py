@@ -16,7 +16,6 @@ from sklearn.metrics import accuracy_score
 from alg.opt import *
 from alg import alg
 from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
-from utils.svd import SVDDrop2D
 from utils.fft import FFTDrop2D
 from utils.image_ops import GaussianBlur2D, InputDefense
 from adapt_algorithm import collect_params, configure_model
@@ -78,16 +77,13 @@ class InputDefenseWrapper(nn.Module):
 def _build_input_defense(args) -> Optional[nn.Module]:
     use_jpeg = 1 <= args.jpeg_input_quality < 100
     use_gauss = args.gauss_input_sigma > 0
-    use_svd = args.svd_input_rank_ratio < 1.0
-    use_fft = (not use_svd) and (args.fft_input_keep_ratio < 1.0)
-    if not (use_jpeg or use_gauss or use_svd or use_fft):
+    use_fft = args.fft_input_keep_ratio < 1.0
+    if not (use_jpeg or use_gauss or use_fft):
         return None
     return InputDefense(
         jpeg_quality=args.jpeg_input_quality,
         jpeg_backprop=args.jpeg_input_backprop,
         gauss_sigma=args.gauss_input_sigma,
-        svd_rank_ratio=args.svd_input_rank_ratio,
-        svd_mode=args.svd_input_mode,
         fft_keep_ratio=args.fft_input_keep_ratio,
         fft_mode=args.fft_input_mode,
         fft_alpha=args.fft_input_alpha,
@@ -479,12 +475,6 @@ def get_args():
     parser.add_argument("--lora_alpha", type=int, default=8)  
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
 
-    parser.add_argument("--svd_input_rank_ratio", type=float, default=1.0, help="Rank ratio for input SVD projection (1.0 disables it).")
-    parser.add_argument("--svd_input_mode", choices=["spatial","channel"], default="spatial")
-    parser.add_argument("--svd_feat_rank_ratio", type=float, default=1.0, help="proportional rank threshold for feature-map SVD.")
-    parser.add_argument('--svd_feat_max_layer', type=int, default=0, choices=[0,1,2,3,4], help="ResNet block at which to end lowrank (0=off)")
-    parser.add_argument("--svd_feat_mode", choices=["spatial","channel"], default="spatial")
-
     parser.add_argument("--fft_input_keep_ratio", type=float, default=1.0, help="Frequency keep ratio for input FFT filtering (1.0 disables it).")
     parser.add_argument("--fft_input_mode", choices=["spatial", "channel"], default="spatial")
     parser.add_argument("--fft_input_alpha", type=float, default=1.0, help="Residual mix weight for FFT input filtering.")
@@ -522,8 +512,6 @@ def get_args():
 
     
     args = parser.parse_args()
-    if args.svd_input_rank_ratio >=1:
-        args.svd_input_rank_ratio = args.svd_feat_rank_ratio
     preset_overrides = apply_adapt_preset(args, disable=args.disable_preset_hparams)
     if preset_overrides:
         print(f"Applying preset hyperparameters for {args.adapt_alg}: {preset_overrides}")
@@ -655,7 +643,6 @@ def get_args():
         args.s_aug_seed = None
 
     assert args.filter_K in [1,5,20,50,100,-1], "filter_K must be in [1,5,20,50,100,-1]"
-    assert 0.0 <= args.svd_input_rank_ratio <= 1.0, "svd_input_rank_ratio must be in [0,1]"
     assert 0.0 <= args.fft_input_keep_ratio <= 1.0, "fft_input_keep_ratio must be in [0,1]"
     assert 0.0 <= args.fft_feat_keep_ratio <= 1.0, "fft_feat_keep_ratio must be in [0,1]"
     assert args.gauss_input_sigma >= 0.0, "gauss_input_sigma must be non-negative"
@@ -686,11 +673,6 @@ def log_args(args, time_taken_s):
         "attack_fft_alpha": args.attack_fft_alpha,
         "use_adv_source": args.use_adv_source,
         "adv_source_tag": args.adv_source_tag,
-        # "svd_feat_rank_ratio": args.svd_feat_rank_ratio,
-        # "svd_feat_max_layer": args.svd_feat_max_layer,
-        # "svd_feat_mode": args.svd_feat_mode,
-        # "svd_input_rank_ratio": args.svd_input_rank_ratio,
-        # "svd_input_mode": args.svd_input_mode,
         "fft_feat_keep_ratio": args.fft_feat_keep_ratio,
         "fft_feat_max_layer": args.fft_feat_max_layer,
         "fft_feat_alpha": args.fft_feat_alpha,
@@ -862,15 +844,6 @@ def adapt_loader(args):
 
 
 def make_adapt_model(args, algorithm):
-    if args.svd_feat_max_layer > 0 and args.svd_feat_rank_ratio < 1.0: 
-        rank_ratio = args.svd_feat_rank_ratio
-        mode = args.svd_feat_mode
-        feat = algorithm.featurizer 
-        feat.layer1 = nn.Sequential(feat.layer1, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 1 else feat.layer1
-        feat.layer2 = nn.Sequential(feat.layer2, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 2 else feat.layer2
-        feat.layer3 = nn.Sequential(feat.layer3, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 3 else feat.layer3
-        feat.layer4 = nn.Sequential(feat.layer4, SVDDrop2D(rank_ratio, mode)) if args.svd_feat_max_layer >= 4 else feat.layer4
-
     if args.fft_feat_max_layer > 0 and args.fft_feat_keep_ratio < 1.0:
         keep_ratio = args.fft_feat_keep_ratio
         mode = args.fft_feat_mode
