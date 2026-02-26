@@ -85,10 +85,7 @@ def _build_input_defense(args) -> Optional[nn.Module]:
         jpeg_backprop=args.jpeg_input_backprop,
         gauss_sigma=args.gauss_input_sigma,
         fft_keep_ratio=args.fft_input_keep_ratio,
-        fft_mode=args.fft_input_mode,
         fft_alpha=args.fft_input_alpha,
-        fft_use_residual=bool(args.fft_input_use_residual),
-        fft_learn_alpha=bool(args.fft_input_learn_alpha),
     )
 
 
@@ -476,16 +473,10 @@ def get_args():
     parser.add_argument("--lora_dropout", type=float, default=0.0)  
 
     parser.add_argument("--fft_input_keep_ratio", type=float, default=1.0, help="Frequency keep ratio for input FFT filtering (1.0 disables it).")
-    parser.add_argument("--fft_input_mode", choices=["spatial", "channel"], default="spatial")
     parser.add_argument("--fft_input_alpha", type=float, default=1.0, help="Residual mix weight for FFT input filtering.")
-    parser.add_argument("--fft_input_learn_alpha", type=int, default=0, choices=[0,1], help="Learn residual alpha for FFT input filtering (1 enables).")
-    parser.add_argument("--fft_input_use_residual", type=int, default=1, choices=[0,1], help="Enable residual mixing for FFT input filtering (1 enables).")
     parser.add_argument("--fft_feat_keep_ratio", type=float, default=1.0, help="Frequency keep ratio for FFT feature filtering (1.0 disables it).")
     parser.add_argument('--fft_feat_max_layer', type=int, default=1, choices=[0,1,2,3,4], help="ResNet block at which to end FFT filtering (0=off)")
-    parser.add_argument("--fft_feat_mode", choices=["spatial", "channel"], default="spatial")
     parser.add_argument("--fft_feat_alpha", type=float, default=1.0, help="Residual mix weight for FFT feature filtering.")
-    parser.add_argument("--fft_feat_learn_alpha", type=int, default=0, choices=[0,1], help="Learn residual alpha for FFT feature filtering (1 enables).")
-    parser.add_argument("--fft_feat_use_residual", type=int, default=1, choices=[0,1], help="Enable residual mixing for FFT feature filtering (1 enables).")
     parser.add_argument("--gauss_input_sigma", type=float, default=0.0, help="Gaussian blur σ for input preprocessing (0 disables).")
     parser.add_argument("--gauss_feat_sigma", type=float, default=0.0, help="Gaussian blur σ inserted after the first conv block (0 disables).")
     parser.add_argument("--jpeg_input_quality", type=int, default=100, help="JPEG quality (1-100) for input re-encoding (100 disables).")
@@ -552,11 +543,6 @@ def get_args():
     args.use_mi = args.use_mi == 'mi'
 
     args = img_param_init(args)
-
-    args.fft_input_use_residual = bool(args.fft_input_use_residual)
-    args.fft_input_learn_alpha = bool(args.fft_input_learn_alpha)
-    args.fft_feat_use_residual = bool(args.fft_feat_use_residual)
-    args.fft_feat_learn_alpha = bool(args.fft_feat_learn_alpha)
 
     args.s_include_original = bool(args.s_include_original)
     args.s_feat_normalize = bool(args.s_feat_normalize)
@@ -846,16 +832,13 @@ def adapt_loader(args):
 def make_adapt_model(args, algorithm):
     if args.fft_feat_max_layer > 0 and args.fft_feat_keep_ratio < 1.0:
         keep_ratio = args.fft_feat_keep_ratio
-        mode = args.fft_feat_mode
-        use_residual = args.fft_feat_use_residual
         alpha = args.fft_feat_alpha
-        learn_alpha = args.fft_feat_learn_alpha
         feat = algorithm.featurizer
 
-        feat.layer1 = nn.Sequential(feat.layer1, FFTDrop2D(keep_ratio, mode=mode, use_residual=use_residual, alpha=alpha, learn_alpha=learn_alpha)) if args.fft_feat_max_layer >= 1 else feat.layer1
-        feat.layer2 = nn.Sequential(feat.layer2, FFTDrop2D(keep_ratio, mode=mode, use_residual=use_residual, alpha=alpha, learn_alpha=learn_alpha)) if args.fft_feat_max_layer >= 2 else feat.layer2
-        feat.layer3 = nn.Sequential(feat.layer3, FFTDrop2D(keep_ratio, mode=mode, use_residual=use_residual, alpha=alpha, learn_alpha=learn_alpha)) if args.fft_feat_max_layer >= 3 else feat.layer3
-        feat.layer4 = nn.Sequential(feat.layer4, FFTDrop2D(keep_ratio, mode=mode, use_residual=use_residual, alpha=alpha, learn_alpha=learn_alpha)) if args.fft_feat_max_layer >= 4 else feat.layer4
+        feat.layer1 = nn.Sequential(feat.layer1, FFTDrop2D(keep_ratio, alpha=alpha)) if args.fft_feat_max_layer >= 1 else feat.layer1
+        feat.layer2 = nn.Sequential(feat.layer2, FFTDrop2D(keep_ratio, alpha=alpha)) if args.fft_feat_max_layer >= 2 else feat.layer2
+        feat.layer3 = nn.Sequential(feat.layer3, FFTDrop2D(keep_ratio, alpha=alpha)) if args.fft_feat_max_layer >= 3 else feat.layer3
+        feat.layer4 = nn.Sequential(feat.layer4, FFTDrop2D(keep_ratio, alpha=alpha)) if args.fft_feat_max_layer >= 4 else feat.layer4
     if args.gauss_feat_sigma > 0:
         feat = algorithm.featurizer
         blur = GaussianBlur2D(args.gauss_feat_sigma)

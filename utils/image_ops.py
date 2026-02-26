@@ -208,10 +208,7 @@ class InputDefense(nn.Module):
         jpeg_backprop: str = "exact",
         gauss_sigma: float = 0.0,
         fft_keep_ratio: float = 1.0,
-        fft_mode: str = "spatial",
         fft_alpha: float = 1.0,
-        fft_use_residual: bool = True,
-        fft_learn_alpha: bool = False,
     ) -> None:
         super().__init__()
         self.jpeg = (
@@ -224,11 +221,8 @@ class InputDefense(nn.Module):
         if fft_keep_ratio < 1.0:
             self.fft = FFTDrop2D(
                 keep_ratio=fft_keep_ratio,
-                mode=fft_mode,
                 backprop_mode="exact",
-                use_residual=fft_use_residual,
                 alpha=fft_alpha,
-                learn_alpha=fft_learn_alpha,
             )
         else:
             self.fft = None

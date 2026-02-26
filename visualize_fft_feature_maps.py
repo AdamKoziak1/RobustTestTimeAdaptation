@@ -57,22 +57,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-path", default=None, help="Optional explicit checkpoint to load")
 
     parser.add_argument("--fft-input-keep-ratio", type=float, default=0.5, help="Keep ratio for input FFT filter")
-    parser.add_argument("--fft-input-mode", choices=["spatial", "channel"], default="spatial")
     parser.add_argument("--fft-input-alpha", type=float, default=1.0, help="Residual mix weight for input FFT")
-    parser.add_argument(
-        "--fft-input-use-residual",
-        type=int,
-        default=1,
-        choices=[0, 1],
-        help="Use residual mixing for input FFT",
-    )
-    parser.add_argument(
-        "--fft-input-learn-alpha",
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="Learn residual alpha for input FFT",
-    )
     parser.add_argument(
         "--skip-input-fft",
         action="store_true",
@@ -82,22 +67,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--fft-feature-keep-ratio", type=float, default=0.5, help="Keep ratio for feature FFT filter"
     )
-    parser.add_argument("--fft-feature-mode", choices=["spatial", "channel"], default="spatial")
     parser.add_argument("--fft-feature-alpha", type=float, default=1.0, help="Residual mix weight for feature FFT")
-    parser.add_argument(
-        "--fft-feature-use-residual",
-        type=int,
-        default=1,
-        choices=[0, 1],
-        help="Use residual mixing for feature FFT",
-    )
-    parser.add_argument(
-        "--fft-feature-learn-alpha",
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="Learn residual alpha for feature FFT",
-    )
     parser.add_argument(
         "--skip-feature-fft",
         action="store_true",
@@ -208,10 +178,7 @@ def build_algorithm(args: argparse.Namespace) -> torch.nn.Module:
     alg_args = argparse.Namespace(**vars(args))
     alg_args.fft_feat_max_layer = 0
     alg_args.fft_feat_keep_ratio = 1.0
-    alg_args.fft_feat_mode = "spatial"
-    alg_args.fft_feat_use_residual = False
     alg_args.fft_feat_alpha = 1.0
-    alg_args.fft_feat_learn_alpha = False
     alg_args.nuc_top = 0
     alg_args.nuc_kernel = 3
     alg_args.nuc_after_stem = False
@@ -241,21 +208,15 @@ def build_algorithm(args: argparse.Namespace) -> torch.nn.Module:
 
 def make_fft_module(
     keep_ratio: float,
-    mode: str,
-    use_residual: bool,
     alpha: float,
-    learn_alpha: bool,
     device: torch.device,
 ) -> Optional[FFTDrop2D]:
     if keep_ratio >= 1.0:
         return None
     module = FFTDrop2D(
         keep_ratio=keep_ratio,
-        mode=mode,
         backprop_mode="exact",
-        use_residual=use_residual,
         alpha=alpha,
-        learn_alpha=learn_alpha,
     )
     module.to(device)
     module.eval()
@@ -389,10 +350,6 @@ def maybe_log_wandb(
 
 def main() -> None:
     args = parse_args()
-    args.fft_input_use_residual = bool(args.fft_input_use_residual)
-    args.fft_input_learn_alpha = bool(args.fft_input_learn_alpha)
-    args.fft_feature_use_residual = bool(args.fft_feature_use_residual)
-    args.fft_feature_learn_alpha = bool(args.fft_feature_learn_alpha)
 
     device = select_device(args.device)
     if device.type == "cpu" and args.device != "cpu":
@@ -414,18 +371,12 @@ def main() -> None:
 
     input_fft_module = make_fft_module(
         args.fft_input_keep_ratio,
-        args.fft_input_mode,
-        args.fft_input_use_residual,
         args.fft_input_alpha,
-        args.fft_input_learn_alpha,
         device,
     )
     feature_fft_module = make_fft_module(
         args.fft_feature_keep_ratio,
-        args.fft_feature_mode,
-        args.fft_feature_use_residual,
         args.fft_feature_alpha,
-        args.fft_feature_learn_alpha,
         device,
     )
 
