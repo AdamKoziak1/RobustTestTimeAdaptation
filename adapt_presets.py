@@ -4,6 +4,7 @@ import sys
 from typing import Dict, Iterable, Mapping
 
 ADAPT_ALG_ORDER = [
+    "SAFER",
     "TeSLA",
     "TSD",
     "Tent",
@@ -14,18 +15,14 @@ ADAPT_ALG_ORDER = [
     # "PLC",
     # "SHOT-IM",
     # "TTA3",
-    # "SAFER",
     # "AMTDC",
 ]
 
 ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "Tent": {
-        #"lr": 1e-3,
-        "lr": 1e-4,
-        "update_param": "tent",
+        "lr": 1e-3,
     },
     "PL": {
-        #"lr": 1e-5,
         "lr": 1e-4,
     },
     "SHOT-IM": {
@@ -37,57 +34,41 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "TSD": {
         "lr": 1e-4,
         "filter_K": 100,
+        "update_param": "all"
     },
-    "SAFER": {
-        "lr": 1e-4,
-        "s_num_views": 4,
-        "s_aug_prob": 0.7,
-        "s_aug_max_ops": 4,
-        "s_js_weight": 1.0,
-        "s_cc_weight": 1.0,
-        "s_cc_offdiag": 0.01,
-        "s_include_original": 1,
-        "s_aug_force_noise": 1,
-        "s_aug_require_freq_blur": 1,
-        "s_cm_weight": 0.0,
-        "s_sup_type": "none",
-        "s_sup_weight": 0.0,
-        "s_sup_view_pool": "mean",
-        "s_sup_pl_weighted": 0,
-        "s_sup_conf_scale": 1,
-        "s_js_mode": "pooled",
-        "s_js_view_pool": "matching",
-        "s_view_weighting": 1,
-        "s_alpha_mode": "none",
-        "s_alpha_conf_threshold": 0.99,
-        "s_alpha_attack_value": 0.0,
-        "s_alpha_clean_value": 1.0,
-        "s_alpha_attack_high_conf": 1,
-        "s_cc_mode": "pairwise",
-        "s_cc_view_pool": "matching",
-        "s_tta_loss": "none",
-        "s_tta_weight": 0.0,
-        "s_tta_target": "views",
-        "s_tta_view_pool": "matching",
-        "update_param": "tent",
-    },
-    "TeSLA": {
-        "lr": 1e-4,
-        "tesla_sub_policy_dim": 2,
-        "tesla_aug_mult": 1,
-        "tesla_aug_mult_easy": 4,
-        "tesla_lmb_kl": 1.0,
-        "tesla_lmb_norm": 1.0,
-        "tesla_ema": 0.99,
-        "tesla_no_kl_hard": 0,
-        "tesla_nn_queue_size": 256,
-        "tesla_n_neigh": 10,
-        "tesla_pl_ce": 0,
-        "tesla_pl_fce": 0,
-        "tesla_hard_augment": "optimal",
-        "tesla_view_pool": "mean",
-        "tesla_js_weight": 0.0,
-    },
+    # "SAFER": {
+    #     "lr": 1e-4,
+    #     "s_num_views": 4,
+    #     "s_aug_prob": 1,
+    #     "s_aug_max_ops": 4,
+    #     "s_js_weight": 1.0,
+    #     "s_cc_weight": 1.0,
+    #     "s_cc_offdiag": 0.005,
+    #     "s_include_original": 1,
+    #     "s_aug_force_noise": 1,
+    #     "s_aug_require_freq_blur": 1,
+    #     "s_cm_weight": 0.0,
+    #     "s_sup_type": "none",
+    #     "s_sup_weight": 0.0,
+    #     "s_sup_view_pool": "mean",
+    #     "s_sup_pl_weighted": 0,
+    #     "s_sup_conf_scale": 1,
+    #     "s_js_mode": "pooled",
+    #     "s_js_view_pool": "matching",
+    #     "s_view_weighting": 1,
+    #     "s_alpha_mode": "none",
+    #     "s_alpha_conf_threshold": 0.99,
+    #     "s_alpha_attack_value": 0.0,
+    #     "s_alpha_clean_value": 1.0,
+    #     "s_alpha_attack_high_conf": 1,
+    #     "s_cc_mode": "pairwise",
+    #     "s_cc_view_pool": "matching",
+    #     "s_tta_loss": "none",
+    #     "s_tta_weight": 0.0,
+    #     "s_tta_target": "views",
+    #     "s_tta_view_pool": "matching",
+    #     "update_param": "tent",
+    # },
     "AMTDC": {
         "lr": 1e-4,
         "mt_alpha": 0.02,
@@ -130,8 +111,8 @@ def apply_adapt_preset(args, disable: bool = False, argv: Iterable[str] | None =
 
     applied = {}
     for hyperparam, value in preset.items():
-        if hyperparam in explicit:
-            continue
+        # if hyperparam in explicit:
+        #     continue
         setattr(args, hyperparam, value)
         applied[hyperparam] = value
 

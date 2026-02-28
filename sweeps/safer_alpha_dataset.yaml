@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py
 project: safer
-name: safer_aug_isolation
+name: safer_alpha_dataset
 method: grid
 metric:
   name: acc_0
@@ -16,7 +16,7 @@ parameters:
     value: "SAFER"
 
   update_param:
-    values: ["tent", "all"]
+    value: "tent"
 
   lr:
     value: 0.0001
@@ -24,37 +24,33 @@ parameters:
   steps:
     value: 1
 
-  # Augmentation pipeline sweep
+  # Keep the rest of SAFER fixed so the adaptive-alpha knobs are isolated.
   s_wrap_alg:
     value: 0
   s_num_views:
-    values: [2, 3, 4]
+    value: 4
   s_aug_prob:
-    values: [1.0]
+    value: 1.0
   s_aug_max_ops:
-    values: [2, 4, 8]
+    value: 4
   s_aug_seed:
     value: 123
   s_aug_force_noise:
-    values: [0, 1]
-    #value: 0
+    value: 0
   s_aug_require_freq_blur:
     value: 1
-    #values: [0, 1]
   s_input_is_normalized:
     value: -1
 
-  # Keep losses at SAFER defaults while varying augmentation
   s_js_weight:
     value: 1.0
   s_js_mode:
     value: "pooled"
   s_js_view_pool:
-    #values: ["matching", "entropy", "cc", "cc_drop"]
-    values: ["matching", "cc_drop"]
+    value: "matching"
 
   s_cc_weight:
-    value: 1.0
+    value: 0.01
   s_cc_mode:
     value: "pairwise"
   s_cc_view_pool:
@@ -84,8 +80,19 @@ parameters:
     value: "views"
   s_tta_view_pool:
     value: "matching"
-
   s_sup_view_pool:
     value: "mean"
   s_view_weighting:
+    value: 1
+
+  # SAFER adaptive-alpha sweep
+  s_alpha_mode:
+    value: "fixed_conf_threshold"
+  s_alpha_conf_threshold:
+    values: [0.8, 0.9, 0.99]
+  s_alpha_attack_value:
+    values: [0.0, 0.25, 0.5]
+  s_alpha_clean_value:
+    values: [0.5, 0.75, 1.0]
+  s_alpha_attack_high_conf:
     value: 1

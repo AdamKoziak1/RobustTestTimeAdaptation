@@ -191,11 +191,10 @@ class JPEGCompression(nn.Module):
                 comp = (comp - mean) / std
 
             comp = comp.to(dtype=dtype, device=device)
-
-            if self.backprop_mode == "bpda":
-                # Forward uses JPEG output; backward treats JPEG as identity.
-                return xb + (comp - xb).detach()
-            return comp
+        if self.backprop_mode == "bpda":
+            # Forward uses JPEG output; backward treats JPEG as identity.
+            return xb + (comp - xb).detach()
+        return comp
 
 
 class InputDefense(nn.Module):

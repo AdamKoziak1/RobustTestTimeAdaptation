@@ -7,8 +7,6 @@ metric:
   goal: maximize
 
 parameters:
-  attack_source:
-    value: precomputed
   attack:
     value: linf_eps-8.0_steps-20
   attack_rate:
@@ -30,7 +28,7 @@ parameters:
   s_wrap_alg:
     value: 0
   s_num_views:
-    values: [5]
+    values: [4]
   s_aug_prob:
     value: 1.0
   s_aug_max_ops:
@@ -55,13 +53,13 @@ parameters:
     values: ["matching", "entropy", "cc", "cc_drop"]
 
   s_cc_weight:
-    values: [0.0, 0.1, 1.0]
+    values: [0.0, 0.001, 0.1]
   s_cc_mode:
     value: "pairwise"
   s_cc_view_pool:
     value: "matching"
   s_cc_offdiag:
-    values: [0.01, 0.1]
+    values: [0.005, 0.01]
   s_cc_impl:
     value: "fast"
   s_feat_normalize:

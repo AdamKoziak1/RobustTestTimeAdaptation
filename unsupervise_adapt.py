@@ -153,7 +153,7 @@ def get_args():
     parser.add_argument("--s_num_views", type=int, default=4, help="Number of augmented SAFER views per input.")
     parser.add_argument("--s_include_original", type=int, default=1, choices=[0,1], help="Include original sample as one of the SAFER views (1 enables).")
     parser.add_argument("--s_aug_prob", type=float, default=1, help="Probability of sampling each augmentation in the SAFER pipeline.")
-    parser.add_argument("--s_aug_max_ops", type=int, default=4, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
+    parser.add_argument("--s_aug_max_ops", type=int, default=2, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
     parser.add_argument("--s_aug_list", type=str, nargs="+", default=None, help="Optional custom list of SAFER augmentations to sample from.")
     parser.add_argument(
         "--s_aug_debug",
@@ -499,7 +499,7 @@ def get_args():
     parser.add_argument('--ema', type=float, default=0.99, help='EMA coefficient for student-teacher distillation')
     parser.add_argument('--x_lr', type=float, default=0.1, help='learning rate for x_tilde update')
     parser.add_argument('--x_steps', type=int, default=3, help='number of steps for x_tilde update')
-    parser.add_argument('--disable_preset_hparams', type=int, default=1, choices=[0,1], help='Disable auto-selection of preset hyperparameters based on adapt_alg.')
+    parser.add_argument('--disable_preset_hparams', type=int, default=0, choices=[0,1], help='Disable auto-selection of preset hyperparameters based on adapt_alg.')
 
     
     args = parser.parse_args()
@@ -959,11 +959,6 @@ def make_adapt_model(args, algorithm):
             for m in algorithm.modules():
                 if isinstance(m, nn.BatchNorm2d):
                     m.requires_grad_(True)
-            sum_params = sum([p.nelement() for p in params])
-        elif args.update_param == "tent":
-            algorithm = configure_model(algorithm)
-            params, _ = collect_params(algorithm)
-            optimizer = torch.optim.Adam(params, lr=args.lr)
             sum_params = sum([p.nelement() for p in params])
         elif args.update_param == "body":
             # only update encoder

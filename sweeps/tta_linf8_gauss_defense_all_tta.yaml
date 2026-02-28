@@ -1,0 +1,29 @@
+program: unsupervise_adapt.py
+project: safer
+name: linf8_gauss_defense_all_tta
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    values: ["ERM", "Tent", "PL", "TSD", "TeSLA"]
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+  test_envs:
+    values: [0, 1, 2, 3]
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    values: [0, 50, 100]
+  gauss_input_sigma:
+    value: 0.5
+  gauss_feat_sigma:
+    value: 0.5
+  seeds:
+    value: "0,1,2"
+  update_param:
+    value: "tent"
+  batch_size:
+    value: 64

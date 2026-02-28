@@ -1851,7 +1851,23 @@ class SAFER(nn.Module):
         return torch.tensor(0.0, device=logits.device)
 
     def forward_and_adapt(self, x, model, optimizer):
-        view_out = self.view_module(x, model)
+        sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
+        tta_active = self.tta_loss != "none" and self.tta_weight > 1e-8
+        has_grad_objective = any(
+            (
+                self.js_weight > 1e-8,
+                self.cc_weight > 1e-8,
+                self.cm_weight > 1e-8,
+                sup_active,
+                tta_active,
+            )
+        )
+
+        if has_grad_objective:
+            view_out = self.view_module(x, model)
+        else:
+            with torch.no_grad():
+                view_out = self.view_module(x, model)
         logits = view_out.logits
         probs = view_out.probs
         feats_bt = view_out.features
@@ -1869,7 +1885,6 @@ class SAFER(nn.Module):
             cm_loss = self.class_marginal(base_prob)
 
         sup_loss = torch.tensor(0.0, device=logits.device)
-        sup_active = self.sup_mode != "none" and self.sup_weight > 1e-8
         if sup_active:
             sup_weights = base_weights if (self.sup_pl_weighted and self.use_view_weights) else None
             if self.sup_mode == "pl":
@@ -1888,7 +1903,7 @@ class SAFER(nn.Module):
                 sup_loss = _entropy_minimization_loss(base_prob)
 
         tta_loss = torch.tensor(0.0, device=logits.device)
-        if self.tta_loss != "none" and self.tta_weight > 1e-8:
+        if tta_active:
             tta_prob, tta_weights = pooler.pool(self.tta_view_pool)
             tta_loss = self._compute_tta_loss(
                 logits=logits,
@@ -1922,9 +1937,10 @@ class SAFER(nn.Module):
             log_payload["SAFER/attack_detect_rate"] = attack_detected.float().mean().item()
         wandb.log(log_payload)
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        if loss.requires_grad:
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
         return base_prob
 

@@ -7,8 +7,6 @@ metric:
   goal: maximize
 
 parameters:
-  attack_source:
-    value: precomputed
   attack:
     value: linf_eps-8.0_steps-20
 
@@ -66,7 +64,7 @@ parameters:
   s_cc_view_pool:
     value: "matching"
   s_cc_offdiag:
-    value: 0.01
+    value: 0.005
   s_cc_impl:
     value: "fast"
   s_feat_normalize:

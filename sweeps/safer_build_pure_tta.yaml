@@ -7,8 +7,6 @@ metric:
   goal: maximize
 
 parameters:
-  attack_source:
-    value: precomputed
   attack:
     value: linf_eps-8.0_steps-20
 

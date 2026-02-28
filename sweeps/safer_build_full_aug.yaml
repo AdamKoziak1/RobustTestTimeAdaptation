@@ -33,7 +33,7 @@ parameters:
   s_aug_fixed_op:
     value: "none"
   s_aug_prob:
-    value: 0.7
+    value: 1
   s_aug_max_ops:
     value: 4
   s_aug_seed:

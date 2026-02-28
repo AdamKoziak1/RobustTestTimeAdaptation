@@ -1,0 +1,9 @@
+label	config	description
+alg_n	sweeps/tta_linf8_tta_algs_all_domains.yaml	Linf8 baseline across main TTA methods
++JPEG	sweeps/tta_linf8_jpeg_defense_all_tta.yaml	Linf8 with JPEG defense
++FFT	sweeps/tta_linf8_fft_defense_all_tta.yaml	Linf8 with FFT defense
++Blur	sweeps/tta_linf8_gauss_defense_all_tta.yaml	Linf8 with Gaussian Blur defense
++Adv	sweeps/tta_linf8_adv_source_all_tta.yaml	Linf8 with adversarially trained source weights
+safer_wrap	sweeps/safer_with_tta_test_run.yaml	SAFER wrapper sanity sweep over main baselines
+safer_module	sweeps/safer_aug_with_tta_safe.yaml	SAFER wrapper-module parameter sweep
+safer_loss	sweeps/safer_losses.yaml	SAFER standalone loss sweep

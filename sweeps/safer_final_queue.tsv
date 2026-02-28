@@ -1,19 +1,12 @@
 label	config	description
-bb_linf_base	sweeps/tta_precomputed_linf8_tta_algs_all_domains.yaml	Precomputed Linf8 baseline across main TTA methods
-bb_linf_fft	sweeps/tta_precomputed_linf8_fft_defense_all_tta.yaml	Precomputed Linf8 with FFT defense
-bb_linf_blur	sweeps/tta_precomputed_linf8_blur_defense_all_tta.yaml	Precomputed Linf8 with Gaussian blur defense
-bb_linf_advsrc	sweeps/tta_precomputed_linf8_adv_source_all_tta.yaml	Precomputed Linf8 with adversarially trained source weights
+linf_base	sweeps/tta_linf8_tta_algs_all_domains.yaml	Linf8 baseline across main TTA methods
+linf_jpeg	sweeps/tta_linf8_jpeg_defense_all_tta.yaml	Linf8 with JPEG defense
+linf_fft	sweeps/tta_linf8_fft_defense_all_tta.yaml	Linf8 with FFT defense
+linf_gauss	sweeps/tta_linf8_gauss_defense_all_tta.yaml	Linf8 with Gaussian defense
+linf_advsrc	sweeps/tta_linf8_adv_source_all_tta.yaml	Linf8 with adversarially trained source weights
 safer_standalone_aug	sweeps/safer_aug_isolation.yaml	SAFER standalone augmentation sweep (unsupervised_adapt_dataset.py)
 safer_standalone_loss	sweeps/safer_losses.yaml	SAFER standalone loss sweep (unsupervised_adapt_dataset.py)
 safer_wrap_module	sweeps/safer_aug_with_tta_safe.yaml	SAFER wrapper-module parameter sweep (unsupervised_adapt_dataset.py)
 safer_wrap_sanity	sweeps/safer_with_tta_test_run.yaml	SAFER wrapper sanity sweep over main baselines (unsupervise_adapt.py)
 safer_control_pure_tta	sweeps/safer_build_pure_tta.yaml	Control: no SAFER wrapping/no SAFER augmentation
 safer_control_no_adapt	sweeps/safer_build_no_adapt.yaml	Control: no adaptation
-live_linf_base	sweeps/tta_live_linf8_all_tta.yaml	Live Linf8 baseline across main TTA methods
-live_linf_fft	sweeps/tta_live_linf8_fft_defense_all_tta.yaml	Live Linf8 with FFT defense
-live_linf_blur	sweeps/tta_live_linf8_blur_defense_all_tta.yaml	Live Linf8 with Gaussian blur defense
-live_linf_advsrc	sweeps/tta_live_linf8_adv_source_all_tta.yaml	Live Linf8 with adversarially trained source weights
-bb_l2_base	sweeps/tta_precomputed_l2_all_tta.yaml	Precomputed L2 baseline across main TTA methods
-bb_l2_fft	sweeps/tta_precomputed_l2_fft_defense_all_tta.yaml	Precomputed L2 with FFT defense
-bb_l2_blur	sweeps/tta_precomputed_l2_blur_defense_all_tta.yaml	Precomputed L2 with Gaussian blur defense
-bb_l2_advsrc	sweeps/tta_precomputed_l2_adv_source_all_tta.yaml	Precomputed L2 with adversarially trained source weights

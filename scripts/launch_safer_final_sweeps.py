@@ -36,18 +36,28 @@ def run_wandb_sweep(config_path: str) -> str:
 
 def create_map(queue_path: Path, map_path: Path) -> None:
     rows = load_queue(queue_path)
+    sweep_paths: list[str] = []
     with map_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t")
-        writer.writerow(["label", "config", "description", "sweep_path"])
+        writer.writerow(["label", "config", "description", "sweep_path", "sweep_id"])
         for row in rows:
             label = row["label"]
             config = row["config"]
             desc = row.get("description", "")
             print(f"== [{label}] {config}")
             sweep_path = run_wandb_sweep(config)
-            writer.writerow([label, config, desc, sweep_path])
+            sweep_id = sweep_path.split("/")[-1]
+            writer.writerow([label, config, desc, sweep_path, sweep_id])
+            sweep_paths.append(sweep_path)
             print(f"-> {sweep_path}")
     print(f"Saved: {map_path}")
+    if sweep_paths:
+        sweep_ids = ";".join(path.split("/")[-1] for path in sweep_paths)
+        agent_cmds = "; ".join(f"wandb agent {path}" for path in sweep_paths)
+        print("\nSweep IDs (semicolon-separated):")
+        print(sweep_ids)
+        print("\nAgent commands (semicolon-separated):")
+        print(agent_cmds)
 
 
 def run_agents(map_path: Path) -> None:
