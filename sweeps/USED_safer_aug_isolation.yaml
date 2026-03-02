@@ -16,7 +16,7 @@ parameters:
     value: "SAFER"
 
   update_param:
-    values: ["tent", "all"]
+    values: ["tent"]
 
   lr:
     value: 0.0001
@@ -32,12 +32,11 @@ parameters:
   s_aug_prob:
     values: [1.0]
   s_aug_max_ops:
-    values: [2, 4, 8]
+    values: [2, 3, 4]
   s_aug_seed:
     value: 123
-  s_aug_force_noise:
-    values: [0, 1]
-    #value: 0
+  s_noise_std:
+    values: [-1.0, 0]
   s_aug_require_freq_blur:
     value: 1
     #values: [0, 1]
@@ -51,10 +50,10 @@ parameters:
     value: "pooled"
   s_js_view_pool:
     #values: ["matching", "entropy", "cc", "cc_drop"]
-    values: ["matching", "cc_drop"]
+    values: ["matching"]
 
   s_cc_weight:
-    value: 1.0
+    value: 0.001
   s_cc_mode:
     value: "pairwise"
   s_cc_view_pool:
@@ -77,11 +76,11 @@ parameters:
   s_sup_conf_scale:
     value: 1
   s_tta_loss:
-    value: "none"
+    value: "tent"
   s_tta_weight:
-    value: 0.0
+    values: [0.0, 1.0]
   s_tta_target:
-    value: "views"
+    value: "pooled"
   s_tta_view_pool:
     value: "matching"
 

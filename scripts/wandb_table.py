@@ -235,7 +235,7 @@ def format_cell(
         except (TypeError, ValueError):
             std_val = 0.0
     if std_style == "subscript":
-        return f"{fmt.format(mean_val)}$_{{{fmt.format(std_val)}}}$"
+        return f"{fmt.format(mean_val)}$_{{\\pm {fmt.format(std_val)}}}$"
     return f"{fmt.format(mean_val)}$\\pm${fmt.format(std_val)}"
 
 

@@ -269,11 +269,69 @@ class Tent(nn.Module):
         return outputs
 
 
+def _safer_view_log_payload(view_out) -> dict[str, float]:
+    payload: dict[str, float] = {}
+    adaptive_alpha = view_out.adaptive_alpha
+    alpha_signal = view_out.alpha_signal
+    attack_score = view_out.attack_score
+    attack_confidence = view_out.attack_confidence
+    attack_detected = view_out.attack_detected
+    pred_weights = view_out.pooled_weights
+    base_weights = view_out.loss_pooled_weights
+    orig_margin = view_out.orig_margin
+    aug_margin = view_out.aug_margin
+    orig_entropy = view_out.orig_entropy
+    aug_entropy = view_out.aug_entropy
+    margin_gap = view_out.margin_gap
+    entropy_gap = view_out.entropy_gap
+    prob_disagreement = view_out.prob_disagreement
+    feat_disagreement = view_out.feat_disagreement
+
+    if adaptive_alpha is not None:
+        payload["SAFER/alpha_mean"] = adaptive_alpha.mean().item()
+        payload["SAFER/alpha_min"] = adaptive_alpha.min().item()
+        payload["SAFER/alpha_max"] = adaptive_alpha.max().item()
+    if alpha_signal is not None:
+        payload["SAFER/alpha_signal_mean"] = alpha_signal.mean().item()
+        payload["SAFER/alpha_signal_min"] = alpha_signal.min().item()
+        payload["SAFER/alpha_signal_max"] = alpha_signal.max().item()
+    if attack_score is not None:
+        payload["SAFER/attack_score_mean"] = attack_score.mean().item()
+    if attack_confidence is not None:
+        payload["SAFER/orig_conf_mean"] = attack_confidence.mean().item()
+    if attack_detected is not None:
+        payload["SAFER/attack_detect_rate"] = attack_detected.float().mean().item()
+    if pred_weights is not None:
+        payload["SAFER/final_orig_weight_mean"] = pred_weights[:, 0].mean().item()
+        payload["SAFER/final_aug_weight_mean"] = (1.0 - pred_weights[:, 0]).mean().item()
+    if base_weights is not None:
+        payload["SAFER/loss_orig_weight_mean"] = base_weights[:, 0].mean().item()
+        payload["SAFER/loss_aug_weight_mean"] = (1.0 - base_weights[:, 0]).mean().item()
+    if orig_margin is not None:
+        payload["SAFER/orig_margin_mean"] = orig_margin.mean().item()
+    if aug_margin is not None:
+        payload["SAFER/aug_margin_mean"] = aug_margin.mean().item()
+    if orig_entropy is not None:
+        payload["SAFER/orig_entropy_mean"] = orig_entropy.mean().item()
+    if aug_entropy is not None:
+        payload["SAFER/aug_entropy_mean"] = aug_entropy.mean().item()
+    if margin_gap is not None:
+        payload["SAFER/margin_gap_mean"] = margin_gap.mean().item()
+    if entropy_gap is not None:
+        payload["SAFER/entropy_gap_mean"] = entropy_gap.mean().item()
+    if prob_disagreement is not None:
+        payload["SAFER/prob_disagreement_mean"] = prob_disagreement.mean().item()
+    if feat_disagreement is not None:
+        payload["SAFER/feat_disagreement_mean"] = feat_disagreement.mean().item()
+    return payload
+
+
 class SAFERPooledPredictor(nn.Module):
-    def __init__(self, model: nn.Module, view_module: nn.Module) -> None:
+    def __init__(self, model: nn.Module, view_module: nn.Module, log_metrics: bool = True) -> None:
         super().__init__()
         self.model = model
         self.view_module = view_module
+        self.log_metrics = bool(log_metrics)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore[override]
         return self.predict(x)
@@ -283,11 +341,14 @@ class SAFERPooledPredictor(nn.Module):
         if isinstance(defense, nn.Module):
             x = defense(x)
         view_out = self.view_module(x, self.model)
+        log_payload = _safer_view_log_payload(view_out)
+        if self.log_metrics and log_payload:
+            wandb.log(log_payload)
         pooled_prob = view_out.pooled_prob.clamp_min(1e-6)
         return pooled_prob.log()
 
     def __getattr__(self, name: str):
-        if name in {"model", "view_module"}:
+        if name in {"model", "view_module", "log_metrics"}:
             return super().__getattr__(name)
         try:
             return super().__getattr__(name)
@@ -420,7 +481,10 @@ class T3A(nn.Module):
             if isinstance(defense, nn.Module):
                 x = defense(x)
             view_out = self.view_module(x, self.model)
-            z = _pool_features(view_out.features, view_out.pooled_weights)
+            log_payload = _safer_view_log_payload(view_out)
+            if log_payload:
+                wandb.log(log_payload)
+            z = _pool_features(view_out.features, view_out.loss_pooled_weights)
             pooled_prob = view_out.pooled_prob
             p = pooled_prob.clamp_min(1e-6).log()
         yhat = torch.nn.functional.one_hot(p.argmax(1), num_classes=self.num_classes).float()
@@ -503,7 +567,10 @@ class TSD(nn.Module):
             if isinstance(defense, nn.Module):
                 x = defense(x)
             view_out = self.view_module(x, self.model)
-            z = _pool_features(view_out.features, view_out.pooled_weights)
+            log_payload = _safer_view_log_payload(view_out)
+            if log_payload:
+                wandb.log(log_payload)
+            z = _pool_features(view_out.features, view_out.loss_pooled_weights)
             scores = view_out.pooled_prob
             p = scores.clamp_min(1e-6).log()
                        
@@ -1641,17 +1708,15 @@ class SAFER(nn.Module):
         num_aug_views: int = 4,
         include_original: bool = True,
         aug_prob: float = 0.7,
-        aug_max_ops: Optional[int] = 4,
+        aug_max_ops: Optional[int] = 3,
         augmentations: Optional[Sequence[str]] = None,
-        force_noise_first: bool = False,
-        require_freq_or_blur: bool = False,
+        require_freq_or_blur: bool = True,
         fixed_ops: Optional[Sequence[str]] = None,
         fixed_op: Optional[str] = None,
         fixed_blur_kernel: Optional[int] = None,
         fixed_blur_sigma: Optional[float] = None,
         fixed_fft_keep_ratio: Optional[float] = None,
-        allow_noise: bool = True,
-        noise_std: Optional[float] = None,
+        noise_std: float = -1.0,
         js_weight: float = 1.0,
         cc_weight: float = 1.0,
         offdiag_weight: float = 1.0,
@@ -1678,6 +1743,9 @@ class SAFER(nn.Module):
         adaptive_alpha_attack_value: float = 0.0,
         adaptive_alpha_clean_value: float = 1.0,
         adaptive_alpha_attack_high_conf: bool = True,
+        adaptive_alpha_signal: str = "orig_conf",
+        adaptive_alpha_transition_width: float = 0.1,
+        adaptive_alpha_sigmoid_slope: float = 10.0,
         mean: Optional[Sequence[float]] = None,
         std: Optional[Sequence[float]] = None,
         input_is_normalized: Optional[bool] = None,
@@ -1687,8 +1755,7 @@ class SAFER(nn.Module):
         super().__init__()
         assert steps > 0, "SAFER requires at least one update step"
         assert num_aug_views >= 0, "num_aug_views must be ≥ 0"
-        if not include_original and num_aug_views == 0:
-            raise ValueError("Need at least one view (original or augmented).")
+        include_original = True
 
         self.model = model
         self.classifier = model.classifier
@@ -1704,7 +1771,7 @@ class SAFER(nn.Module):
         self.feature_normalize = feature_normalize
         self.cm_weight = class_marginal_weight
         adaptive_alpha_mode = adaptive_alpha_mode.lower()
-        self.use_view_weights = bool(view_weighting) or (adaptive_alpha_mode != "none")
+        self.use_view_weights = bool(view_weighting)
         sup_mode = sup_mode.lower()
         if sup_mode not in {"none", "pl", "em"}:
             raise ValueError(f"Unknown supervision mode: {sup_mode}")
@@ -1764,7 +1831,6 @@ class SAFER(nn.Module):
             aug_prob=aug_prob,
             aug_max_ops=aug_max_ops,
             augmentations=augmentations,
-            force_noise_first=force_noise_first,
             require_freq_or_blur=require_freq_or_blur,
             fixed_ops=fixed_ops,
             aug_seed=aug_seed,
@@ -1772,7 +1838,6 @@ class SAFER(nn.Module):
             fixed_blur_kernel=fixed_blur_kernel,
             fixed_blur_sigma=fixed_blur_sigma,
             fixed_fft_keep_ratio=fixed_fft_keep_ratio,
-            allow_noise=allow_noise,
             noise_std=noise_std,
             feature_normalize=feature_normalize,
             view_weighting=view_weighting,
@@ -1790,6 +1855,9 @@ class SAFER(nn.Module):
             adaptive_alpha_attack_value=adaptive_alpha_attack_value,
             adaptive_alpha_clean_value=adaptive_alpha_clean_value,
             adaptive_alpha_attack_high_conf=adaptive_alpha_attack_high_conf,
+            adaptive_alpha_signal=adaptive_alpha_signal,
+            adaptive_alpha_transition_width=adaptive_alpha_transition_width,
+            adaptive_alpha_sigmoid_slope=adaptive_alpha_sigmoid_slope,
             mean=mean,
             std=std,
             input_is_normalized=input_is_normalized,
@@ -1870,16 +1938,12 @@ class SAFER(nn.Module):
                 view_out = self.view_module(x, model)
         logits = view_out.logits
         probs = view_out.probs
-        feats_bt = view_out.features
-        base_prob = view_out.pooled_prob
-        base_weights = view_out.pooled_weights
+        pred_prob = view_out.pooled_prob
+        base_prob = view_out.loss_pooled_prob
+        base_weights = view_out.loss_pooled_weights
         pooler = view_out.pooler
         js_loss = view_out.js_loss
         cc_loss = view_out.cc_loss
-        adaptive_alpha = view_out.adaptive_alpha
-        attack_confidence = view_out.attack_confidence
-        attack_detected = view_out.attack_detected
-
         cm_loss = torch.tensor(0.0, device=logits.device)
         if self.cm_weight > 1e-8:
             cm_loss = self.class_marginal(base_prob)
@@ -1904,7 +1968,7 @@ class SAFER(nn.Module):
 
         tta_loss = torch.tensor(0.0, device=logits.device)
         if tta_active:
-            tta_prob, tta_weights = pooler.pool(self.tta_view_pool)
+            tta_prob, tta_weights = pooler.pool(self.tta_view_pool, apply_alpha=False)
             tta_loss = self._compute_tta_loss(
                 logits=logits,
                 probs=probs,
@@ -1919,22 +1983,15 @@ class SAFER(nn.Module):
             + (self.sup_weight * sup_loss)
             + (self.tta_weight * tta_loss)
         )
-        log_payload = {
+        log_payload = _safer_view_log_payload(view_out)
+        log_payload.update({
             "SAFER/Loss": loss.item(),
             "SAFER/L_js": js_loss.item(),
             "SAFER/L_cc": cc_loss.item(),
             "SAFER/L_cm": cm_loss.item(),
             "SAFER/L_sup": sup_loss.item(),
             "SAFER/L_tta": tta_loss.item(),
-        }
-        if adaptive_alpha is not None:
-            log_payload["SAFER/alpha_mean"] = adaptive_alpha.mean().item()
-            log_payload["SAFER/alpha_min"] = adaptive_alpha.min().item()
-            log_payload["SAFER/alpha_max"] = adaptive_alpha.max().item()
-        if attack_confidence is not None:
-            log_payload["SAFER/orig_conf_mean"] = attack_confidence.mean().item()
-        if attack_detected is not None:
-            log_payload["SAFER/attack_detect_rate"] = attack_detected.float().mean().item()
+        })
         wandb.log(log_payload)
 
         if loss.requires_grad:
@@ -1942,7 +1999,7 @@ class SAFER(nn.Module):
             loss.backward()
             optimizer.step()
 
-        return base_prob
+        return pred_prob
 
 
 class MeanTeacherCorrection(nn.Module):

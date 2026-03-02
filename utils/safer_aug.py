@@ -211,17 +211,15 @@ class SAFERAugmenter:
         max_ops: cap on how many operations to include in one pipeline (None = unlimited).
         prob: Bernoulli probability per augmentation.
         seed: optional seed for determinism.
-        force_noise_first: ensure the noise_op is the first operation in the pipeline.
+        noise_std: gaussian noise control (-1 keeps random sampling, 0 disables, >0 fixes the std).
         require_freq_or_blur: enforce at least one frequency/blur op per pipeline.
-        noise_op: name of the noise operation to place first when forced.
+        noise_op: name of the noise operation to place first when enabled.
         freq_or_blur_ops: candidate ops used to satisfy the frequency/blur requirement.
-        allow_noise: whether gaussian noise can be used in the pipeline.
-        noise_std: fixed std for gaussian noise (None keeps random sampling).
         fixed_op: optional fixed op to apply (disables sampling other ops).
         fixed_op_params: fixed parameters for the fixed op.
         fixed_ops: optional fixed ops (one per view) to apply (disables sampling other ops).
         fixed_ops_params: fixed parameters keyed by op name for fixed_ops.
-        fixed_only: if True, only apply fixed op (and optional forced noise).
+        fixed_only: if True, only apply fixed op (and optional leading noise).
         log_pipelines: store one batch of sampled pipelines for logging.
     """
 
@@ -232,12 +230,10 @@ class SAFERAugmenter:
         max_ops: Optional[int] = None,
         prob: float = 0.7,
         seed: Optional[int] = None,
-        force_noise_first: bool = False,
         require_freq_or_blur: bool = False,
         noise_op: str = "gaussian_noise",
         freq_or_blur_ops: Optional[Sequence[str]] = None,
-        allow_noise: bool = True,
-        noise_std: Optional[float] = None,
+        noise_std: float = -1.0,
         fixed_op: Optional[str] = None,
         fixed_op_params: Optional[Dict[str, float]] = None,
         fixed_ops: Optional[Sequence[str]] = None,
@@ -254,8 +250,11 @@ class SAFERAugmenter:
         seed_value = None if seed is None or seed < 0 else int(seed)
         self.rng = random.Random(seed_value)
         self.registry = _build_registry()
-        self.allow_noise = bool(allow_noise)
-        self.force_noise_first = bool(force_noise_first) and self.allow_noise
+        noise_std_value = -1.0 if noise_std is None else float(noise_std)
+        if noise_std_value < 0.0 and noise_std_value != -1.0:
+            raise ValueError("noise_std must be 0 or greater, or exactly -1 for random noise.")
+        self.noise_enabled = noise_std_value != 0.0
+        self.force_noise_first = self.noise_enabled
         self.require_freq_or_blur = bool(require_freq_or_blur)
         self.noise_op = noise_op
         self.debug = bool(debug)
@@ -270,9 +269,9 @@ class SAFERAugmenter:
             "fft_low_pass",
             "gaussian_blur",
         ]
-        if noise_std is not None:
+        if noise_std_value > 0.0:
             self.registry[self.noise_op] = _OpSpec(
-                sample_params=lambda _: {"std": float(noise_std)},
+                sample_params=lambda _: {"std": noise_std_value},
                 apply=lambda x, p: _gaussian_noise(x, p["std"]),
             )
         default_ops: Tuple[str, ...] = (
@@ -294,7 +293,7 @@ class SAFERAugmenter:
             "rotate",
         )
         self.augmentations = list(augmentations) if augmentations is not None else list(default_ops)
-        if not self.allow_noise and self.noise_op in self.augmentations:
+        if not self.noise_enabled and self.noise_op in self.augmentations:
             self.augmentations = [op for op in self.augmentations if op != self.noise_op]
 
         if fixed_ops is not None and fixed_op is not None:

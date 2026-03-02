@@ -27,16 +27,10 @@ parameters:
   # Keep the rest of SAFER fixed so the adaptive-alpha knobs are isolated.
   s_wrap_alg:
     value: 0
-  s_num_views:
-    value: 4
   s_aug_prob:
     value: 1.0
-  s_aug_max_ops:
-    value: 4
   s_aug_seed:
     value: 123
-  s_aug_force_noise:
-    value: 0
   s_aug_require_freq_blur:
     value: 1
   s_input_is_normalized:
@@ -89,10 +83,10 @@ parameters:
   s_alpha_mode:
     value: "fixed_conf_threshold"
   s_alpha_conf_threshold:
-    values: [0.8, 0.9, 0.99]
+    values: [0.8, 0.9, 0.99, 0.999]
   s_alpha_attack_value:
-    values: [0.0, 0.25, 0.5]
+    values: [0.0, 0.25, 0.5, 0.75]
   s_alpha_clean_value:
-    values: [0.5, 0.75, 1.0]
+    values: [0.25, 0.5, 0.75, 1.0]
   s_alpha_attack_high_conf:
     value: 1

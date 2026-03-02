@@ -1,6 +1,6 @@
 program: unsupervise_adapt.py
 project: safer
-name: bb_l2_adv_source_all_tta
+name: FFT_PAPER_linf8_fft_PAPER_BASELINE_all_tta
 method: grid
 metric:
   name: acc_mean
@@ -8,21 +8,23 @@ metric:
 
 parameters:
   adapt_alg:
-    values: ["ERM", "Tent", "PL", "TSD", "TeSLA", "SAFER"]
+    values: ["ERM", "Tent", "PL", "TSD", "T3A", "TeSLA"]
   dataset:
     values: ["PACS", "VLCS", "office-home"]
   test_envs:
     values: [0, 1, 2, 3]
-  attack_source:
-    value: precomputed
   attack:
-    value: l2_eps-112.0_steps-100
+    value: linf_eps-8.0_steps-20
   attack_rate:
     values: [0, 50, 100]
-  use_adv_source:
-    value: 1
-  adv_source_preset:
-    value: l2_112
+  fft_input_alpha:
+    value: 1.0
+  fft_input_keep_ratio:
+    value: 1.0
+  fft_feat_alpha:
+    value: 1.0
+  fft_feat_keep_ratio:
+    value: 1.0
   seeds:
     value: "0,1,2"
   update_param:

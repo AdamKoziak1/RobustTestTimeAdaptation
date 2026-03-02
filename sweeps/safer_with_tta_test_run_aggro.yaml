@@ -35,17 +35,10 @@ parameters:
 
   s_wrap_alg:
     value: 1
-  s_num_views:
-    values: [3]
   s_aug_prob:
     value: 1.0
-  s_aug_max_ops:
-    values: [4]
   s_aug_seed:
     value: 123
-  s_aug_force_noise:
-    #values: [0, 1]
-    value: 0
   s_aug_require_freq_blur:
     value: 1
     #values: [0, 1]

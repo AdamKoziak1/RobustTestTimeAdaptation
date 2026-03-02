@@ -1,19 +1,19 @@
 program: unsupervised_adapt_dataset.py
 project: safer
-name: safer_aug_with_tta_aggro
+name: safer_alpha_disagreement_dataset
 method: grid
 metric:
   name: acc_0
   goal: maximize
 
 parameters:
-  attack_source:
-    value: live
-  attack_preset:
-    value: linf8
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    value: 100
 
   adapt_alg:
-    values: ["ERM", "Tent", "PL", "TSD"]
+    value: "SAFER"
 
   update_param:
     value: "tent"
@@ -25,33 +25,27 @@ parameters:
     value: 1
 
   s_wrap_alg:
-    value: 1
+    value: 0
   s_num_views:
-    values: [3, 4]
+    value: 4
   s_aug_prob:
     value: 1.0
-  s_aug_max_ops:
-    values: [4]
   s_aug_seed:
     value: 123
-  s_aug_force_noise:
-    #values: [0, 1]
-    value: 0
   s_aug_require_freq_blur:
     value: 1
-    #values: [0, 1]
   s_input_is_normalized:
     value: -1
 
   s_js_weight:
-    value: 0.0
+    value: 1.0
   s_js_mode:
     value: "pooled"
   s_js_view_pool:
     value: "matching"
 
   s_cc_weight:
-    value: 0.0
+    value: 0.01
   s_cc_mode:
     value: "pairwise"
   s_cc_view_pool:
@@ -81,8 +75,24 @@ parameters:
     value: "views"
   s_tta_view_pool:
     value: "matching"
-
   s_sup_view_pool:
-    values: ["entropy", "mean", "cc_drop"]
+    value: "mean"
   s_view_weighting:
     value: 1
+
+  s_alpha_mode:
+    values: ["step", "sigmoid"]
+  s_alpha_signal:
+    values: ["prob_disagreement", "feat_disagreement"]
+  s_alpha_threshold:
+    values: [0.05, 0.1, 0.2]
+  s_alpha_attack_on_high_signal:
+    value: 1
+  s_alpha_attack_value:
+    values: [0.0, 0.15, 0.25]
+  s_alpha_clean_value:
+    values: [0.5, 0.65]
+  s_alpha_transition_width:
+    value: 0.1
+  s_alpha_sigmoid_slope:
+    values: [5.0, 10.0]

@@ -36,7 +36,7 @@ parameters:
     value: 0
   s_aug_seed:
     value: 123
-  s_aug_use_noise:
+  s_noise_std:
     value: 0
   s_aug_fixed_op:
     value: "none"

@@ -151,9 +151,14 @@ def get_args():
 
     # SAFER
     parser.add_argument("--s_num_views", type=int, default=4, help="Number of augmented SAFER views per input.")
-    parser.add_argument("--s_include_original", type=int, default=1, choices=[0,1], help="Include original sample as one of the SAFER views (1 enables).")
+    parser.add_argument(
+        "--s_include_original",
+        type=int,
+        default=1,
+        help="Deprecated compatibility flag. The original view is always included.",
+    )
     parser.add_argument("--s_aug_prob", type=float, default=1, help="Probability of sampling each augmentation in the SAFER pipeline.")
-    parser.add_argument("--s_aug_max_ops", type=int, default=2, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
+    parser.add_argument("--s_aug_max_ops", type=int, default=3, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
     parser.add_argument("--s_aug_list", type=str, nargs="+", default=None, help="Optional custom list of SAFER augmentations to sample from.")
     parser.add_argument(
         "--s_aug_debug",
@@ -176,13 +181,6 @@ def get_args():
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
     parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
     parser.add_argument(
-        "--s_aug_force_noise",
-        type=int,
-        default=1,
-        choices=[0, 1],
-        help="Always apply Gaussian noise as the first SAFER augmentation.",
-    )
-    parser.add_argument(
         "--s_aug_require_freq_blur",
         type=int,
         default=1,
@@ -190,17 +188,10 @@ def get_args():
         help="Require FFT low-pass or Gaussian blur in each SAFER augmentation pipeline.",
     )
     parser.add_argument(
-        "--s_aug_use_noise",
-        type=int,
-        default=1,
-        choices=[0, 1],
-        help="Allow Gaussian noise in SAFER augmentations (0 removes it).",
-    )
-    parser.add_argument(
-        "--s_aug_noise_std",
+        "--s_noise_std",
         type=float,
         default=-1.0,
-        help="Fixed std for SAFER Gaussian noise (-1 keeps random sampling).",
+        help="SAFER Gaussian noise std (-1 keeps random sampling, 0 disables noise, >0 fixes the std).",
     )
     parser.add_argument(
         "--s_aug_fixed_op",
@@ -307,33 +298,70 @@ def get_args():
         "--s_alpha_mode",
         type=str.lower,
         default="none",
-        choices=["none", "fixed_conf_threshold"],
-        help="Adaptive alpha mode for original-view mixing in pooling/loss weighting.",
+        choices=["none", "fixed_conf_threshold", "step", "linear", "sigmoid"],
+        help="Adaptive alpha curve for final prediction mixing. 'fixed_conf_threshold' is kept as a backward-compatible alias for 'step'.",
+    )
+    parser.add_argument(
+        "--s_alpha_signal",
+        type=str.lower,
+        default="orig_conf",
+        choices=[
+            "orig_conf",
+            "orig_margin",
+            "aug_margin",
+            "orig_entropy",
+            "aug_entropy",
+            "margin_gap",
+            "entropy_gap",
+            "prob_disagreement",
+            "feat_disagreement",
+        ],
+        help="Signal used to infer how suspicious the original view is before mapping it to alpha.",
     )
     parser.add_argument(
         "--s_alpha_conf_threshold",
+        "--s_alpha_threshold",
+        dest="s_alpha_conf_threshold",
         type=float,
         default=0.99,
-        help="Confidence threshold used by fixed_conf_threshold alpha mode.",
+        help="Threshold applied to the chosen alpha signal.",
     )
     parser.add_argument(
         "--s_alpha_attack_value",
+        "--s_alpha_attacked_value",
+        dest="s_alpha_attack_value",
         type=float,
         default=0.0,
-        help="Alpha value used when an input is considered attacked.",
+        help="Alpha value used when an input is considered attacked / suspicious.",
     )
     parser.add_argument(
         "--s_alpha_clean_value",
+        "--s_alpha_clean_weight",
+        dest="s_alpha_clean_value",
         type=float,
         default=1.0,
         help="Alpha value used when an input is considered clean.",
     )
     parser.add_argument(
         "--s_alpha_attack_high_conf",
+        "--s_alpha_attack_on_high_signal",
+        dest="s_alpha_attack_high_conf",
         type=int,
         default=1,
         choices=[0, 1],
-        help="If 1, confidence >= threshold means attacked; otherwise confidence < threshold means attacked.",
+        help="If 1, higher signal values are treated as more suspicious; otherwise lower values are.",
+    )
+    parser.add_argument(
+        "--s_alpha_transition_width",
+        type=float,
+        default=0.1,
+        help="Transition width used by the linear alpha curve (and as a scale hint when sweeping thresholds).",
+    )
+    parser.add_argument(
+        "--s_alpha_sigmoid_slope",
+        type=float,
+        default=10.0,
+        help="Slope used by the sigmoid alpha curve.",
     )
     parser.add_argument(
         "--s_tta_loss",
@@ -345,7 +373,7 @@ def get_args():
     parser.add_argument(
         "--s_tta_weight",
         type=float,
-        default=0.0,
+        default=1.0,
         help="Weight applied to SAFER TTA auxiliary loss.",
     )
     parser.add_argument(
@@ -544,7 +572,9 @@ def get_args():
 
     args = img_param_init(args)
 
-    args.s_include_original = bool(args.s_include_original)
+    if not bool(args.s_include_original):
+        print("Warning: s_include_original=0 is deprecated; forcing the original view on.")
+    args.s_include_original = True
     args.s_feat_normalize = bool(args.s_feat_normalize)
     args.s_cc_impl = args.s_cc_impl.lower()
     args.s_sup_pl_weighted = bool(args.s_sup_pl_weighted)
@@ -553,6 +583,9 @@ def get_args():
     args.s_js_mode = args.s_js_mode.lower()
     args.s_view_weighting = bool(args.s_view_weighting)
     args.s_alpha_mode = args.s_alpha_mode.lower()
+    if args.s_alpha_mode == "fixed_conf_threshold":
+        args.s_alpha_mode = "step"
+    args.s_alpha_signal = args.s_alpha_signal.lower()
     args.s_alpha_attack_high_conf = bool(args.s_alpha_attack_high_conf)
     args.s_tta_loss = args.s_tta_loss.lower()
     args.s_tta_target = args.s_tta_target.lower()
@@ -561,15 +594,11 @@ def get_args():
     args.s_cc_view_pool = args.s_cc_view_pool.lower()
     args.s_wrap_alg = bool(args.s_wrap_alg)
     args.s_attack_use_views = bool(args.s_attack_use_views)
-    args.s_aug_force_noise = bool(args.s_aug_force_noise)
     args.s_aug_require_freq_blur = bool(args.s_aug_require_freq_blur)
-    args.s_aug_use_noise = bool(args.s_aug_use_noise)
     args.s_aug_debug = bool(args.s_aug_debug)
     args.s_aug_log = bool(args.s_aug_log)
-    if not args.s_aug_use_noise:
-        args.s_aug_force_noise = False
-    if args.s_aug_noise_std is not None and args.s_aug_noise_std < 0:
-        args.s_aug_noise_std = None
+    if args.s_noise_std < 0.0 and args.s_noise_std != -1.0:
+        raise ValueError("s_noise_std must be 0 or greater, or exactly -1 for random noise.")
     if args.s_aug_fixed_ops:
         fixed_ops = []
         for op in args.s_aug_fixed_ops:
@@ -614,12 +643,16 @@ def get_args():
     if args.s_tta_loss == "none" or args.s_tta_weight <= 0.0:
         args.s_tta_loss = "none"
         args.s_tta_weight = 0.0
-    if not (0.0 <= args.s_alpha_conf_threshold <= 1.0):
-        raise ValueError("s_alpha_conf_threshold must be in [0, 1].")
+    if not math.isfinite(args.s_alpha_conf_threshold):
+        raise ValueError("s_alpha_conf_threshold must be finite.")
     if not (0.0 <= args.s_alpha_attack_value <= 1.0):
         raise ValueError("s_alpha_attack_value must be in [0, 1].")
     if not (0.0 <= args.s_alpha_clean_value <= 1.0):
         raise ValueError("s_alpha_clean_value must be in [0, 1].")
+    if args.s_alpha_transition_width <= 0.0:
+        raise ValueError("s_alpha_transition_width must be > 0.")
+    if args.s_alpha_sigmoid_slope <= 0.0:
+        raise ValueError("s_alpha_sigmoid_slope must be > 0.")
     args.mt_use_teacher_pred = bool(args.mt_use_teacher_pred)
     if args.mt_mixup_beta <= 0:
         args.mt_mixup_beta = 0.5
@@ -694,15 +727,17 @@ def log_args(args, time_taken_s):
             "s_aug_fixed_fft_keep_ratio": args.s_aug_fixed_fft_keep_ratio,
             "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
             "s_aug_fixed_blur_sigma": args.s_aug_fixed_blur_sigma,
-            "s_aug_use_noise": args.s_aug_use_noise,
-            "s_aug_noise_std": args.s_aug_noise_std,
+            "s_noise_std": args.s_noise_std,
             "s_sup_view_pool": args.s_sup_view_pool,
             "s_view_weighting": args.s_view_weighting,
             "s_alpha_mode": args.s_alpha_mode,
+            "s_alpha_signal": args.s_alpha_signal,
             "s_alpha_conf_threshold": args.s_alpha_conf_threshold,
             "s_alpha_attack_value": args.s_alpha_attack_value,
             "s_alpha_clean_value": args.s_alpha_clean_value,
             "s_alpha_attack_high_conf": args.s_alpha_attack_high_conf,
+            "s_alpha_transition_width": args.s_alpha_transition_width,
+            "s_alpha_sigmoid_slope": args.s_alpha_sigmoid_slope,
         }, commit=False)
     if args.adapt_alg == "SAFER":
         wandb.log({
@@ -715,10 +750,8 @@ def log_args(args, time_taken_s):
             "s_cc_offdiag": args.s_cc_offdiag,
             "s_cc_impl": args.s_cc_impl,
             "s_feat_normalize": args.s_feat_normalize,
-            "s_aug_force_noise": args.s_aug_force_noise,
             "s_aug_require_freq_blur": args.s_aug_require_freq_blur,
-            "s_aug_use_noise": args.s_aug_use_noise,
-            "s_aug_noise_std": args.s_aug_noise_std,
+            "s_noise_std": args.s_noise_std,
             "s_aug_fixed_op": args.s_aug_fixed_op or "none",
             "s_aug_fixed_ops": fixed_ops_label,
             "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
@@ -735,10 +768,13 @@ def log_args(args, time_taken_s):
             "s_js_view_pool": args.s_js_view_pool,
             "s_view_weighting": args.s_view_weighting,
             "s_alpha_mode": args.s_alpha_mode,
+            "s_alpha_signal": args.s_alpha_signal,
             "s_alpha_conf_threshold": args.s_alpha_conf_threshold,
             "s_alpha_attack_value": args.s_alpha_attack_value,
             "s_alpha_clean_value": args.s_alpha_clean_value,
             "s_alpha_attack_high_conf": args.s_alpha_attack_high_conf,
+            "s_alpha_transition_width": args.s_alpha_transition_width,
+            "s_alpha_sigmoid_slope": args.s_alpha_sigmoid_slope,
             "s_tta_loss": args.s_tta_loss,
             "s_tta_weight": args.s_tta_weight,
             "s_tta_target": args.s_tta_target,
@@ -856,7 +892,6 @@ def make_adapt_model(args, algorithm):
             aug_prob=args.s_aug_prob,
             aug_max_ops=args.s_aug_max_ops,
             augmentations=augment_list,
-            force_noise_first=args.s_aug_force_noise,
             require_freq_or_blur=args.s_aug_require_freq_blur,
             aug_seed=args.s_aug_seed,
             fixed_ops=args.s_aug_fixed_ops,
@@ -864,8 +899,7 @@ def make_adapt_model(args, algorithm):
             fixed_blur_kernel=args.s_aug_fixed_blur_kernel,
             fixed_blur_sigma=args.s_aug_fixed_blur_sigma,
             fixed_fft_keep_ratio=args.s_aug_fixed_fft_keep_ratio,
-            allow_noise=args.s_aug_use_noise,
-            noise_std=args.s_aug_noise_std,
+            noise_std=args.s_noise_std,
             debug=args.s_aug_debug,
             log_pipelines=args.s_aug_log,
             feature_normalize=args.s_feat_normalize,
@@ -875,6 +909,9 @@ def make_adapt_model(args, algorithm):
             adaptive_alpha_attack_value=args.s_alpha_attack_value,
             adaptive_alpha_clean_value=args.s_alpha_clean_value,
             adaptive_alpha_attack_high_conf=args.s_alpha_attack_high_conf,
+            adaptive_alpha_signal=args.s_alpha_signal,
+            adaptive_alpha_transition_width=args.s_alpha_transition_width,
+            adaptive_alpha_sigmoid_slope=args.s_alpha_sigmoid_slope,
             primary_view_pool=args.s_sup_view_pool,
             js_weight=0.0,
             js_mode="pooled",
@@ -1101,15 +1138,13 @@ def make_adapt_model(args, algorithm):
             aug_prob=args.s_aug_prob,
             aug_max_ops=args.s_aug_max_ops,
             augmentations=augment_list,
-            force_noise_first=args.s_aug_force_noise,
             require_freq_or_blur=args.s_aug_require_freq_blur,
             fixed_ops=args.s_aug_fixed_ops,
             fixed_op=args.s_aug_fixed_op,
             fixed_blur_kernel=args.s_aug_fixed_blur_kernel,
             fixed_blur_sigma=args.s_aug_fixed_blur_sigma,
             fixed_fft_keep_ratio=args.s_aug_fixed_fft_keep_ratio,
-            allow_noise=args.s_aug_use_noise,
-            noise_std=args.s_aug_noise_std,
+            noise_std=args.s_noise_std,
             js_weight=args.s_js_weight,
             cc_weight=args.s_cc_weight,
             offdiag_weight=args.s_cc_offdiag,
@@ -1136,6 +1171,9 @@ def make_adapt_model(args, algorithm):
             adaptive_alpha_attack_value=args.s_alpha_attack_value,
             adaptive_alpha_clean_value=args.s_alpha_clean_value,
             adaptive_alpha_attack_high_conf=args.s_alpha_attack_high_conf,
+            adaptive_alpha_signal=args.s_alpha_signal,
+            adaptive_alpha_transition_width=args.s_alpha_transition_width,
+            adaptive_alpha_sigmoid_slope=args.s_alpha_sigmoid_slope,
             input_is_normalized=args.s_input_is_normalized,
             debug=args.s_aug_debug,
             log_pipelines=args.s_aug_log,
@@ -1272,7 +1310,7 @@ def run_one_seed(args):
                 base_model = getattr(adapt_model, "model", None)
                 view_module = getattr(adapt_model, "view_module", None)
                 if base_model is not None and view_module is not None:
-                    attack_model = SAFERPooledPredictor(base_model, view_module)
+                    attack_model = SAFERPooledPredictor(base_model, view_module, log_metrics=False)
                 else:
                     attack_model = getattr(adapt_model, "model", None)
             else:

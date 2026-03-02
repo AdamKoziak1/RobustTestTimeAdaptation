@@ -24,7 +24,7 @@ parameters:
   fft_feat_alpha:
     value: 1.0
   fft_feat_keep_ratio:
-    value: 0.5
+    value: 1.0
   seeds:
     value: "0,1,2"
   update_param:
