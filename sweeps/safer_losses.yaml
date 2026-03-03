@@ -60,13 +60,7 @@ parameters:
 
   s_cm_weight:
     value: 0.0
-  s_sup_type:
-    value: "none"
-  s_sup_weight:
-    value: 0.0
-  s_sup_pl_weighted:
-    value: 0
-  s_sup_conf_scale:
+  s_pl_conf_scale:
     value: 0
   s_tta_loss:
     value: "tent"
@@ -77,7 +71,7 @@ parameters:
   s_tta_view_pool:
     value: "matching"
 
-  s_sup_view_pool:
+  s_primary_view_pool:
     value: "mean"
   s_view_weighting:
     value: 1

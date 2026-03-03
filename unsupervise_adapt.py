@@ -151,12 +151,6 @@ def get_args():
 
     # SAFER
     parser.add_argument("--s_num_views", type=int, default=4, help="Number of augmented SAFER views per input.")
-    parser.add_argument(
-        "--s_include_original",
-        type=int,
-        default=1,
-        help="Deprecated compatibility flag. The original view is always included.",
-    )
     parser.add_argument("--s_aug_prob", type=float, default=1, help="Probability of sampling each augmentation in the SAFER pipeline.")
     parser.add_argument("--s_aug_max_ops", type=int, default=3, help="Max number of operations per SAFER augmentation pipeline (0 disables the cap).")
     parser.add_argument("--s_aug_list", type=str, nargs="+", default=None, help="Optional custom list of SAFER augmentations to sample from.")
@@ -240,38 +234,22 @@ def get_args():
         help="Weight for SAFER class-marginal regularisation.",
     )
     parser.add_argument(
-        "--s_sup_type",
-        type=str.lower,
-        default="none",
-        choices=["none", "pl", "em"],
-        help="Additional SAFER supervision: none, confidence-weighted pseudo-label (pl), or entropy minimisation (em).",
-    )
-    parser.add_argument(
-        "--s_sup_weight",
-        type=float,
-        default=0.0,
-        help="Weight applied to the SAFER pseudo-label / entropy minimization loss.",
-    )
-    parser.add_argument(
+        "--s_primary_view_pool",
         "--s_sup_view_pool",
+        dest="s_primary_view_pool",
         type=str.lower,
         default="mean",
         choices=["mean", "entropy", "top1", "cc", "cc_drop"],
-        help="Pooling strategy for combining SAFER view predictions.",
+        help="Primary pooling strategy for combining SAFER view predictions.",
     )
     parser.add_argument(
-        "--s_sup_pl_weighted",
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="Weight pseudo-label loss across views using the pooling weights (1 enables).",
-    )
-    parser.add_argument(
+        "--s_pl_conf_scale",
         "--s_sup_conf_scale",
+        dest="s_pl_conf_scale",
         type=int,
         default=1,
         choices=[0, 1],
-        help="Scale pseudo-label losses by pooled confidence (1 enables).",
+        help="Scale SAFER pseudo-label losses by pooled confidence (1 enables).",
     )
     parser.add_argument(
         "--s_js_mode",
@@ -285,7 +263,7 @@ def get_args():
         type=str.lower,
         default="matching",
         choices=["matching", "mean", "entropy", "top1", "cc", "cc_drop"],
-        help="Pooling strategy for JS reference; 'matching' reuses the supervision pool.",
+        help="Pooling strategy for JS reference; 'matching' reuses the primary pool.",
     )
     parser.add_argument(
         "--s_view_weighting",
@@ -367,7 +345,7 @@ def get_args():
         "--s_tta_loss",
         type=str.lower,
         default="none",
-        choices=["none", "tent", "pl", "tsd"],
+        choices=["none", "tent", "pl"],
         help="Auxiliary TTA loss applied to SAFER predictions.",
     )
     parser.add_argument(
@@ -388,7 +366,7 @@ def get_args():
         type=str.lower,
         default="matching",
         choices=["matching", "mean", "entropy", "top1", "cc", "cc_drop"],
-        help="Pooling strategy for TTA losses; 'matching' reuses the supervision pool.",
+        help="Pooling strategy for TTA losses; 'matching' reuses the primary pool.",
     )
     parser.add_argument(
         "--s_cc_mode",
@@ -402,7 +380,7 @@ def get_args():
         type=str.lower,
         default="matching",
         choices=["matching", "mean", "entropy", "top1", "cc", "cc_drop"],
-        help="Pooling strategy for pooled-feature cross-correlation; 'matching' reuses the supervision pool.",
+        help="Pooling strategy for pooled-feature cross-correlation; 'matching' reuses the primary pool.",
     )
     parser.add_argument(
         "--s_wrap_alg",
@@ -572,13 +550,9 @@ def get_args():
 
     args = img_param_init(args)
 
-    if not bool(args.s_include_original):
-        print("Warning: s_include_original=0 is deprecated; forcing the original view on.")
-    args.s_include_original = True
     args.s_feat_normalize = bool(args.s_feat_normalize)
     args.s_cc_impl = args.s_cc_impl.lower()
-    args.s_sup_pl_weighted = bool(args.s_sup_pl_weighted)
-    args.s_sup_conf_scale = bool(args.s_sup_conf_scale)
+    args.s_pl_conf_scale = bool(args.s_pl_conf_scale)
     args.s_js_view_pool = args.s_js_view_pool.lower()
     args.s_js_mode = args.s_js_mode.lower()
     args.s_view_weighting = bool(args.s_view_weighting)
@@ -637,9 +611,6 @@ def get_args():
         args.tesla_input_is_normalized = None
     else:
         args.tesla_input_is_normalized = bool(args.tesla_input_is_normalized)
-    if args.s_sup_type == "none" or args.s_sup_weight <= 0.0:
-        args.s_sup_type = "none"
-        args.s_sup_weight = 0.0
     if args.s_tta_loss == "none" or args.s_tta_weight <= 0.0:
         args.s_tta_loss = "none"
         args.s_tta_weight = 0.0
@@ -719,7 +690,6 @@ def log_args(args, time_taken_s):
         wandb.log({
             "s_wrap_alg": args.s_wrap_alg,
             "s_num_views": args.s_num_views,
-            "s_include_original": args.s_include_original,
             "s_aug_prob": args.s_aug_prob,
             "s_aug_max_ops": -1 if args.s_aug_max_ops is None else args.s_aug_max_ops,
             "s_aug_fixed_op": args.s_aug_fixed_op or "none",
@@ -728,7 +698,7 @@ def log_args(args, time_taken_s):
             "s_aug_fixed_blur_kernel": args.s_aug_fixed_blur_kernel,
             "s_aug_fixed_blur_sigma": args.s_aug_fixed_blur_sigma,
             "s_noise_std": args.s_noise_std,
-            "s_sup_view_pool": args.s_sup_view_pool,
+            "s_primary_view_pool": args.s_primary_view_pool,
             "s_view_weighting": args.s_view_weighting,
             "s_alpha_mode": args.s_alpha_mode,
             "s_alpha_signal": args.s_alpha_signal,
@@ -742,7 +712,6 @@ def log_args(args, time_taken_s):
     if args.adapt_alg == "SAFER":
         wandb.log({
             "s_num_views": args.s_num_views,
-            "s_include_original": args.s_include_original,
             "s_aug_prob": args.s_aug_prob,
             "s_aug_max_ops": -1 if args.s_aug_max_ops is None else args.s_aug_max_ops,
             "s_js_weight": args.s_js_weight,
@@ -759,11 +728,8 @@ def log_args(args, time_taken_s):
             "s_aug_fixed_fft_keep_ratio": args.s_aug_fixed_fft_keep_ratio,
             "s_input_is_normalized": args.s_input_is_normalized,
             "s_cm_weight": args.s_cm_weight,
-            "s_sup_type": args.s_sup_type,
-            "s_sup_weight": args.s_sup_weight,
-            "s_sup_view_pool": args.s_sup_view_pool,
-            "s_sup_pl_weighted": args.s_sup_pl_weighted,
-            "s_sup_conf_scale": args.s_sup_conf_scale,
+            "s_primary_view_pool": args.s_primary_view_pool,
+            "s_pl_conf_scale": args.s_pl_conf_scale,
             "s_js_mode": args.s_js_mode,
             "s_js_view_pool": args.s_js_view_pool,
             "s_view_weighting": args.s_view_weighting,
@@ -888,7 +854,7 @@ def make_adapt_model(args, algorithm):
     def _build_safer_view_module(model: nn.Module) -> SAFERViewModule:
         return SAFERViewModule(
             num_aug_views=args.s_num_views,
-            include_original=args.s_include_original,
+            include_original=True,
             aug_prob=args.s_aug_prob,
             aug_max_ops=args.s_aug_max_ops,
             augmentations=augment_list,
@@ -912,13 +878,13 @@ def make_adapt_model(args, algorithm):
             adaptive_alpha_signal=args.s_alpha_signal,
             adaptive_alpha_transition_width=args.s_alpha_transition_width,
             adaptive_alpha_sigmoid_slope=args.s_alpha_sigmoid_slope,
-            primary_view_pool=args.s_sup_view_pool,
+            primary_view_pool=args.s_primary_view_pool,
             js_weight=0.0,
             js_mode="pooled",
-            js_view_pool=args.s_sup_view_pool,
+            js_view_pool=args.s_primary_view_pool,
             cc_weight=0.0,
             cc_mode="pairwise",
-            cc_view_pool=args.s_sup_view_pool,
+            cc_view_pool=args.s_primary_view_pool,
             cc_impl=args.s_cc_impl,
             offdiag_weight=args.s_cc_offdiag,
             mean=None,
@@ -1134,7 +1100,7 @@ def make_adapt_model(args, algorithm):
             steps=args.steps,
             episodic=args.episodic,
             num_aug_views=args.s_num_views,
-            include_original=args.s_include_original,
+            include_original=True,
             aug_prob=args.s_aug_prob,
             aug_max_ops=args.s_aug_max_ops,
             augmentations=augment_list,
@@ -1150,13 +1116,10 @@ def make_adapt_model(args, algorithm):
             offdiag_weight=args.s_cc_offdiag,
             feature_normalize=args.s_feat_normalize,
             aug_seed=args.s_aug_seed,
-            sup_mode=args.s_sup_type,
-            sup_weight=args.s_sup_weight,
             class_marginal_weight=args.s_cm_weight,
             cc_impl=args.s_cc_impl,
-            sup_view_pool=args.s_sup_view_pool,
-            sup_pl_weighted=args.s_sup_pl_weighted,
-            sup_confidence_scale=args.s_sup_conf_scale,
+            primary_view_pool=args.s_primary_view_pool,
+            pl_confidence_scale=args.s_pl_conf_scale,
             js_view_pool=args.s_js_view_pool,
             js_mode=args.s_js_mode,
             view_weighting=args.s_view_weighting,
@@ -1209,6 +1172,7 @@ def make_adapt_model(args, algorithm):
             raise Exception("Do not support update with %s manner." % args.update_param)
 
         algorithm = wrap_with_input_defense(algorithm, args)
+        tesla_view_module = _build_safer_view_module(algorithm) if args.s_wrap_alg else None
         adapt_model = TeSLA(
             algorithm,
             optimizer,
@@ -1229,6 +1193,7 @@ def make_adapt_model(args, algorithm):
             input_is_normalized=args.tesla_input_is_normalized,
             view_pool=args.tesla_view_pool,
             js_weight=args.tesla_js_weight,
+            view_module=tesla_view_module,
         )
     elif args.adapt_alg == "AMTDC":
         if args.update_param == "all":
@@ -1408,8 +1373,6 @@ if __name__ == "__main__":
             f"-js{args.s_js_weight:.2f}"
             f"-cc{args.s_cc_weight:.2f}"
         )
-        if args.s_sup_type != "none" and args.s_sup_weight > 0:
-            run_name += f"-{args.s_sup_type}{args.s_sup_weight:.2f}"
         run_name += (
             f"_rate-{args.attack_rate}"
         )

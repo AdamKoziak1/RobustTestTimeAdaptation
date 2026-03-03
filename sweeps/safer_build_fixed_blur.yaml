@@ -25,7 +25,7 @@ parameters:
     value: 1
   s_num_views:
     value: 1
-  s_sup_view_pool:
+  s_primary_view_pool:
     value: "mean"
   s_view_weighting:
     value: 0
@@ -36,8 +36,6 @@ parameters:
     value: 9
   s_aug_fixed_blur_sigma:
     values: [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]
-  s_include_original:
-    values: [0,1]
   s_aug_fixed_fft_keep_ratio:
     value: 1.0
   s_aug_prob:

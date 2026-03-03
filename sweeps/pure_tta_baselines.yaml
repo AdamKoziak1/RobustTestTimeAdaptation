@@ -23,9 +23,7 @@ parameters:
     value: 0
   s_num_views:
     value: 0
-  s_include_original:
-    value: 1
-  s_sup_view_pool:
+  s_primary_view_pool:
     value: "mean"
   s_view_weighting:
     value: 0
