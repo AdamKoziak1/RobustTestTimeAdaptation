@@ -372,14 +372,14 @@ class SAFERAugmenter:
         if self.require_freq_or_blur:
             candidates = [name for name in self.freq_or_blur_ops if name in self.registry]
             if candidates:
+                present_indices = [
+                    i for i, (name, _) in enumerate(ops) if name in candidates
+                ]
                 chosen_name = None
                 chosen_params = None
-                for i, (name, params) in enumerate(ops):
-                    if name in candidates:
-                        chosen_name = name
-                        chosen_params = params
-                        ops.pop(i)
-                        break
+                if present_indices:
+                    chosen_idx = self.rng.choice(present_indices)
+                    chosen_name, chosen_params = ops.pop(chosen_idx)
                 if chosen_name is None:
                     chosen_name = self.rng.choice(candidates)
                     chosen_params = self.registry[chosen_name].sample_params(self.rng)

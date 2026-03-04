@@ -7,7 +7,9 @@ ADAPT_ALG_ORDER = [
     "SAFER",
     "TeSLA",
     "TSD",
+    "EATA",
     "Tent",
+    "MedBN",
     "T3A",
     "PL",
     "ERM",
@@ -21,6 +23,14 @@ ADAPT_ALG_ORDER = [
 ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
     "Tent": {
         "lr": 1e-3,
+    },
+    "MedBN": {
+        "lr": 1e-3,
+    },
+    "EATA": {
+        "lr": 0.00025,
+        "fisher_alpha": 2000.0,
+        "fisher_size": 0,
     },
     "PL": {
         "lr": 1e-4,
@@ -36,18 +46,9 @@ ADAPT_ALG_PRESETS: Mapping[str, Dict[str, object]] = {
         "filter_K": 100,
         "update_param": "all"
     },
-    "AMTDC": {
-        "lr": 1e-4,
-        "mt_alpha": 0.02,
-        "mt_gamma": 0.99,
-        "mt_gamma_y": 0.5,
-        "mt_kl_weight": 0.1,
-        "mt_ce_weight": 1.0,
-        "mt_ent_weight": 0.0,
-        "mt_mixup_weight": 0.1,
-        "mt_mixup_beta": 0.5,
-        "mt_use_teacher_pred": 1,
-        "update_param": "tent",
+    "SAFER": {
+        "lr": 0.00001,
+        "update_param": "all"
     },
 }
 

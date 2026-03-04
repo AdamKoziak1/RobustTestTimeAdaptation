@@ -11,11 +11,9 @@ parameters:
     value: linf_eps-8.0_steps-20
 
   adapt_alg:
-    values: ["ERM", "Tent", "PL", "TSD", "TeSLA"]
-  update_param:
-    value: "tent"
-  lr:
-    value: 0.0001
+    values: ["ERM", "Tent", "MedBN", "EATA", "PL", "TSD", "TeSLA"]
+
+
   steps:
     value: 1
 

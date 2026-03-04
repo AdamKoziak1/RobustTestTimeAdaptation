@@ -47,14 +47,12 @@ parameters:
   s_js_view_pool:
     value: "matching"
 
-  s_cc_weight:
-    value: 0.001
+
   s_cc_mode:
     value: "pairwise"
   s_cc_view_pool:
     value: "matching"
-  s_cc_offdiag:
-    value: 0.005
+
   s_cc_impl:
     value: "fast"
   s_feat_normalize:

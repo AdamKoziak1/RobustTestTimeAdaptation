@@ -14,10 +14,8 @@ parameters:
 
   adapt_alg:
     values: ["ERM", "Tent", "PL", "TSD"]
-  update_param:
-    value: "tent"
-  lr:
-    value: 0.0001
+
+
   steps:
     value: 1
 

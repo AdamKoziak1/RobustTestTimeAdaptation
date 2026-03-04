@@ -1,9 +1,0 @@
-label	config	description	sweep_path	sweep_id
-alg_n	sweeps/tta_linf8_tta_algs_all_domains.yaml	Linf8 baseline across main TTA methods	bigslav/safer/4hsk0s2k	4hsk0s2k
-+JPEG	sweeps/tta_linf8_jpeg_defense_all_tta.yaml	Linf8 with JPEG defense	bigslav/safer/ylmnkr8s	ylmnkr8s
-+FFT	sweeps/tta_linf8_fft_defense_all_tta.yaml	Linf8 with FFT defense	bigslav/safer/dv37nojr	dv37nojr
-+Blur	sweeps/tta_linf8_gauss_defense_all_tta.yaml	Linf8 with Gaussian Blur defense	bigslav/safer/g4poybev	g4poybev
-+Adv	sweeps/tta_linf8_adv_source_all_tta.yaml	Linf8 with adversarially trained source weights	bigslav/safer/mw633n64	mw633n64
-safer_wrap	sweeps/safer_with_tta_test_run.yaml	SAFER wrapper sanity sweep over main baselines	bigslav/safer/ibjjl43w	ibjjl43w
-safer_module	sweeps/safer_aug_with_tta_safe.yaml	SAFER wrapper-module parameter sweep	bigslav/safer/mf0if4lz	mf0if4lz
-safer_loss	sweeps/safer_losses.yaml	SAFER standalone loss sweep	bigslav/safer/upj4kz1c	upj4kz1c

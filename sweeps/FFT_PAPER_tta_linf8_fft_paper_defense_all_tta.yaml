@@ -27,7 +27,6 @@ parameters:
     value: 0.8
   seeds:
     value: "0,1,2"
-  update_param:
-    value: "tent"
+
   batch_size:
     value: 64

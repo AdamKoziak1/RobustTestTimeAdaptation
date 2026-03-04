@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py
 project: safer
-name: safer_alpha_sigmoid_cleanfirst
+name: safer_alpha_sigmoid_allparams
 method: grid
 metric:
   name: acc_0
@@ -13,11 +13,6 @@ parameters:
   adapt_alg:
     value: "SAFER"
 
-  update_param:
-    value: "tent"
-
-  lr:
-    value: 0.0001
 
   steps:
     value: 1
@@ -46,14 +41,12 @@ parameters:
   s_js_view_pool:
     value: "matching"
 
-  s_cc_weight:
-    value: 0.001
+
   s_cc_mode:
     value: "pairwise"
   s_cc_view_pool:
     value: "matching"
-  s_cc_offdiag:
-    value: 0.005
+
   s_cc_impl:
     value: "fast"
   s_feat_normalize:
@@ -83,10 +76,10 @@ parameters:
   s_alpha_conf_threshold:
     values: [0.10, 0.15, 0.20, 0.25]
   s_alpha_sigmoid_slope:
-    values: [3.0, 5.0, 7.0]
+    values: [2.0, 3.0, 5.0, 7.0]
   s_alpha_attack_value:
-    values: [0.15, 0.25]
+    values: [0.15, 0.25, 0.35]
   s_alpha_clean_value:
-    values: [0.50, 0.65]
+    values: [0.50, 0.65, 0.8]
   s_alpha_attack_high_conf:
     value: 1

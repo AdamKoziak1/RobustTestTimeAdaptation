@@ -8,6 +8,7 @@ import time
 from PIL import ImageFile
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Optional
 from torchvision.datasets import ImageFolder
 from torchvision import transforms
@@ -15,7 +16,14 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import accuracy_score
 from alg.opt import *
 from alg import alg
-from utils.util import set_random_seed, Tee, img_param_init, print_environ, load_ckpt
+from utils.util import (
+    set_random_seed,
+    Tee,
+    img_param_init,
+    print_environ,
+    load_ckpt,
+    train_valid_target_eval_names,
+)
 from utils.fft import FFTDrop2D
 from utils.image_ops import GaussianBlur2D, InputDefense
 from adapt_algorithm import collect_params, configure_model
@@ -26,15 +34,19 @@ from adapt_algorithm import (
     BN,
     ERM,
     Tent,
+    MedBN,
+    EATA,
     TSD,
     TTA3,
     SAFER,
     TeSLA,
     MeanTeacherCorrection,
     SAFERPooledPredictor,
+    replace_batch_norm_with_medbn,
 )
 from utils.safer_view import SAFERViewModule
 from datautil.attacked_imagefolder import AttackedImageFolder
+from datautil.getdataloader import get_img_dataloader
 import statistics
 from peft import LoraConfig, get_peft_model
 import wandb
@@ -128,7 +140,7 @@ def get_args():
     parser.add_argument("--net",type=str,default="resnet18",help="featurizer: vgg16, resnet18,resnet50, resnet101,DTNBase,ViT-B16,resnext50",)
     parser.add_argument("--test_envs", type=int, nargs="+", default=[0], help="target domains")
     parser.add_argument("--output", type=str, default="./tta_output", help="result output path")
-    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3,SAFER,TeSLA,AMTDC]",)
+    parser.add_argument("--adapt_alg",type=str,default="TTA3",help="[Tent,MedBN,EATA,PL,PLC,SHOT-IM,T3A,BN,ETA,LAME,ERM,TSD,TTA3,SAFER,TeSLA,AMTDC]",)
     parser.add_argument("--beta", type=float, default=0.9, help="threshold for pseudo label(PL)")
     parser.add_argument("--episodic", action="store_true", help="is episodic or not,default:False")
     parser.add_argument("--steps", type=int, default=1, help="steps of test time, default:1")
@@ -136,9 +148,10 @@ def get_args():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--seeds", type=str, default=None, help="Comma-separated seed list (overrides --seed).")
     parser.add_argument("--update_param", type=str, default="all", help="all / affine / body / head / lora / tent")
-    # two hyper-parameters for EATA (ICML22)
-    parser.add_argument("--e_margin",type=float,default=math.log(7) * 0.40,help="entropy margin E_0 in Eqn. (3) for filtering reliable samples",)
+    # EATA (ICML22)
     parser.add_argument("--d_margin",type=float,default=0.05,help="epsilon in Eqn. (5) for filtering redundant samples",)
+    parser.add_argument("--fisher_size", type=int, default=2000, help="Number of source-domain samples used to estimate EATA Fisher matrices (0 disables).")
+    parser.add_argument("--fisher_alpha", type=float, default=2000.0, help="Weight on the EATA Fisher regularizer.")
     # TTA3
     parser.add_argument("--use_mi", type=str, choices=['mi', 'em'], default='em')   
     parser.add_argument('--lam_em', type=float, default=1.0, help='weight on entropy minimization')
@@ -169,8 +182,8 @@ def get_args():
         help="Log sampled SAFER augmentation pipelines once per run.",
     )
     parser.add_argument("--s_js_weight", type=float, default=1.0, help="Weight for SAFER JS divergence consistency loss.")
-    parser.add_argument("--s_cc_weight", type=float, default=0.01, help="Weight for SAFER cross-correlation loss.")
-    parser.add_argument("--s_cc_offdiag", type=float, default=0.005, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
+    parser.add_argument("--s_cc_weight", type=float, default=0.001, help="Weight for SAFER cross-correlation loss.")
+    parser.add_argument("--s_cc_offdiag", type=float, default=0.001, help="Weight on off-diagonal terms in SAFER cross-correlation loss.")
     parser.add_argument("--s_cc_impl", type=str, default="fast", choices=["fast", "einsum"], help="Cross-correlation implementation: fast pairwise or einsum-based.")
     parser.add_argument("--s_feat_normalize", type=int, default=0, choices=[0,1], help="L2-normalise features before computing SAFER cross-correlation.")
     parser.add_argument("--s_aug_seed", type=int, default=-1, help="Deterministic seed for SAFER augmentation sampling (-1 disables).")
@@ -238,7 +251,7 @@ def get_args():
         "--s_sup_view_pool",
         dest="s_primary_view_pool",
         type=str.lower,
-        default="mean",
+        default="cc_drop",
         choices=["mean", "entropy", "top1", "cc", "cc_drop"],
         help="Primary pooling strategy for combining SAFER view predictions.",
     )
@@ -282,7 +295,7 @@ def get_args():
     parser.add_argument(
         "--s_alpha_signal",
         type=str.lower,
-        default="orig_conf",
+        default="feat_disagreement",
         choices=[
             "orig_conf",
             "orig_margin",
@@ -301,7 +314,7 @@ def get_args():
         "--s_alpha_threshold",
         dest="s_alpha_conf_threshold",
         type=float,
-        default=0.99,
+        default=0.2,
         help="Threshold applied to the chosen alpha signal.",
     )
     parser.add_argument(
@@ -309,7 +322,7 @@ def get_args():
         "--s_alpha_attacked_value",
         dest="s_alpha_attack_value",
         type=float,
-        default=0.0,
+        default=0.25,
         help="Alpha value used when an input is considered attacked / suspicious.",
     )
     parser.add_argument(
@@ -317,7 +330,7 @@ def get_args():
         "--s_alpha_clean_weight",
         dest="s_alpha_clean_value",
         type=float,
-        default=1.0,
+        default=0.65,
         help="Alpha value used when an input is considered clean.",
     )
     parser.add_argument(
@@ -338,13 +351,13 @@ def get_args():
     parser.add_argument(
         "--s_alpha_sigmoid_slope",
         type=float,
-        default=10.0,
+        default=3.0,
         help="Slope used by the sigmoid alpha curve.",
     )
     parser.add_argument(
         "--s_tta_loss",
         type=str.lower,
-        default="none",
+        default="tent",
         choices=["none", "tent", "pl"],
         help="Auxiliary TTA loss applied to SAFER predictions.",
     )
@@ -357,7 +370,7 @@ def get_args():
     parser.add_argument(
         "--s_tta_target",
         type=str.lower,
-        default="views",
+        default="pooled",
         choices=["views", "pooled"],
         help="Whether to apply the SAFER TTA loss to individual views or the pooled prediction.",
     )
@@ -549,6 +562,8 @@ def get_args():
     args.use_mi = args.use_mi == 'mi'
 
     args = img_param_init(args)
+    if args.adapt_alg == "EATA":
+        args.e_margin = math.log(args.num_classes) * 0.40
 
     args.s_feat_normalize = bool(args.s_feat_normalize)
     args.s_cc_impl = args.s_cc_impl.lower()
@@ -748,6 +763,13 @@ def log_args(args, time_taken_s):
             "s_cc_mode": args.s_cc_mode,
             "s_cc_view_pool": args.s_cc_view_pool,
         }, commit=False)
+    elif args.adapt_alg == "EATA":
+        wandb.log({
+            "e_margin": args.e_margin,
+            "d_margin": args.d_margin,
+            "fisher_size": args.fisher_size,
+            "fisher_alpha": args.fisher_alpha,
+        }, commit=False)
     elif args.adapt_alg == "TeSLA":
         wandb.log({
             "tesla_sub_policy_dim": args.tesla_sub_policy_dim,
@@ -831,6 +853,67 @@ def adapt_loader(args):
     return testloader
 
 
+def _predict_logits(model: nn.Module, images: torch.Tensor) -> torch.Tensor:
+    if hasattr(model, "predict"):
+        return model.predict(images)
+    return model(images)
+
+
+def _compute_eata_fishers(args, model: nn.Module):
+    if args.fisher_size <= 0:
+        return None
+
+    _, eval_loaders = get_img_dataloader(args)
+    source_eval_ids = train_valid_target_eval_names(args)["train"]
+    if not source_eval_ids:
+        return None
+
+    remaining = int(args.fisher_size)
+    num_batches = 0
+    fishers = {}
+    model.zero_grad(set_to_none=True)
+
+    for loader_idx in source_eval_ids:
+        if remaining <= 0:
+            break
+        for images, _ in eval_loaders[loader_idx]:
+            if remaining <= 0:
+                break
+            images = images.cuda(non_blocking=True)
+            outputs = _predict_logits(model, images)
+            pseudo_targets = outputs.detach().max(1)[1]
+            loss = F.cross_entropy(outputs, pseudo_targets)
+            loss.backward()
+            num_batches += 1
+
+            for name, param in model.named_parameters():
+                if param.grad is None:
+                    continue
+                fisher = param.grad.detach().clone().pow(2)
+                if name in fishers:
+                    fishers[name][0].add_(fisher)
+                else:
+                    fishers[name] = [fisher, param.detach().clone()]
+
+            model.zero_grad(set_to_none=True)
+            remaining -= images.size(0)
+
+    if num_batches == 0:
+        return None
+
+    for fisher, _ in fishers.values():
+        fisher.div_(num_batches)
+
+    wandb.log(
+        {
+            "EATA/fisher_batches": num_batches,
+            "EATA/fisher_samples": max(0, args.fisher_size - remaining),
+        },
+        commit=False,
+    )
+    return fishers
+
+
 def make_adapt_model(args, algorithm):
     if args.fft_feat_max_layer > 0 and args.fft_feat_keep_ratio < 1.0:
         keep_ratio = args.fft_feat_keep_ratio
@@ -910,10 +993,40 @@ def make_adapt_model(args, algorithm):
         algorithm = configure_model(algorithm)
         params, _ = collect_params(algorithm)
         optimizer = torch.optim.Adam(params, lr=args.lr)
+        wandb.log({"sum_params": sum(p.nelement() for p in params)}, commit=False)
         algorithm = wrap_with_input_defense(algorithm, args)
         algorithm, view_module = _maybe_wrap_model(algorithm)
         adapt_model = Tent(
             algorithm, optimizer, steps=args.steps, episodic=args.episodic
+        )
+    elif args.adapt_alg == "MedBN":
+        algorithm = replace_batch_norm_with_medbn(algorithm)
+        algorithm = configure_model(algorithm)
+        params, _ = collect_params(algorithm)
+        optimizer = torch.optim.Adam(params, lr=args.lr)
+        wandb.log({"sum_params": sum(p.nelement() for p in params)}, commit=False)
+        algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
+        adapt_model = MedBN(
+            algorithm, optimizer, steps=args.steps, episodic=args.episodic
+        )
+    elif args.adapt_alg == "EATA":
+        algorithm = configure_model(algorithm)
+        params, _ = collect_params(algorithm)
+        optimizer = torch.optim.Adam(params, lr=args.lr)
+        wandb.log({"sum_params": sum(p.nelement() for p in params)}, commit=False)
+        algorithm = wrap_with_input_defense(algorithm, args)
+        algorithm, view_module = _maybe_wrap_model(algorithm)
+        fishers = _compute_eata_fishers(args, algorithm)
+        adapt_model = EATA(
+            algorithm,
+            optimizer,
+            fishers=fishers,
+            fisher_alpha=args.fisher_alpha,
+            steps=args.steps,
+            episodic=args.episodic,
+            e_margin=args.e_margin,
+            d_margin=args.d_margin,
         )
     elif args.adapt_alg == "ERM":
         algorithm = wrap_with_input_defense(algorithm, args)
@@ -1365,6 +1478,15 @@ if __name__ == "__main__":
             cr_modifier = f"-{args.cr_type}"
         #run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-{args.lam_flat}-{args.lam_adv}-{args.lam_cr}{cr_modifier}_rate-{args.attack_rate}"
         run_name = f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}-fftin-k{args.fft_input_keep_ratio}-a{args.fft_input_alpha}-feat-k{args.fft_feat_keep_ratio}-a{args.fft_feat_alpha}-l{args.fft_feat_max_layer}_rate-{args.attack_rate}"
+    elif args.adapt_alg == "EATA":
+        run_name = (
+            f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}"
+            f"-em{args.e_margin:.3f}"
+            f"-dm{args.d_margin:.3f}"
+            f"-fa{args.fisher_alpha:.0f}"
+            f"-fs{args.fisher_size}"
+            f"_rate-{args.attack_rate}"
+        )
     elif args.adapt_alg == "SAFER":
         run_name = (
             f"{args.dataset}_dom_{dom_id}_{args.adapt_alg}"

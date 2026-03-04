@@ -1,28 +1,36 @@
 program: unsupervise_adapt.py
 project: safer
-name: linf8_adv_source_all_tta
+name: safer_wrap_tta_compare_no_alpha_withfft
 method: grid
 metric:
   name: acc_mean
   goal: maximize
 
 parameters:
-  adapt_alg:
-    values: ["ERM", "Tent", "PL", "TSD", "TeSLA"]
-  dataset:
-    values: ["PACS", "VLCS", "office-home"]
-  test_envs:
-    values: [0, 1, 2, 3]
   attack:
     value: linf_eps-8.0_steps-20
+
+  adapt_alg:
+    values: ["ERM", "Tent", "PL", "TSD"]
+
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+
+  test_envs:
+    values: [0, 1, 2, 3]
+
   attack_rate:
     values: [0, 50, 100]
-  use_adv_source:
-    value: 1
-  adv_source_preset:
-    value: linf8
-  seeds:
-    value: "0,1,2"
 
-  batch_size:
-    value: 64
+  steps:
+    value: 1
+
+  s_wrap_alg:
+    value: 1
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+
+  s_alpha_mode:
+    value: "none"

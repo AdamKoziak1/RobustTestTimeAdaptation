@@ -1,0 +1,44 @@
+program: unsupervise_adapt.py
+project: safer
+name: safer_standalone_sigmoid_alpha
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  attack:
+    value: linf_eps-8.0_steps-20
+
+  adapt_alg:
+    value: "SAFER"
+
+  dataset:
+    values: ["PACS", "VLCS", "office-home"]
+
+  test_envs:
+    values: [0, 1, 2, 3]
+
+  attack_rate:
+    values: [0, 50, 100]
+
+  steps:
+    value: 1
+
+  s_wrap_alg:
+    value: 0
+
+  s_alpha_mode:
+    value: "sigmoid"
+  s_alpha_signal:
+    value: "feat_disagreement"
+  s_alpha_attack_high_conf:
+    value: 1
+  s_alpha_attack_value:
+    value: 0.25
+  s_alpha_clean_value:
+    value: 0.65
+  s_alpha_sigmoid_slope:
+    value: 3.0
+  s_alpha_conf_threshold:
+    value: 0.2

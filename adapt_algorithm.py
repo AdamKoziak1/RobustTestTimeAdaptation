@@ -23,6 +23,136 @@ def softmax_entropy(x: torch.Tensor) -> torch.Tensor:
     return -(x.softmax(1) * x.log_softmax(1)).sum(1)
 
 
+class MedBatchNorm2d(nn.BatchNorm2d):
+    """BatchNorm variant that uses per-channel medians at test time."""
+
+    def __init__(
+        self,
+        num_features: int,
+        eps: float = 1e-5,
+        momentum: Optional[float] = 0.1,
+        affine: bool = True,
+        track_running_stats: bool = True,
+        use_tracked_mean: bool = False,
+        use_tracked_var: bool = False,
+    ) -> None:
+        super().__init__(
+            num_features=num_features,
+            eps=eps,
+            momentum=momentum,
+            affine=affine,
+            track_running_stats=track_running_stats,
+        )
+        self.use_tracked_mean = use_tracked_mean
+        self.use_tracked_var = use_tracked_var
+
+    @classmethod
+    def from_batch_norm(
+        cls,
+        bn_layer: nn.BatchNorm2d,
+        *,
+        use_tracked_mean: bool = False,
+        use_tracked_var: bool = False,
+    ) -> "MedBatchNorm2d":
+        replacement = cls(
+            num_features=bn_layer.num_features,
+            eps=bn_layer.eps,
+            momentum=bn_layer.momentum,
+            affine=bn_layer.affine,
+            track_running_stats=bn_layer.track_running_stats,
+            use_tracked_mean=use_tracked_mean,
+            use_tracked_var=use_tracked_var,
+        )
+
+        reference = bn_layer.weight if bn_layer.affine else bn_layer.running_mean
+        if reference is not None:
+            replacement = replacement.to(device=reference.device, dtype=reference.dtype)
+
+        if bn_layer.affine:
+            replacement.weight.data.copy_(bn_layer.weight.data)
+            replacement.bias.data.copy_(bn_layer.bias.data)
+        if bn_layer.track_running_stats:
+            if bn_layer.running_mean is not None and replacement.running_mean is not None:
+                replacement.running_mean.data.copy_(bn_layer.running_mean.data)
+            if bn_layer.running_var is not None and replacement.running_var is not None:
+                replacement.running_var.data.copy_(bn_layer.running_var.data)
+            if (
+                bn_layer.num_batches_tracked is not None
+                and replacement.num_batches_tracked is not None
+            ):
+                replacement.num_batches_tracked.data.copy_(bn_layer.num_batches_tracked.data)
+        return replacement
+
+    def _update_running_stats(
+        self,
+        batch_median: torch.Tensor,
+        batch_var: torch.Tensor,
+    ) -> None:
+        if self.running_mean is None or self.running_var is None:
+            return
+
+        momentum = self.momentum
+        if momentum is None:
+            if self.num_batches_tracked is None:
+                momentum = 1.0
+            else:
+                self.num_batches_tracked.add_(1)
+                momentum = 1.0 / float(self.num_batches_tracked.item())
+
+        with torch.no_grad():
+            self.running_mean.mul_(1.0 - momentum).add_(batch_median.detach(), alpha=momentum)
+            self.running_var.mul_(1.0 - momentum).add_(batch_var.detach(), alpha=momentum)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        self._check_input_dim(x)
+
+        y = x.transpose(0, 1).contiguous().reshape(x.size(1), -1)
+        batch_median = y.median(dim=1).values
+        centered = y - batch_median[:, None]
+        batch_var = centered.square().mean(dim=1)
+
+        if self.training and self.track_running_stats:
+            self._update_running_stats(batch_median, batch_var)
+
+        use_running_mean = self.use_tracked_mean and self.running_mean is not None
+        use_running_var = self.use_tracked_var and self.running_var is not None
+        mean = self.running_mean if use_running_mean else batch_median
+        var = self.running_var if use_running_var else batch_var
+
+        y = (y - mean[:, None]) / torch.sqrt(var[:, None] + self.eps)
+        if self.affine:
+            y = self.weight[:, None] * y + self.bias[:, None]
+        return y.reshape(x.transpose(0, 1).shape).transpose(0, 1)
+
+
+def _get_named_submodule(model: nn.Module, sub_name: str) -> nn.Module:
+    module = model
+    for name in sub_name.split("."):
+        module = getattr(module, name)
+    return module
+
+
+def _set_named_submodule(model: nn.Module, sub_name: str, value: nn.Module) -> None:
+    parts = sub_name.split(".")
+    module = model
+    for name in parts[:-1]:
+        module = getattr(module, name)
+    setattr(module, parts[-1], value)
+
+
+def replace_batch_norm_with_medbn(model: nn.Module) -> nn.Module:
+    """Replace BatchNorm2d layers with median-stat variants in-place."""
+    norm_names = [
+        name
+        for name, module in model.named_modules()
+        if isinstance(module, nn.BatchNorm2d) and not isinstance(module, MedBatchNorm2d)
+    ]
+    for name in norm_names:
+        bn_layer = _get_named_submodule(model, name)
+        _set_named_submodule(model, name, MedBatchNorm2d.from_batch_norm(bn_layer))
+    return model
+
+
 VIEW_POOL_STRATEGIES = {"mean", "entropy", "top1", "cc", "cc_drop"}
 VIEW_POOL_STRATEGIES_WITH_MATCHING = VIEW_POOL_STRATEGIES | {"matching"}
 
@@ -267,6 +397,168 @@ class Tent(nn.Module):
         loss.backward()
         optimizer.step()        
         return outputs
+
+
+class MedBN(Tent):
+    """Tent-style adaptation over median-stat batch-normalization layers."""
+
+
+def update_model_probs(
+    current_model_probs: Optional[torch.Tensor],
+    new_probs: torch.Tensor,
+    momentum: float = 0.9,
+) -> Optional[torch.Tensor]:
+    if current_model_probs is None:
+        if new_probs.numel() == 0:
+            return None
+        with torch.no_grad():
+            return new_probs.mean(0)
+    if new_probs.numel() == 0:
+        with torch.no_grad():
+            return current_model_probs
+    with torch.no_grad():
+        return momentum * current_model_probs + (1.0 - momentum) * new_probs.mean(0)
+
+
+class EATA(nn.Module):
+    """
+    ICML 2022
+    EATA extends Tent with entropy filtering, redundancy filtering, and
+    optional Fisher regularization to reduce forgetting.
+    """
+
+    def __init__(
+        self,
+        model,
+        optimizer,
+        fishers=None,
+        fisher_alpha: float = 2000.0,
+        steps: int = 1,
+        episodic: bool = False,
+        e_margin: Optional[float] = None,
+        d_margin: float = 0.05,
+        prob_momentum: float = 0.9,
+    ):
+        super().__init__()
+        self.model = model
+        self.optimizer = optimizer
+        self.steps = steps
+        assert steps > 0, "EATA requires >= 1 step(s) to forward and update"
+        self.episodic = episodic
+
+        self.fishers = fishers
+        self.fisher_alpha = fisher_alpha
+        self.e_margin = e_margin
+        self.d_margin = d_margin
+        self.prob_momentum = prob_momentum
+
+        self.num_samples_update_1 = 0
+        self.num_samples_update_2 = 0
+        self.current_model_probs: Optional[torch.Tensor] = None
+
+        self.model_state, self.optimizer_state = copy_model_and_optimizer(
+            self.model, self.optimizer
+        )
+
+    def forward(self, x):
+        if self.episodic:
+            self.reset()
+
+        for _ in range(self.steps):
+            outputs, num_selected, num_reliable, updated_probs = self.forward_and_adapt(
+                x,
+                self.model,
+                self.optimizer,
+                self.fishers,
+                self.current_model_probs,
+            )
+            self.num_samples_update_2 += num_selected
+            self.num_samples_update_1 += num_reliable
+            self.current_model_probs = updated_probs
+
+        wandb.log(
+            {
+                "EATA/reliable_count": float(num_reliable),
+                "EATA/selected_count": float(num_selected),
+                "EATA/reliable_rate": float(num_reliable) / max(1, x.size(0)),
+                "EATA/selected_rate": float(num_selected) / max(1, x.size(0)),
+            },
+            commit=False,
+        )
+        return outputs
+
+    def reset(self):
+        if self.model_state is None or self.optimizer_state is None:
+            raise Exception("cannot reset without saved model/optimizer state")
+        load_model_and_optimizer(
+            self.model, self.optimizer, self.model_state, self.optimizer_state
+        )
+        self.current_model_probs = None
+        self.num_samples_update_1 = 0
+        self.num_samples_update_2 = 0
+
+    @torch.enable_grad()
+    def forward_and_adapt(
+        self,
+        x,
+        model,
+        optimizer,
+        fishers,
+        current_model_probs,
+    ):
+        outputs = model.predict(x)
+        entropies = softmax_entropy(outputs)
+        e_margin = self.e_margin
+        if e_margin is None:
+            e_margin = math.log(outputs.shape[1]) * 0.40
+
+        reliable_mask = entropies < e_margin
+        reliable_entropies = entropies[reliable_mask]
+        reliable_probs = outputs[reliable_mask].softmax(1)
+
+        if current_model_probs is not None and reliable_probs.size(0) > 0:
+            cosine_similarities = F.cosine_similarity(
+                current_model_probs.unsqueeze(0),
+                reliable_probs,
+                dim=1,
+            )
+            selected_mask = cosine_similarities.abs() < self.d_margin
+        else:
+            selected_mask = torch.ones_like(reliable_entropies, dtype=torch.bool)
+
+        selected_entropies = reliable_entropies[selected_mask]
+        selected_probs = reliable_probs[selected_mask]
+        updated_probs = update_model_probs(
+            current_model_probs,
+            selected_probs,
+            momentum=self.prob_momentum,
+        )
+
+        num_reliable = int(reliable_mask.sum().item())
+        num_selected = int(selected_mask.sum().item())
+
+        optimizer.zero_grad()
+        if num_selected == 0:
+            return outputs, num_selected, num_reliable, updated_probs
+
+        coeff = torch.exp(e_margin - selected_entropies.detach())
+        loss = (selected_entropies * coeff).mean()
+
+        if fishers is not None:
+            ewc_loss = torch.zeros((), device=outputs.device)
+            for name, param in model.named_parameters():
+                fisher_entry = fishers.get(name)
+                if fisher_entry is None:
+                    continue
+                fisher_value, param_value = fisher_entry
+                ewc_loss = ewc_loss + self.fisher_alpha * (
+                    fisher_value * (param - param_value) ** 2
+                ).sum()
+            loss = loss + ewc_loss
+
+        loss.backward()
+        optimizer.step()
+        return outputs, num_selected, num_reliable, updated_probs
 
 
 def _safer_view_log_payload(view_out) -> dict[str, float]:

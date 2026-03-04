@@ -10,6 +10,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from adapt_algorithm import (
     _aggregate_view_probs,
+    _barlow_twins_loss,
     _weighted_pseudo_label_loss,
     _js_divergence,
 )
@@ -77,6 +78,79 @@ def test_js_divergence_pairwise_weighted_runs():
     assert torch.isfinite(loss_pair)
     loss_pooled = _js_divergence(probs, ref_probs=pooled, view_weights=weights, mode="pooled")
     assert torch.isfinite(loss_pooled)
+
+
+def test_js_divergence_pairwise_normalizes_by_pair_weight_sum():
+    probs = torch.tensor(
+        [
+            [[0.80, 0.20], [0.55, 0.45], [0.25, 0.75]],
+            [[0.60, 0.40], [0.20, 0.80], [0.90, 0.10]],
+        ],
+        dtype=torch.float64,
+    )
+    weights = torch.tensor(
+        [
+            [0.20, 0.30, 0.50],
+            [0.10, 0.60, 0.30],
+        ],
+        dtype=torch.float64,
+    )
+    eps = 1e-12
+
+    actual = _js_divergence(probs, view_weights=weights, mode="pairwise", eps=eps)
+
+    weighted_sum = probs.new_tensor(0.0)
+    pair_weight_sum = probs.new_tensor(0.0)
+    for i in range(probs.size(1)):
+        for j in range(i + 1, probs.size(1)):
+            p = probs[:, i]
+            q = probs[:, j]
+            m = 0.5 * (p + q)
+            kl_pm = (p * (p.clamp_min(eps).log() - m.clamp_min(eps).log())).sum(dim=-1)
+            kl_qm = (q * (q.clamp_min(eps).log() - m.clamp_min(eps).log())).sum(dim=-1)
+            js_pair = 0.5 * (kl_pm + kl_qm)
+            pair_weight = weights[:, i] * weights[:, j]
+            weighted_sum += (js_pair * pair_weight).sum()
+            pair_weight_sum += pair_weight.sum()
+
+    expected = weighted_sum / pair_weight_sum
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
+
+
+def test_barlow_twins_pairwise_normalizes_by_number_of_pairs():
+    features = torch.tensor(
+        [
+            [[1.0, 0.2, 1.5], [0.4, 1.2, 0.3], [1.4, 0.5, 0.9]],
+            [[0.7, 1.1, 0.8], [1.5, 0.2, 1.0], [0.6, 1.3, 1.4]],
+            [[1.3, 0.4, 0.6], [0.8, 1.4, 1.2], [1.1, 0.7, 0.2]],
+            [[0.2, 1.5, 1.1], [1.1, 0.6, 0.5], [0.9, 1.0, 1.3]],
+        ],
+        dtype=torch.float64,
+    )
+    offdiag_weight = 0.25
+    eps = 1e-12
+
+    actual = _barlow_twins_loss(features, offdiag_weight=offdiag_weight, eps=eps)
+
+    bsz, num_views, dim = features.shape
+    mean = features.mean(dim=0, keepdim=True)
+    std = features.std(dim=0, unbiased=False, keepdim=True)
+    z = (features - mean) / (std + eps)
+    eye = torch.eye(dim, dtype=features.dtype)
+
+    pair_loss_sum = features.new_tensor(0.0)
+    num_pairs = 0
+    for i in range(num_views):
+        for j in range(i + 1, num_views):
+            c = (z[:, i].T @ z[:, j]) / float(bsz)
+            c_diff = (c - eye).pow(2)
+            diag_loss = torch.diagonal(c_diff).sum()
+            offdiag_loss = c_diff.sum() - diag_loss
+            pair_loss_sum += diag_loss + offdiag_weight * offdiag_loss
+            num_pairs += 1
+
+    expected = pair_loss_sum / num_pairs
+    torch.testing.assert_close(actual, expected, atol=1e-12, rtol=1e-12)
 
 
 if __name__ == "__main__":

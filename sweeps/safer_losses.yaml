@@ -1,6 +1,6 @@
 program: unsupervised_adapt_dataset.py
 project: safer
-name: safer_losses
+name: safer_losses_allparams
 method: grid
 metric:
   name: acc_0
@@ -14,12 +14,6 @@ parameters:
 
   adapt_alg:
     value: "SAFER"
-
-  update_param:
-    value: "tent"
-
-  lr:
-    value: 0.0001
 
   steps:
     value: 1
@@ -51,8 +45,6 @@ parameters:
     value: "pairwise"
   s_cc_view_pool:
     values: ["mean", "cc"]
-  s_cc_offdiag:
-    values: [0.001, 0.005]
   s_cc_impl:
     value: "fast"
   s_feat_normalize:

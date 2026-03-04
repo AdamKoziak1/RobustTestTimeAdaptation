@@ -1,0 +1,39 @@
+program: unsupervise_adapt.py
+project: safer
+name: TSD_FFT_VERIFICATION
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  attack:
+    value: linf_eps-8.0_steps-20
+
+  adapt_alg:
+    value: "TSD"
+
+  dataset:
+    value: "PACS"
+
+  test_envs:
+    value: 0
+
+  attack_rate:
+    values: [0, 50, 100]
+
+  steps:
+    value: 1
+
+  s_wrap_alg:
+    values: [0,1]
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+
+  s_alpha_mode:
+    value: "none"
+
+  fft_input_keep_ratio:
+    values: [0, 0.5, 1]
