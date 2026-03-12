@@ -465,8 +465,8 @@ def main() -> int:
         help="Comma-separated names to label each sweep in output rows.",
     )
     parser.add_argument("--sweep-config", type=Path, help="Sweep YAML to restrict allowed values.")
-    parser.add_argument("--entity", default="bigslav", help="W&B entity for --sweep-id.")
-    parser.add_argument("--project", default="safer", help="W&B project for --sweep-id.")
+    parser.add_argument("--entity", default="your_wandb_entity", help="W&B entity for --sweep-id.")
+    parser.add_argument("--project", default="your_wandb_project", help="W&B project for --sweep-id.")
 
     parser.add_argument("--dataset", help="Dataset name (e.g., PACS).")
     parser.add_argument(

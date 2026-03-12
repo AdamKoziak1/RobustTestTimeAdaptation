@@ -15,8 +15,8 @@ if str(SCRIPT_DIR) not in sys.path:
 import wandb_table as wt  # noqa: E402
 
 
-DEFAULT_ENTITY = "bigslav"
-DEFAULT_PROJECT = "safer"
+DEFAULT_ENTITY = "your_wandb_entity"
+DEFAULT_PROJECT = "your_wandb_project"
 DEFAULT_DATASETS = ["PACS", "VLCS", "office-home"]
 DEFAULT_ATTACK_RATES = [0, 50, 100]
 DEFAULT_DOMAIN_IDS = [0, 1, 2, 3]

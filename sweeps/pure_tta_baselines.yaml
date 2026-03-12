@@ -1,5 +1,5 @@
 program: unsupervised_adapt_dataset.py
-project: safer
+project: your_wandb_project
 name: pure_tta_baselines
 method: grid
 metric:

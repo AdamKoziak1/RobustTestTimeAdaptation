@@ -140,8 +140,8 @@ METHOD_GROUPS: Sequence[MethodGroup] = (
 CACHE_TEMPLATE = """# Sweep-ID cache used by scripts/wandb_paper_tables.py
 # Fill each alias with a W&B sweep id (abcd1234) or full sweep path (entity/project/abcd1234).
 # Aliases can point to the same sweep when the run is selected by filters (e.g., adapt_alg).
-entity: bigslav
-project: safer
+entity: your_wandb_entity
+project: your_wandb_project
 
 datasets:
   - PACS
@@ -161,8 +161,8 @@ sweeps:
 # CACHE_TEMPLATE = """# Sweep-ID cache used by scripts/wandb_paper_tables.py
 # # Fill each alias with a W&B sweep id (abcd1234) or full sweep path (entity/project/abcd1234).
 # # Aliases can point to the same sweep when the run is selected by filters (e.g., adapt_alg).
-# entity: bigslav
-# project: safer
+# entity: your_wandb_entity
+# project: your_wandb_project
 
 # datasets:
 #   - PACS
@@ -255,8 +255,8 @@ def load_cache(
             f"Create it with --init-cache or provide an existing file via --cache-file."
         )
     data = load_yaml_mapping(path)
-    entity = entity_override or str(data.get("entity") or "bigslav")
-    project = project_override or str(data.get("project") or "safer")
+    entity = entity_override or str(data.get("entity") or "your_wandb_entity")
+    project = project_override or str(data.get("project") or "your_wandb_project")
     datasets = parse_list_strings(data.get("datasets"), "datasets") or list(DEFAULT_DATASETS)
     attack_rates = parse_list_ints(data.get("attack_rates"), "attack_rates") or list(DEFAULT_ATTACK_RATES)
     domain_ids = parse_list_ints(data.get("domain_ids"), "domain_ids") or list(DEFAULT_DOMAIN_IDS)

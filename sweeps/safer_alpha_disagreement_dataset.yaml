@@ -1,5 +1,5 @@
 program: unsupervised_adapt_dataset.py
-project: safer
+project: your_wandb_project
 name: safer_alpha_disagreement_dataset
 method: grid
 metric:

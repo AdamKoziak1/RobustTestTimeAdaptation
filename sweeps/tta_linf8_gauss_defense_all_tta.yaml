@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer
+project: your_wandb_project
 name: linf8_gauss_defense_all_tta
 method: grid
 metric:

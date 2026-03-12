@@ -1,93 +1,161 @@
-# RobustTestTimeAdaptation
+# Robust Test-Time Adaptation with FFT Defenses
 
-This codebase is mainly based on [TSD](https://github.com/SakurajimaMaiii/TSD) 
-## Setup
-Use a virtual environment:
-```
-conda create -n tta python=3.13.5
-conda activate tta
-```
-Alternatively, venv:
-```
-python3.13 -m venv tta
-source tta/bin/activate
-```
+This branch is prepared for the ECCV 2026 supplementary submission of the FFT-specific paper.
+It focuses on reproducibility for FFT-based robust test-time adaptation (RTTA) experiments.
 
-Then, install the requirements:
-```
+This is an anonymized artifact release:
+- personal contact details were removed,
+- machine-specific absolute paths were removed,
+- W&B account identifiers were replaced with placeholders.
+
+## Scope for This Supplement
+Included:
+- source-model training (`train.py`),
+- adversarial stream generation (`generate_adv_data.py`),
+- test-time adaptation/evaluation (`unsupervise_adapt.py`),
+- sweep configs under `sweeps/` for FFT-paper runs,
+- scripts that export tables/figures from run logs.
+
+Out of scope:
+- SAFER-specific claims and SAFER-only ablations from older drafts.
+  Legacy SAFER files are kept for code compatibility/history, but are not required for the FFT supplementary package.
+
+## Environment Setup
+Option 1 (recommended):
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## Dataset
-Download the datasets:  
-[PACS](https://drive.google.com/uc?id=1JFr8f805nMUelQWWmfnJR3y4_SYoN5Pd)  
-[OfficeHome](https://drive.google.com/uc?id=1uY0pj7oFsjMxRwaD3Sxy0jgel0fsYXLC)  
-[VLCS](https://drive.google.com/uc?id=1skwblH1_okBwxWxmRsp9_qi15hyPpxg8)  
-Organize them as follows:
-```
-|datasets
-  |office-home
-    |Art
-    |Clipart
-    |Product
-    |RealWorld
-  |PACS
-    |art_painting
-    |cartoon
-    |photo
-    |sketch
-  |VLCS
-    |Caltech101
-    |LabelMe
-    |SUN09
-    |VOC2007
+Option 2 (conda lockfile-style environment):
+```bash
+conda env create -f tta-full.yml
+conda activate tta-peft
 ```
 
-## Train source model
-Please use `train.py` to train the source model. For example:
-```bash
-python train.py --dataset PACS \
-                --data_dir your_data_dir \
-                --opt_type Adam \
-                --lr 5e-5 \
-                --max_epoch 50
-```
-Change `--dataset PACS` for other datasets, such as `office-home`, `VLCS`.  
-## Adversarial Data Generation
-```bash
-python generate_adv_data.py --dataset PACS \
-                            --eps 8 \
-                            --alpha_adv 0.5 \
-                            --steps 20 \
-```
-To craft attacks against a model that first applies FFT-based filtering, provide the FFT-specific flags:
-```bash
-python generate_adv_data.py --dataset PACS \
-                            --eps 8 \
-                            --alpha_adv 0.5 \
-                            --steps 20 \
-                            --fft_rho 0.6 \
-                            --fft_alpha 1.0
-```
-This saves tensors under a configuration such as `resnet18_linf_eps-8.0_steps-20_fft-spatial_k-0.75_a-0.8`.  
-Supply the suffix after `resnet18_` to evaluation scripts, e.g. `--attack linf_eps-8.0_steps-20_fft-spatial_k-0.75_a-0.8`.
+## Data Setup
+Download datasets:
+- PACS: https://drive.google.com/uc?id=1JFr8f805nMUelQWWmfnJR3y4_SYoN5Pd
+- OfficeHome: https://drive.google.com/uc?id=1uY0pj7oFsjMxRwaD3Sxy0jgel0fsYXLC
+- VLCS: https://drive.google.com/uc?id=1skwblH1_okBwxWxmRsp9_qi15hyPpxg8
 
-## Test time adaptation
-```bash
-python unsupervise_adapt.py --dataset PACS \
-                            --data_dir your_data_dir \
-                            --adapt_alg Tent \ 
-                            --lr 1e-4 \
-                            --fft_input_keep_ratio 0.8 \
-                            --fft_input_alpha 0.8 \
-                            --fft_feat_keep_ratio 0.8 \
-                            --fft_feat_alpha 0.8
+Expected layout:
+```text
+datasets/
+  PACS/
+    art_painting/ cartoon/ photo/ sketch/
+  VLCS/
+    Caltech101/ LabelMe/ SUN09/ VOC2007/
+  office-home/
+    Art/ Clipart/ Product/ RealWorld/
 ```
-Change `--adapt_alg TSD` to use different methods of test time adaptation, e.g. `T3A`, `Tent`.  
-Change `--fft*` to adjust the parameters relating to the FFT modules.
-Run once with `--fft_input_keep_ratio 1.0` (FFT disabled) and again with your desired keep ratio to compare TTA performance with/without the input FFT module on the same attacked tensors.
 
-Ensure that you configure the default arguments in these files to match your directory structure.
+## Reproducing Core FFT Experiments
+Use the same seeds/domains/rates as the paper (typically seeds `0,1,2`, domains `0,1,2,3`, attack rates `0,50,100`).
 
-## ✉️ Contact
-Please contact adamkoziak@cmail.carleton.ca
+1. Train source model checkpoints:
+```bash
+python train.py \
+  --dataset PACS \
+  --data_file . \
+  --data_dir datasets \
+  --test_envs 0 \
+  --seed 0 \
+  --opt_type Adam \
+  --lr 5e-5 \
+  --max_epoch 50 \
+  --output train_output
+```
+
+2. Generate adversarial streams (baseline PGD):
+```bash
+python generate_adv_data.py \
+  --dataset PACS \
+  --data_file . \
+  --data_dir datasets \
+  --test_envs 0 \
+  --seed 0 \
+  --attack linf \
+  --eps 8 \
+  --alpha_adv 2 \
+  --steps 20
+```
+
+3. Generate FFT-aware adversarial streams (when needed by the paper setup):
+```bash
+python generate_adv_data.py \
+  --dataset PACS \
+  --data_file . \
+  --data_dir datasets \
+  --test_envs 0 \
+  --seed 0 \
+  --attack linf \
+  --eps 8 \
+  --alpha_adv 2 \
+  --steps 20 \
+  --fft_rho 0.6 \
+  --fft_alpha 1.0
+```
+
+4. Evaluate TTA baseline:
+```bash
+python unsupervise_adapt.py \
+  --dataset PACS \
+  --data_file . \
+  --data_dir datasets \
+  --attack_data_dir datasets_adv \
+  --test_envs 0 \
+  --seed 0 \
+  --adapt_alg Tent \
+  --attack linf_eps-8.0_steps-20 \
+  --attack_rate 100 \
+  --fft_input_keep_ratio 1.0 \
+  --fft_feat_keep_ratio 1.0
+```
+
+5. Evaluate FFT defense:
+```bash
+python unsupervise_adapt.py \
+  --dataset PACS \
+  --data_file . \
+  --data_dir datasets \
+  --attack_data_dir datasets_adv \
+  --test_envs 0 \
+  --seed 0 \
+  --adapt_alg Tent \
+  --attack linf_eps-8.0_steps-20 \
+  --attack_rate 100 \
+  --fft_input_keep_ratio 0.6 \
+  --fft_input_alpha 0.7 \
+  --fft_feat_keep_ratio 0.8 \
+  --fft_feat_alpha 1.0
+```
+
+## Sweep-Based Reproduction
+FFT-paper sweep configs are provided (examples):
+- `sweeps/FFT_PAPER_tta_linf8_fft_paper_all_tta_baseline.yaml`
+- `sweeps/FFT_PAPER_tta_linf8_fft_paper_defense_all_tta.yaml`
+- `sweeps/ablation_tent_baseline_pacs.yaml`
+- `sweeps/ablation_tent_fft_defense_pacs.yaml`
+
+Run sweeps:
+```bash
+wandb sweep sweeps/FFT_PAPER_tta_linf8_fft_paper_all_tta_baseline.yaml
+wandb sweep sweeps/FFT_PAPER_tta_linf8_fft_paper_defense_all_tta.yaml
+wandb agent <entity>/<project>/<sweep_id>
+```
+
+Use your own W&B entity/project (do not rely on defaults).
+
+## Table/Figure Export
+Use the scripts under `scripts/` to export LaTeX tables and plots from run logs.
+Start from:
+- `scripts/wandb_table.py`
+- `scripts/wandb_ablation_tables.py`
+- `scripts/plot_wandb_attack_rate_curve.py`
+- `scripts/wandb_compute_overhead_table.py`
+
+An ECCV-focused reproducibility checklist and command map is provided in:
+- `docs/ECCV2026_SUPPLEMENTARY_REPRODUCIBILITY.md`

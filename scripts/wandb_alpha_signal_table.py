@@ -215,8 +215,8 @@ def main() -> int:
             "If omitted, baseline is searched in signal sweeps."
         ),
     )
-    parser.add_argument("--entity", default="bigslav", help="W&B entity for bare sweep IDs.")
-    parser.add_argument("--project", default="safer", help="W&B project for bare sweep IDs.")
+    parser.add_argument("--entity", default="your_wandb_entity", help="W&B entity for bare sweep IDs.")
+    parser.add_argument("--project", default="your_wandb_project", help="W&B project for bare sweep IDs.")
     parser.add_argument("--dataset", default="PACS", help="Dataset name.")
     parser.add_argument("--domain-ids", default="0", help="Comma-separated domain ids.")
     parser.add_argument("--attack-rates", default="0,50,100", help="Comma-separated attack rates.")

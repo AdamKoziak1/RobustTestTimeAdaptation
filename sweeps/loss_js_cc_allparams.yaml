@@ -1,5 +1,5 @@
 program: unsupervised_adapt_dataset.py
-project: safer
+project: your_wandb_project
 name: loss_js_cc_allparams
 method: grid
 metric:

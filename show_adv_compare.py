@@ -5,8 +5,8 @@ Interactive viewer for clean vs adversarial tensors saved by generate_adv_data.p
 
 Example:
   python show_adv_compare.py \
-      --data_root /home/adam/Downloads/RobustTestTimeAdaptation/datasets \
-      --adv_root  /home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv \
+      --data_root ./datasets \
+      --adv_root  ./datasets_adv \
       --dataset PACS --domain 0 --seed 0 \
       --config resnet18_linf_eps-8.0_steps-20
 

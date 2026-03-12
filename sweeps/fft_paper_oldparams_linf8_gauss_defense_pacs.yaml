@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer
+project: your_wandb_project
 name: fft_paper_oldparams_linf8_gauss_defense_pacs
 method: grid
 metric:

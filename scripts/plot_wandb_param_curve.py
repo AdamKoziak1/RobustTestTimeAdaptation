@@ -70,8 +70,8 @@ def load_records(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Plot metric vs a sweep parameter from W&B runs.")
     parser.add_argument("--sweep-ids", required=True, help="Comma-separated sweep IDs/paths.")
-    parser.add_argument("--entity", default="bigslav", help="W&B entity for bare IDs.")
-    parser.add_argument("--project", default="safer", help="W&B project for bare IDs.")
+    parser.add_argument("--entity", default="your_wandb_entity", help="W&B entity for bare IDs.")
+    parser.add_argument("--project", default="your_wandb_project", help="W&B project for bare IDs.")
     parser.add_argument("--dataset", default="PACS", help="Dataset filter.")
     parser.add_argument("--domain-id", type=int, default=0, help="Domain filter.")
     parser.add_argument("--x-key", required=True, help="Config key for x-axis (e.g., s_num_views).")

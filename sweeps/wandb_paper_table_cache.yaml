@@ -1,25 +1,8 @@
 # Sweep-ID cache used by scripts/wandb_paper_tables.py
 # Fill each alias with a W&B sweep id (abcd1234) or full sweep path (entity/project/abcd1234).
-# Aliases can point to the same sweep when the run is selected by filters (e.g., adapt_alg).
-# entity: bigslav
-# project: safer
-
-# datasets:
-#   - PACS
-
-# attack_rates: [0, 50, 100]
-# domain_ids: [0, 1, 2, 3]
-
-# sweeps:
-#   base: "bq91eew7"
-#   fft: "yn3fib5x"
-#   blur: "armbswgd"
-#   jpeg: "09chtrly"
-#   adv: "ysqubjx4"
-
-
-entity: bigslav
-project: safer
+# Aliases can point to the same sweep when the run is selected by row-specific filters.
+entity: your_wandb_entity
+project: your_wandb_project
 
 datasets:
   - PACS
@@ -29,30 +12,28 @@ datasets:
 attack_rates: [0, 50, 100]
 domain_ids: [0, 1, 2, 3]
 
+# Current aliases mirror scripts/wandb_paper_tables.py.
+# Leave blank until your sweeps are available.
 sweeps:
-  erm_baseline: "4hsk0s2k"
-  robust_erm_source: "mw633n64"
-  tent_baseline: "4hsk0s2k"
-  pl_baseline: "4hsk0s2k"
-  eata_baseline: "41h9zln6"
-  tsd_baseline: "4hsk0s2k"
-  tesla_baseline: "4hsk0s2k"
-  medbn_tent: "ae0oxsym"
+  erm_baseline: ""
+  robust_erm_source: ""
+  tent_baseline: ""
+  pl_baseline: ""
+  eata_baseline: ""
+  tsd_baseline: ""
+  tesla_baseline: ""
+  medbn_tent: ""
+  tent_safer: ""
+  pl_safer: ""
+  eata_safer: ""
+  tsd_safer: ""
+  tesla_safer: ""
+  tent_safer_sig: ""
+  pl_safer_sig: ""
+  eata_safer_sig: ""
+  tsd_safer_sig: ""
+  tesla_safer_sig: ""
 
-#noalpha
-  tent_safer: "fpvy9adq"
-  pl_safer: "fpvy9adq"
-  eata_safer: "fpvy9adq"
-  tsd_safer: "fpvy9adq"
-  tesla_safer: "fpvy9adq"
-
-#alpha sigmoid
-  tent_safer_sig: "qo6yo28k"
-  pl_safer_sig: "qo6yo28k"
-  eata_safer_sig: "qo6yo28k"
-  tsd_safer_sig: "qo6yo28k"
-  tesla_safer_sig: "qo6yo28k"
-
-  safer: "4r8v4lcw"
-  safer_sig: "8r91gthz"
-
+# Legacy/optional aliases kept for compatibility.
+  safer: ""
+  safer_sig: ""

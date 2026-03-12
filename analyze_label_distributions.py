@@ -5,8 +5,8 @@ Analyze clean vs attacked prediction distributions per image.
 
 Example:
   python analyze_label_distributions.py \
-    --data_root /home/adam/Downloads/RobustTestTimeAdaptation/datasets \
-    --adv_root /home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv \
+    --data_root ./datasets \
+    --adv_root ./datasets_adv \
     --dataset PACS --domain 0 --seed 1 \
     --config resnet18_linf_eps-8.0_steps-20 \
     --max_images 50 --topk 10

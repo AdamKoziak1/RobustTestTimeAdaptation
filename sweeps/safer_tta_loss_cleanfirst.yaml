@@ -1,5 +1,5 @@
 program: unsupervised_adapt_dataset.py
-project: safer
+project: your_wandb_project
 name: safer_tta_loss_cleanfirst
 method: grid
 metric:

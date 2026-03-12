@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer
+project: your_wandb_project
 name: safer_standalone_no_alpha
 method: grid
 metric:

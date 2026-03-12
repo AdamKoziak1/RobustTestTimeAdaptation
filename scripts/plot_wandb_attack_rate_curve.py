@@ -146,8 +146,8 @@ def main() -> int:
         description="Plot attack-rate robustness curves from W&B sweep runs."
     )
     parser.add_argument("--sweep-ids", required=True, help="Comma-separated sweep IDs/paths.")
-    parser.add_argument("--entity", default="bigslav", help="W&B entity for bare sweep IDs.")
-    parser.add_argument("--project", default="safer", help="W&B project for bare sweep IDs.")
+    parser.add_argument("--entity", default="your_wandb_entity", help="W&B entity for bare sweep IDs.")
+    parser.add_argument("--project", default="your_wandb_project", help="W&B project for bare sweep IDs.")
     parser.add_argument("--dataset", default="PACS", help="Dataset name.")
     parser.add_argument("--domain-id", type=int, default=0, help="Single domain id.")
     parser.add_argument(

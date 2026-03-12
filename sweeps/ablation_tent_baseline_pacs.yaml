@@ -1,5 +1,5 @@
 program: unsupervise_adapt.py
-project: safer
+project: your_wandb_project
 name: ablation_tent_baseline_pacs
 method: grid
 metric:

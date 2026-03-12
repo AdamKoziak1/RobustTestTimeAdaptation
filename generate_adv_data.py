@@ -30,7 +30,7 @@ def get_args_adv():
                         default=3, help='Checkpoint every N epoch')
     parser.add_argument('--classifier', type=str,
                         default="linear", choices=["linear", "wn"])
-    parser.add_argument('--data_file', type=str, default='/home/adam/Downloads/RobustTestTimeAdaptation',
+    parser.add_argument('--data_file', type=str, default='.',
                         help='root_dir')
     parser.add_argument('--dataset', type=str, default='office')
     parser.add_argument('--data_dir', type=str, default='datasets', help='data dir')
