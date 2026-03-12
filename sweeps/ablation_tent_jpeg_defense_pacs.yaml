@@ -1,0 +1,30 @@
+program: unsupervise_adapt.py
+project: safer
+name: ablation_tent_jpeg_defense_pacs
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    values: [0, 1, 2, 3]
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    values: [0, 50, 100]
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  s_wrap_alg:
+    value: 0
+  jpeg_input_quality:
+    value: 50

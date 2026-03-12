@@ -78,10 +78,10 @@ METHOD_GROUPS: Sequence[MethodGroup] = (
     MethodGroup(
         title="SAFER plug-in variants with sigmoid/alpha",
         rows=(
-            MethodRow("Tent + SAFER-S", "tent_safer_sig", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            MethodRow("PL + SAFER-S", "pl_safer_sig", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            #MethodRow("EATA + SAFER-S", "eata_safer_sig", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            MethodRow("TSD + SAFER-S", "tsd_safer_sig", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("Tent + SAFER-A", "tent_safer_sig", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("PL + SAFER-A", "pl_safer_sig", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            #MethodRow("EATA + SAFER-A", "eata_safer_sig", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("TSD + SAFER-A", "tsd_safer_sig", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
         ),
     ),
     MethodGroup(
@@ -96,8 +96,8 @@ METHOD_GROUPS: Sequence[MethodGroup] = (
     # MethodGroup(
     #     title="SAFER Standalone",
     #     rows=(
-    #         MethodRow("SAFER-S", "safer_sig", {"adapt_alg": ["SAFER"], "s_wrap_alg": [0], "s_alpha_mode": ["sigmoid"]}),
-    #         MethodRow("SAFER", "safer", {"adapt_alg": ["SAFER"], "s_wrap_alg": [0], "s_alpha_mode": ["none"]}),
+    #         MethodRow("Standalone SAFER-A", "safer_sig", {"adapt_alg": ["SAFER"], "s_wrap_alg": [0], "s_alpha_mode": ["sigmoid"]}),
+    #         MethodRow("Standalone SAFER", "safer", {"adapt_alg": ["SAFER"], "s_wrap_alg": [0], "s_alpha_mode": ["none"]}),
     #     ),
     # ),
 )
@@ -510,6 +510,7 @@ def build_dataset_row_cells(
     select_mode: str,
     select_metric: str,
     precision: int,
+    include_std: bool,
     verbose: bool,
 ) -> List[str]:
     rows = wt.build_rows(
@@ -524,6 +525,7 @@ def build_dataset_row_cells(
         select_metric=select_metric,
         precision=precision,
         verbose=verbose,
+        include_std=include_std,
         std_style="subscript",
     )
     if not rows:
@@ -541,6 +543,7 @@ def build_domain_avg_row_cells(
     select_mode: str,
     select_metric: str,
     precision: int,
+    include_all_domains_column: bool,
     verbose: bool,
 ) -> List[str]:
     matched = [
@@ -564,7 +567,7 @@ def build_domain_avg_row_cells(
         grouped.setdefault((dataset_name, dom_id, rate), []).append(record)
 
     cells: List[str] = []
-    overall_by_rate: Dict[int, List[float]] = {rate: [] for rate in attack_rates}
+    overall_by_rate: Dict[int, List[float]] = {rate: [] for rate in attack_rates} if include_all_domains_column else {}
 
     for dataset in datasets:
         for rate in attack_rates:
@@ -580,7 +583,8 @@ def build_domain_avg_row_cells(
                 except (TypeError, ValueError):
                     continue
                 domain_means.append(mean_float)
-                overall_by_rate[rate].append(mean_float)
+                if include_all_domains_column:
+                    overall_by_rate[rate].append(mean_float)
 
             if not domain_means:
                 if verbose:
@@ -602,26 +606,27 @@ def build_domain_avg_row_cells(
                 )
             )
 
-    for rate in attack_rates:
-        values = overall_by_rate.get(rate, [])
-        if not values:
-            if verbose:
-                print(
-                    f"[warn] Missing overall rate {rate} for {row.label}",
-                    file=sys.stderr,
+    if include_all_domains_column:
+        for rate in attack_rates:
+            values = overall_by_rate.get(rate, [])
+            if not values:
+                if verbose:
+                    print(
+                        f"[warn] Missing overall rate {rate} for {row.label}",
+                        file=sys.stderr,
+                    )
+                cells.append("--")
+                continue
+            mean_val = sum(values) / len(values)
+            cells.append(
+                wt.format_cell(
+                    mean_val,
+                    None,
+                    precision,
+                    show_std=False,
+                    std_style="subscript",
                 )
-            cells.append("--")
-            continue
-        mean_val = sum(values) / len(values)
-        cells.append(
-            wt.format_cell(
-                mean_val,
-                None,
-                precision,
-                show_std=False,
-                std_style="subscript",
             )
-        )
 
     return cells
 
@@ -728,7 +733,12 @@ def main() -> int:
     parser.add_argument("--std-key", default="acc_std", help="Summary key for std accuracy.")
     parser.add_argument("--select", choices=["best", "latest", "first"], default="best")
     parser.add_argument("--select-metric", help="Metric used for run selection (default: mean key).")
-    parser.add_argument("--precision", type=int, default=2, help="Decimal precision.")
+    parser.add_argument("--precision", type=int, default=1, help="Decimal precision.")
+    parser.add_argument(
+        "--include-std",
+        action="store_true",
+        help="Include std in non-domain-avg dataset tables (default: mean-only).",
+    )
     parser.add_argument(
         "--no-rank-style",
         action="store_true",
@@ -750,6 +760,11 @@ def main() -> int:
         "--no-domain-avg",
         action="store_true",
         help="Disable the dataset-column domain-averaged table.",
+    )
+    parser.add_argument(
+        "--no-all-domains-column",
+        action="store_true",
+        help="Exclude the final 'All Domains' column block in the domain-averaged table.",
     )
     parser.add_argument("--output", type=Path, help="Optional output .tex file (stdout if omitted).")
     parser.add_argument(
@@ -809,6 +824,7 @@ def main() -> int:
                     select_mode=args.select,
                     select_metric=select_metric,
                     precision=args.precision,
+                    include_std=args.include_std,
                     verbose=args.verbose,
                 )
 
@@ -830,7 +846,10 @@ def main() -> int:
         )
 
     if not args.no_domain_avg:
-        dataset_headers = [dataset_display_name(dataset) for dataset in datasets] + ["All Domains"]
+        dataset_headers = [dataset_display_name(dataset) for dataset in datasets]
+        include_all_domains_column = not args.no_all_domains_column
+        if include_all_domains_column:
+            dataset_headers.append("All Domains")
         row_cells = {}
         for group_idx, group in enumerate(METHOD_GROUPS):
             for row_idx, row in enumerate(group.rows):
@@ -844,6 +863,7 @@ def main() -> int:
                     select_mode=args.select,
                     select_metric=select_metric,
                     precision=args.precision,
+                    include_all_domains_column=include_all_domains_column,
                     verbose=args.verbose,
                 )
 

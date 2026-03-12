@@ -1,0 +1,27 @@
+# Sweep-ID cache used by scripts/wandb_ablation_tables.py
+# Fill each alias with a W&B sweep id (abcd1234) or full sweep path (entity/project/abcd1234).
+entity: bigslav
+project: safer
+
+dataset: PACS
+attack_rates: [0, 50, 100]
+domain_ids: [0, 1, 2, 3]
+
+sweeps:
+  tent_baseline: "3da10eth"
+  tent_pooling: "x0peknjh"
+  tent_jpeg: "n6mez2b6"
+  tent_fft: "u23nsfd9"
+  tent_blur: "w1x81aqb"
+
+# Extra sweep IDs for additional ablations/plots.
+# Order matches:
+# 1) alpha_signal 2) alpha_mode 3) alpha_params_wide
+# 4) views_1to4 5) maxops_2to5 6) attackrate_curve
+extra_sweeps:
+  alpha_signal_tent_pacs_dom0: "zgj6v28w"
+  alpha_mode_tent_pacs_dom0: "kqab7u5b"
+  alpha_params_wide_tent_pacs_dom0: "161jsdp8"
+  views_1to4_tent_pacs_dom0: "mxif4s7w"
+  maxops_2to5_tent_pacs_dom0: "t55sacwf"
+  attackrate_curve_tent_pacs_dom0: "otxkjguo"
