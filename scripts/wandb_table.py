@@ -136,10 +136,15 @@ def load_sweep_filters(path: Path) -> Dict[str, List[Any]]:
 
 
 
-def load_runs_from_wandb_api(sweep_id: str, entity: Optional[str], project: Optional[str]) -> List[RunRecord]:
+def load_runs_from_wandb_api(
+    sweep_id: str,
+    entity: Optional[str],
+    project: Optional[str],
+    api_timeout: Optional[int] = None,
+) -> List[RunRecord]:
     import wandb  # type: ignore
 
-    api = wandb.Api()
+    api = wandb.Api(timeout=api_timeout) if api_timeout and api_timeout > 0 else wandb.Api()
     if "/" in sweep_id:
         sweep_path = sweep_id
     else:

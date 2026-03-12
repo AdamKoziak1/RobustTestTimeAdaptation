@@ -1,0 +1,28 @@
+program: unsupervise_adapt.py
+project: safer
+name: fft_paper_oldparams_linf8_baseline_pacs
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+parameters:
+  adapt_alg:
+    values: ["ERM", "Tent", "TSD"]
+  dataset:
+    values: ["PACS"]
+  test_envs:
+    values: [0, 1, 2, 3]
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    values: [0, 50, 100]
+  lr:
+    value: 1e-4
+  disable_preset_hparams:
+    value: 1
+  seeds:
+    value: "0,1,2"
+
+  batch_size:
+    value: 64

@@ -78,10 +78,10 @@ METHOD_GROUPS: Sequence[MethodGroup] = (
     MethodGroup(
         title="SAFER plug-in variants with sigmoid/alpha",
         rows=(
-            MethodRow("Tent + SAFER_S", "tent_safer_sig", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            MethodRow("PL + SAFER_S", "pl_safer_sig", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            #MethodRow("EATA + SAFER_S", "eata_safer_sig", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            MethodRow("TSD + SAFER_S", "tsd_safer_sig", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("Tent + SAFER-S", "tent_safer_sig", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("PL + SAFER-S", "pl_safer_sig", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            #MethodRow("EATA + SAFER-S", "eata_safer_sig", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("TSD + SAFER-S", "tsd_safer_sig", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
         ),
     ),
     MethodGroup(
@@ -93,7 +93,48 @@ METHOD_GROUPS: Sequence[MethodGroup] = (
             MethodRow("TSD + SAFER", "tsd_safer", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
         ),
     ),
+    # MethodGroup(
+    #     title="SAFER Standalone",
+    #     rows=(
+    #         MethodRow("SAFER-S", "safer_sig", {"adapt_alg": ["SAFER"], "s_wrap_alg": [0], "s_alpha_mode": ["sigmoid"]}),
+    #         MethodRow("SAFER", "safer", {"adapt_alg": ["SAFER"], "s_wrap_alg": [0], "s_alpha_mode": ["none"]}),
+    #     ),
+    # ),
 )
+
+
+# METHOD_GROUPS: Sequence[MethodGroup] = (
+#     MethodGroup(
+#         title="ERM",
+#         rows=(
+#             MethodRow("ERM", "base", {"adapt_alg": ["ERM"]}),
+#             MethodRow("+FFT", "fft", {"adapt_alg": ["ERM"]}),
+#             MethodRow("+Gauss", "blur", {"adapt_alg": ["ERM"]}),
+#             MethodRow("+JPEG", "jpeg", {"adapt_alg": ["ERM"]}),
+#             MethodRow("+Adv", "adv", {"adapt_alg": ["ERM"], "use_adv_source": [1]}),
+#         ),
+#     ),
+#     MethodGroup(
+#         title="Tent and Defenses",
+#         rows=(
+#             MethodRow("Tent", "base", {"adapt_alg": ["Tent"]}),
+#             MethodRow("+FFT", "fft", {"adapt_alg": ["Tent"]}),
+#             MethodRow("+Gauss", "blur", {"adapt_alg": ["Tent"]}),
+#             MethodRow("+JPEG", "jpeg", {"adapt_alg": ["Tent"]}),
+#             MethodRow("+Adv", "adv", {"adapt_alg": ["Tent"], "use_adv_source": [1]}),
+#         ),
+#     ),
+#     MethodGroup(
+#         title="TSD and Defenses",
+#         rows=(
+#             MethodRow("TSD", "base", {"adapt_alg": ["TSD"]}),
+#             MethodRow("+FFT", "fft", {"adapt_alg": ["TSD"]}),
+#             MethodRow("+Gauss", "blur", {"adapt_alg": ["TSD"]}),
+#             MethodRow("+JPEG", "jpeg", {"adapt_alg": ["TSD"]}),
+#             MethodRow("+Adv", "adv", {"adapt_alg": ["TSD"], "use_adv_source": [1]}),
+#         ),
+#     ),
+# )
 
 
 CACHE_TEMPLATE = """# Sweep-ID cache used by scripts/wandb_paper_tables.py
@@ -104,24 +145,38 @@ project: safer
 
 datasets:
   - PACS
-  - VLCS
-  - office-home
 
-attack_rates: [0, 50, 100]
+attack_rates: [0, 100]
 domain_ids: [0, 1, 2, 3]
 
 sweeps:
-  erm_baseline: ""
-  robust_erm_source: ""
-  tent_baseline: ""
-  eata_baseline: ""
-  tsd_baseline: ""
-  tesla_baseline: ""
-  medbn_tent: ""
-  tent_safer: ""
-  eata_safer: ""
-  tsd_safer: ""
+  base: ""
+  adv: ""
+  jpeg: ""
+  blur: ""
+  fft: ""
 """
+
+
+# CACHE_TEMPLATE = """# Sweep-ID cache used by scripts/wandb_paper_tables.py
+# # Fill each alias with a W&B sweep id (abcd1234) or full sweep path (entity/project/abcd1234).
+# # Aliases can point to the same sweep when the run is selected by filters (e.g., adapt_alg).
+# entity: bigslav
+# project: safer
+
+# datasets:
+#   - PACS
+
+# attack_rates: [0, 100]
+# domain_ids: [0, 1, 2, 3]
+
+# sweeps:
+#   base: ""
+#   adv: ""
+#   jpeg: ""
+#   blur: ""
+#   fft: ""
+# """
 
 
 def required_aliases() -> List[str]:
@@ -244,6 +299,7 @@ def fetch_records(
     aliases: Sequence[str],
     default_entity: str,
     default_project: str,
+    wandb_timeout: Optional[int],
     verbose: bool,
 ) -> Dict[str, List[wt.RunRecord]]:
     records_by_path: Dict[str, List[wt.RunRecord]] = {}
@@ -260,7 +316,12 @@ def fetch_records(
         ref = spec.ref.strip()
         sweep_path = resolve_sweep_path(ref, entity, project)
         if sweep_path not in records_by_path:
-            records_by_path[sweep_path] = wt.load_runs_from_wandb_api(ref, entity, project)
+            records_by_path[sweep_path] = wt.load_runs_from_wandb_api(
+                ref,
+                entity,
+                project,
+                api_timeout=wandb_timeout,
+            )
             if verbose:
                 print(
                     f"[info] Loaded {len(records_by_path[sweep_path])} runs from {sweep_path}",
@@ -320,6 +381,124 @@ def normalize_cells(cells: Sequence[str], expected_len: int) -> List[str]:
     return data
 
 
+def row_key(group_idx: int, row_idx: int, label: str) -> str:
+    return f"g{group_idx}r{row_idx}:{label}"
+
+
+def all_method_ids() -> List[str]:
+    row_ids: List[str] = []
+    for group_idx, group in enumerate(METHOD_GROUPS):
+        for row_idx, row in enumerate(group.rows):
+            row_ids.append(row_key(group_idx, row_idx, row.label))
+    return row_ids
+
+
+def parse_cell_mean(cell: str) -> Optional[float]:
+    text = cell.strip()
+    if not text or text == "--":
+        return None
+    match = re.match(r"^([-+]?\d+(?:\.\d+)?)", text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1))
+    except ValueError:
+        return None
+
+
+def split_cell_mean_suffix(cell: str) -> Optional[tuple[str, str]]:
+    text = cell.strip()
+    if not text or text == "--":
+        return None
+    match = re.match(r"^([-+]?\d+(?:\.\d+)?)(.*)$", text)
+    if not match:
+        return None
+    mean_text = match.group(1)
+    suffix = match.group(2) or ""
+    return mean_text, suffix
+
+
+def integer_digit_count(mean_text: str) -> int:
+    if not mean_text:
+        return 1
+    int_part = mean_text.split(".", 1)[0]
+    if int_part.startswith("-") or int_part.startswith("+"):
+        int_part = int_part[1:]
+    return max(len(int_part), 1)
+
+
+def decimal_pad_prefix(mean_text: str, target_digits: int) -> str:
+    missing = target_digits - integer_digit_count(mean_text)
+    if missing <= 0:
+        return ""
+    return f"\\phantom{{{'0' * missing}}}"
+
+
+def style_cells_by_rank(raw_cells_by_row: Mapping[str, Sequence[str]], row_ids: Sequence[str]) -> Dict[str, List[str]]:
+    if not row_ids:
+        return {}
+
+    expected_cells = 0
+    for row_id in row_ids:
+        expected_cells = max(expected_cells, len(raw_cells_by_row.get(row_id, [])))
+
+    best_rows_by_col: List[set[str]] = [set() for _ in range(expected_cells)]
+    second_rows_by_col: List[set[str]] = [set() for _ in range(expected_cells)]
+    max_int_digits_by_col: List[int] = [1 for _ in range(expected_cells)]
+
+    for col_idx in range(expected_cells):
+        values: List[tuple[str, float]] = []
+        int_width = 1
+        for row_id in row_ids:
+            raw = raw_cells_by_row.get(row_id, [])
+            cell = raw[col_idx] if col_idx < len(raw) else "--"
+            mean_val = parse_cell_mean(cell)
+            if mean_val is not None:
+                values.append((row_id, mean_val))
+                mean_suffix = split_cell_mean_suffix(cell)
+                if mean_suffix is not None:
+                    int_width = max(int_width, integer_digit_count(mean_suffix[0]))
+        max_int_digits_by_col[col_idx] = int_width
+        if not values:
+            continue
+
+        unique_desc = sorted({value for _, value in values}, reverse=True)
+        best = unique_desc[0]
+        second = unique_desc[1] if len(unique_desc) > 1 else None
+
+        for row_id, mean_val in values:
+            if abs(mean_val - best) < 1e-12:
+                best_rows_by_col[col_idx].add(row_id)
+            elif second is not None and abs(mean_val - second) < 1e-12:
+                second_rows_by_col[col_idx].add(row_id)
+
+    styled: Dict[str, List[str]] = {}
+    for row_id in row_ids:
+        raw = list(raw_cells_by_row.get(row_id, []))
+        if len(raw) < expected_cells:
+            raw.extend(["--"] * (expected_cells - len(raw)))
+
+        out_cells: List[str] = []
+        for col_idx, cell in enumerate(raw):
+            mean_suffix = split_cell_mean_suffix(cell)
+            if mean_suffix is None:
+                out_cells.append(cell)
+                continue
+
+            mean_text, suffix = mean_suffix
+            prefix = decimal_pad_prefix(mean_text, max_int_digits_by_col[col_idx])
+            styled_mean = mean_text
+            if row_id in best_rows_by_col[col_idx]:
+                styled_mean = f"\\textbf{{{mean_text}}}"
+            elif row_id in second_rows_by_col[col_idx]:
+                styled_mean = f"\\underline{{{mean_text}}}"
+            out_cells.append(f"{prefix}{styled_mean}{suffix}")
+
+        styled[row_id] = out_cells
+
+    return styled
+
+
 def build_dataset_row_cells(
     row: MethodRow,
     records: Sequence[wt.RunRecord],
@@ -364,24 +543,87 @@ def build_domain_avg_row_cells(
     precision: int,
     verbose: bool,
 ) -> List[str]:
-    rows = wt.build_rows_dataset_domain_avg(
-        records=records,
-        methods={row.label: row.filters},
-        filters={},
-        datasets=datasets,
-        domain_ids=domain_ids,
-        attack_rates=attack_rates,
-        mean_key=mean_key,
-        select_mode=select_mode,
-        select_metric=select_metric,
-        precision=precision,
-        verbose=verbose,
-        include_domain_std=False,
-        std_style="subscript",
-    )
-    if not rows:
-        return ["--"] * (len(datasets) * len(attack_rates))
-    return rows[0][1]
+    matched = [
+        record
+        for record in records
+        if mean_key in record.summary and wt.record_matches_filters(record, row.filters)
+    ]
+
+    grouped: Dict[tuple[str, int, int], List[wt.RunRecord]] = {}
+    for record in matched:
+        dataset_name = wt.get_value(record, "dataset")
+        if not isinstance(dataset_name, str):
+            continue
+        dom_val = wt.get_value(record, "test_envs", "test_env")
+        if isinstance(dom_val, list):
+            dom_val = dom_val[0] if dom_val else None
+        dom_id = wt.to_int(dom_val)
+        rate = wt.to_int(wt.get_value(record, "attack_rate"))
+        if dom_id is None or rate is None:
+            continue
+        grouped.setdefault((dataset_name, dom_id, rate), []).append(record)
+
+    cells: List[str] = []
+    overall_by_rate: Dict[int, List[float]] = {rate: [] for rate in attack_rates}
+
+    for dataset in datasets:
+        for rate in attack_rates:
+            domain_means: List[float] = []
+            for dom_id in domain_ids:
+                runs = grouped.get((dataset, dom_id, rate), [])
+                if not runs:
+                    continue
+                chosen = wt.select_run(runs, select_mode, select_metric)
+                mean_val = chosen.summary.get(mean_key)
+                try:
+                    mean_float = float(mean_val)
+                except (TypeError, ValueError):
+                    continue
+                domain_means.append(mean_float)
+                overall_by_rate[rate].append(mean_float)
+
+            if not domain_means:
+                if verbose:
+                    print(
+                        f"[warn] Missing dataset {dataset} rate {rate} for {row.label}",
+                        file=sys.stderr,
+                    )
+                cells.append("--")
+                continue
+
+            mean_val = sum(domain_means) / len(domain_means)
+            cells.append(
+                wt.format_cell(
+                    mean_val,
+                    None,
+                    precision,
+                    show_std=False,
+                    std_style="subscript",
+                )
+            )
+
+    for rate in attack_rates:
+        values = overall_by_rate.get(rate, [])
+        if not values:
+            if verbose:
+                print(
+                    f"[warn] Missing overall rate {rate} for {row.label}",
+                    file=sys.stderr,
+                )
+            cells.append("--")
+            continue
+        mean_val = sum(values) / len(values)
+        cells.append(
+            wt.format_cell(
+                mean_val,
+                None,
+                precision,
+                show_std=False,
+                std_style="subscript",
+            )
+        )
+
+    return cells
 
 
 def render_table(
@@ -391,11 +633,23 @@ def render_table(
     attack_rates: Sequence[int],
     row_cells: Mapping[str, Sequence[str]],
     placement: str,
+    style_rank: bool = True,
 ) -> str:
     num_rates = len(attack_rates)
     expected_cells = len(column_groups) * num_rates
     total_columns = 1 + expected_cells
-    col_spec = "l|" + "|".join("c" * num_rates for _ in column_groups)
+    col_spec = "l|" + "|".join("r" * num_rates for _ in column_groups)
+
+    row_id_to_label: Dict[str, str] = {}
+    raw_cells_by_row: Dict[str, List[str]] = {}
+    for group_idx, group in enumerate(METHOD_GROUPS):
+        for row_idx, row in enumerate(group.rows):
+            row_id = row_key(group_idx, row_idx, row.label)
+            row_id_to_label[row_id] = row.label
+            cells = row_cells.get(row_id, row_cells.get(row.label, []))
+            raw_cells_by_row[row_id] = normalize_cells(cells, expected_cells)
+    row_ids = all_method_ids()
+    styled_cells_by_row = style_cells_by_rank(raw_cells_by_row, row_ids) if style_rank else raw_cells_by_row
 
     lines = [
         f"\\begin{{table*}}[{placement}]",
@@ -421,10 +675,11 @@ def render_table(
     lines.append("\\hline")
     lines.append("")
 
-    for group in METHOD_GROUPS:
+    for group_idx, group in enumerate(METHOD_GROUPS):
         lines.append(f"%\\multicolumn{{{total_columns}}}{{l}}{{\\textit{{{group.title}}}}} \\\\")
-        for row in group.rows:
-            cells = normalize_cells(row_cells.get(row.label, []), expected_cells)
+        for row_idx, row in enumerate(group.rows):
+            row_id = row_key(group_idx, row_idx, row.label)
+            cells = styled_cells_by_row.get(row_id, ["--"] * expected_cells)
             lines.append(f"{row.label} & " + " & ".join(cells) + " \\\\")
         lines.append("")
         lines.append("\\hline")
@@ -474,6 +729,11 @@ def main() -> int:
     parser.add_argument("--select", choices=["best", "latest", "first"], default="best")
     parser.add_argument("--select-metric", help="Metric used for run selection (default: mean key).")
     parser.add_argument("--precision", type=int, default=2, help="Decimal precision.")
+    parser.add_argument(
+        "--no-rank-style",
+        action="store_true",
+        help="Disable bold/underline rank styling in table cells.",
+    )
 
     parser.add_argument(
         "--label-suffix",
@@ -492,6 +752,12 @@ def main() -> int:
         help="Disable the dataset-column domain-averaged table.",
     )
     parser.add_argument("--output", type=Path, help="Optional output .tex file (stdout if omitted).")
+    parser.add_argument(
+        "--wandb-timeout",
+        type=int,
+        default=60,
+        help="W&B API timeout in seconds (default: 60).",
+    )
     parser.add_argument("--verbose", action="store_true", help="Print diagnostics to stderr.")
 
     args = parser.parse_args()
@@ -519,6 +785,7 @@ def main() -> int:
         aliases=aliases,
         default_entity=cache_cfg.entity,
         default_project=cache_cfg.project,
+        wandb_timeout=args.wandb_timeout,
         verbose=args.verbose,
     )
 
@@ -529,9 +796,9 @@ def main() -> int:
     for dataset in datasets:
         domain_names = domain_names_for_dataset(dataset, domain_ids)
         row_cells: Dict[str, List[str]] = {}
-        for group in METHOD_GROUPS:
-            for row in group.rows:
-                row_cells[row.label] = build_dataset_row_cells(
+        for group_idx, group in enumerate(METHOD_GROUPS):
+            for row_idx, row in enumerate(group.rows):
+                row_cells[row_key(group_idx, row_idx, row.label)] = build_dataset_row_cells(
                     row=row,
                     records=records_by_alias[row.sweep_alias],
                     dataset=dataset,
@@ -558,15 +825,16 @@ def main() -> int:
                 attack_rates=attack_rates,
                 row_cells=row_cells,
                 placement=args.placement,
+                style_rank=not args.no_rank_style,
             )
         )
 
     if not args.no_domain_avg:
-        dataset_headers = [dataset_display_name(dataset) for dataset in datasets]
+        dataset_headers = [dataset_display_name(dataset) for dataset in datasets] + ["All Domains"]
         row_cells = {}
-        for group in METHOD_GROUPS:
-            for row in group.rows:
-                row_cells[row.label] = build_domain_avg_row_cells(
+        for group_idx, group in enumerate(METHOD_GROUPS):
+            for row_idx, row in enumerate(group.rows):
+                row_cells[row_key(group_idx, row_idx, row.label)] = build_domain_avg_row_cells(
                     row=row,
                     records=records_by_alias[row.sweep_alias],
                     datasets=datasets,
@@ -593,6 +861,7 @@ def main() -> int:
                 attack_rates=attack_rates,
                 row_cells=row_cells,
                 placement=args.placement,
+                style_rank=not args.no_rank_style,
             )
         )
 

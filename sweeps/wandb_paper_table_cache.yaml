@@ -1,6 +1,23 @@
 # Sweep-ID cache used by scripts/wandb_paper_tables.py
 # Fill each alias with a W&B sweep id (abcd1234) or full sweep path (entity/project/abcd1234).
 # Aliases can point to the same sweep when the run is selected by filters (e.g., adapt_alg).
+# entity: bigslav
+# project: safer
+
+# datasets:
+#   - PACS
+
+# attack_rates: [0, 50, 100]
+# domain_ids: [0, 1, 2, 3]
+
+# sweeps:
+#   base: "bq91eew7"
+#   fft: "yn3fib5x"
+#   blur: "armbswgd"
+#   jpeg: "09chtrly"
+#   adv: "ysqubjx4"
+
+
 entity: bigslav
 project: safer
 
@@ -36,5 +53,6 @@ sweeps:
   tsd_safer_sig: "qo6yo28k"
   tesla_safer_sig: "qo6yo28k"
 
-
+  safer: "4r8v4lcw"
+  safer_sig: "8r91gthz"
 
