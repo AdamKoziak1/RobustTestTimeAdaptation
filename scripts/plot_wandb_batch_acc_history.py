@@ -41,7 +41,7 @@ def normalize_run_path(run_ref: str, entity: str, project: str) -> str:
     return f"{entity}/{project}/{run_ref}"
 
 
-def fetch_batch_acc_history(api, run_path: str, metric: str) -> Tuple[List[int], List[float]]:
+def fetch_metric_history(api, run_path: str, metric: str) -> Tuple[List[int], List[float]]:
     steps: List[int] = []
     values: List[float] = []
     run = api.run(run_path)
@@ -66,17 +66,21 @@ def write_csv(path: Path, rows: Iterable[Tuple[str, int, float, float]]) -> None
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["label", "step", "batch_acc", "rolling_batch_acc"])
+        writer.writerow(["label", "metric", "step", "value", "rolling_value"])
         writer.writerows(rows)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Plot W&B batch_acc stability curves for one or more runs.")
+    parser = argparse.ArgumentParser(description="Plot W&B history stability curves for one or more runs.")
     parser.add_argument("--run-ids", required=True, help="Comma-separated run IDs/paths.")
     parser.add_argument("--labels", default="", help="Optional comma-separated labels matching --run-ids.")
     parser.add_argument("--entity", default="bigslav", help="W&B entity for bare run IDs.")
     parser.add_argument("--project", default="safer", help="W&B project for bare run IDs.")
-    parser.add_argument("--metric", default="batch_acc", help="History metric to plot.")
+    parser.add_argument(
+        "--metrics",
+        default="batch_acc",
+        help="Comma-separated history metrics to plot (e.g., batch_acc,loss).",
+    )
     parser.add_argument("--window", type=int, default=25, help="Rolling window size.")
     parser.add_argument("--dpi", type=int, default=180)
     parser.add_argument("--output", type=Path, default=Path("sweeps/batch_acc_stability.png"))
@@ -96,26 +100,37 @@ def main() -> int:
 
     api = wandb.Api(timeout=args.wandb_timeout) if args.wandb_timeout > 0 else wandb.Api()
 
-    fig, ax = plt.subplots(figsize=(6.6, 4.4))
-    csv_rows: List[Tuple[str, int, float, float]] = []
-    for run_ref, label in zip(run_ids, labels):
-        run_path = normalize_run_path(run_ref, args.entity, args.project)
-        steps, vals = fetch_batch_acc_history(api, run_path, args.metric)
-        if not vals:
-            if args.verbose:
-                print(f"[warn] No {args.metric} history for {run_path}", file=sys.stderr)
-            continue
-        smooth = rolling_mean(vals, args.window)
-        ax.plot(steps, smooth, linewidth=1.8, label=label)
-        csv_rows.extend((label, s, v, m) for s, v, m in zip(steps, vals, smooth))
-        if args.verbose:
-            print(f"[info] {label}: {len(vals)} points", file=sys.stderr)
+    metrics = parse_csv_strings(args.metrics)
+    if not metrics:
+        raise ValueError("No metrics provided.")
 
-    ax.set_xlabel("Step")
-    ax.set_ylabel(args.metric)
-    ax.set_title(f"Stability over time ({args.metric}, rolling window={args.window})")
-    ax.grid(True, linewidth=0.4, alpha=0.35)
-    ax.legend(frameon=False)
+    fig, axes = plt.subplots(len(metrics), 1, figsize=(6.8, 3.2 * len(metrics)), squeeze=False)
+    csv_rows: List[Tuple[str, str, int, float, float]] = []
+
+    for metric_idx, metric in enumerate(metrics):
+        ax = axes[metric_idx][0]
+        any_line = False
+        for run_ref, label in zip(run_ids, labels):
+            run_path = normalize_run_path(run_ref, args.entity, args.project)
+            steps, vals = fetch_metric_history(api, run_path, metric)
+            if not vals:
+                if args.verbose:
+                    print(f"[warn] No {metric} history for {run_path}", file=sys.stderr)
+                continue
+            smooth = rolling_mean(vals, args.window)
+            ax.plot(steps, smooth, linewidth=1.8, label=label)
+            csv_rows.extend((label, metric, s, v, m) for s, v, m in zip(steps, vals, smooth))
+            any_line = True
+            if args.verbose:
+                print(f"[info] {label} {metric}: {len(vals)} points", file=sys.stderr)
+
+        ax.set_xlabel("Step")
+        ax.set_ylabel(metric)
+        ax.set_title(f"{metric} (rolling window={args.window})")
+        ax.grid(True, linewidth=0.4, alpha=0.35)
+        if any_line:
+            ax.legend(frameon=False)
+
     fig.tight_layout()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.output, dpi=args.dpi)

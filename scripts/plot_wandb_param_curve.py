@@ -27,6 +27,40 @@ def parse_csv_ints(text: str) -> List[int]:
     return [int(chunk.strip()) for chunk in text.split(",") if chunk.strip()]
 
 
+def parse_filter_args_preserve_none(filter_args: Sequence[str]) -> Dict[str, List[Any]]:
+    filters: Dict[str, List[Any]] = {}
+
+    def parse_token(token: str) -> Any:
+        text = token.strip()
+        lower = text.lower()
+        if lower == "true":
+            return True
+        if lower == "false":
+            return False
+        try:
+            return int(text)
+        except ValueError:
+            pass
+        try:
+            return float(text)
+        except ValueError:
+            pass
+        # Keep literal strings like "none" as strings to match config values.
+        return text
+
+    for raw in filter_args:
+        if "=" not in raw:
+            raise ValueError(f"Invalid filter (expected key=value): {raw}")
+        key, values = raw.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        tokens = [v for v in values.replace("|", ",").split(",") if v != ""]
+        parsed = [parse_token(v) for v in tokens] if tokens else [""]
+        filters.setdefault(key, []).extend(parsed)
+    return filters
+
+
 def coerce_plot_value(value: Any) -> Tuple[str, Any]:
     if isinstance(value, list):
         value = value[0] if value else None
@@ -97,7 +131,7 @@ def main() -> int:
     if not attack_rates:
         raise ValueError("No attack rates provided.")
 
-    filters = wt.parse_filter_args(args.filter)
+    filters = parse_filter_args_preserve_none(args.filter)
     filters.setdefault("dataset", [args.dataset])
     filters.setdefault("test_envs", [args.domain_id])
 
@@ -138,6 +172,7 @@ def main() -> int:
 
     fig, ax = plt.subplots(figsize=(6.0, 4.2))
     markers = ["o", "s", "^", "D", "P"]
+    any_line = False
     for idx, rate in enumerate(attack_rates):
         pts = points_by_rate.get(rate, [])
         if not pts:
@@ -153,6 +188,7 @@ def main() -> int:
             markersize=5.0,
             label=f"{rate}%",
         )
+        any_line = True
         ax.set_xticks(xs_idx)
         ax.set_xticklabels(xs_lbl)
 
@@ -160,7 +196,8 @@ def main() -> int:
     ax.set_ylabel(args.ylabel)
     ax.grid(True, linewidth=0.4, alpha=0.35)
     ax.set_title(args.title or f"{args.dataset} domain {args.domain_id}: {args.x_key} sensitivity")
-    ax.legend(title="Attack rate", frameon=False)
+    if any_line:
+        ax.legend(title="Attack rate", frameon=False)
     fig.tight_layout()
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
