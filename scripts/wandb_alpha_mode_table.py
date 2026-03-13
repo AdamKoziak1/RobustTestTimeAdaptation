@@ -15,6 +15,12 @@ import wandb_table as wt  # noqa: E402
 
 
 DEFAULT_MODES = ["none", "step", "linear", "sigmoid"]
+MODE_DISPLAY: Dict[str, str] = {
+    "none": "No alpha",
+    "step": "Step",
+    "linear": "Linear",
+    "sigmoid": "Sigmoid",
+}
 
 
 @dataclass(frozen=True)
@@ -37,6 +43,37 @@ def format_value(value: Optional[float], precision: int, signed: bool = False) -
     if signed:
         return f"{value:+.{precision}f}"
     return f"{value:.{precision}f}"
+
+
+def dataset_display_name(dataset: str) -> str:
+    key = dataset.strip().lower()
+    if key == "pacs":
+        return "PACS"
+    if key == "vlcs":
+        return "VLCS"
+    if key in {"office-home", "officehome"}:
+        return "OfficeHome"
+    return dataset
+
+
+def resolve_domain_name(dataset: str, domain_id: int) -> str:
+    labels = wt.DATASET_DOMAIN_LABELS.get(dataset)
+    if labels and 0 <= domain_id < len(labels):
+        return labels[domain_id]
+    return f"Domain {domain_id}"
+
+
+def domain_scope_text(dataset: str, domain_ids: Sequence[int]) -> str:
+    ds = dataset_display_name(dataset)
+    if len(domain_ids) > 1:
+        return f"all {ds} domains"
+    dom_name = resolve_domain_name(dataset, domain_ids[0])
+    return f"the {dom_name} domain of {ds}"
+
+
+def pretty_mode(mode: str) -> str:
+    key = mode.strip().lower()
+    return MODE_DISPLAY.get(key, mode.replace("_", " ").title())
 
 
 def load_records_for_sweeps(
@@ -127,17 +164,13 @@ def render_table(
     baseline_clean = row_values.get(baseline_label, {}).get(clean_rate)
     col_spec = "l" + "c" * (len(attack_rates) + 2)
     delta_header = f"$\\Delta_{{{delta_rate}}}$ vs Tent"
-    domain_text = (
-        "all PACS domains"
-        if len(domain_ids) > 1
-        else f"PACS domain {domain_ids[0]}"
-    )
+    domain_text = domain_scope_text(dataset, domain_ids)
 
     lines = [
         f"\\begin{{table}}[{placement}]",
         "\\centering",
         (
-            "\\caption{Alpha-mode ablation for SAFER on \\texttt{Tent}, "
+            "\\caption{Alpha-mode ablation for Tent + SAFER, "
             f"averaged over {domain_text}.}}"
         ),
         f"\\label{{{table_label}}}",
@@ -226,10 +259,9 @@ def main() -> int:
         )
     ]
     for mode in modes:
-        pretty = mode.upper() if mode == "none" else mode
         rows.append(
             RowSpec(
-                label=f"Tent + SAFER ({pretty})",
+                label=f"Tent + SAFER ({pretty_mode(mode)})",
                 filters={
                     "adapt_alg": [args.adapt_alg],
                     "s_wrap_alg": [1],

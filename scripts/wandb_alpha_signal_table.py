@@ -22,6 +22,15 @@ DEFAULT_SIGNALS = [
     "orig_entropy",
     "orig_conf",
 ]
+SIGNAL_DISPLAY: Dict[str, str] = {
+    "feat_disagreement": "Feature disagreement",
+    "prob_disagreement": "Probability disagreement",
+    "entropy_gap": "Entropy gap",
+    "margin_gap": "Margin gap",
+    "orig_entropy": "Original entropy",
+    "orig_conf": "Original confidence",
+    "batch_acc": "Batch accuracy",
+}
 
 
 @dataclass(frozen=True)
@@ -44,6 +53,37 @@ def format_value(value: Optional[float], precision: int, signed: bool = False) -
     if signed:
         return f"{value:+.{precision}f}"
     return f"{value:.{precision}f}"
+
+
+def dataset_display_name(dataset: str) -> str:
+    key = dataset.strip().lower()
+    if key == "pacs":
+        return "PACS"
+    if key == "vlcs":
+        return "VLCS"
+    if key in {"office-home", "officehome"}:
+        return "OfficeHome"
+    return dataset
+
+
+def resolve_domain_name(dataset: str, domain_id: int) -> str:
+    labels = wt.DATASET_DOMAIN_LABELS.get(dataset)
+    if labels and 0 <= domain_id < len(labels):
+        return labels[domain_id]
+    return f"Domain {domain_id}"
+
+
+def domain_scope_text(dataset: str, domain_ids: Sequence[int]) -> str:
+    ds = dataset_display_name(dataset)
+    if len(domain_ids) > 1:
+        return f"all {ds} domains"
+    dom_name = resolve_domain_name(dataset, domain_ids[0])
+    return f"the {dom_name} domain of {ds}"
+
+
+def pretty_signal(signal: str) -> str:
+    key = signal.strip().lower()
+    return SIGNAL_DISPLAY.get(key, signal.replace("_", " ").title())
 
 
 def load_records_for_sweeps(
@@ -148,17 +188,13 @@ def render_table(
     baseline_clean = row_values.get(baseline_label, {}).get(clean_rate)
     col_spec = "l" + "c" * (len(attack_rates) + 2)
     delta_header = f"$\\Delta_{{{delta_rate}}}$ vs Tent"
-    domain_text = (
-        "all PACS domains"
-        if len(domain_ids) > 1
-        else f"PACS domain {domain_ids[0]}"
-    )
+    domain_text = domain_scope_text(dataset, domain_ids)
 
     lines = [
         f"\\begin{{table}}[{placement}]",
         "\\centering",
         (
-            "\\caption{Alpha-signal ablation for SAFER-A on \\texttt{Tent}, "
+            "\\caption{Alpha-signal ablation for Tent + SAFER-A, "
             f"averaged over {domain_text}.}}"
         ),
         f"\\label{{{table_label}}}",
@@ -278,7 +314,7 @@ def main() -> int:
     for signal in signals:
         rows.append(
             RowSpec(
-                label=f"Tent + SAFER-A ({signal})",
+                label=f"Tent + SAFER-A ({pretty_signal(signal)})",
                 filters={
                     "adapt_alg": [args.adapt_alg],
                     "s_wrap_alg": [1],

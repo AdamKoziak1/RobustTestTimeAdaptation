@@ -19,6 +19,18 @@ if str(SCRIPT_DIR) not in sys.path:
 import wandb_table as wt  # noqa: E402
 
 
+X_KEY_DISPLAY: Dict[str, str] = {
+    "s_num_views": "Number of Views",
+    "s_aug_max_ops": "Number of Augmentation Operations Per View",
+    "s_alpha_conf_threshold": "Alpha Confidence Threshold",
+    "s_alpha_sigmoid_slope": "Alpha Sigmoid Slope",
+    "s_alpha_attack_value": "Alpha Attack Value",
+    "s_alpha_clean_value": "Alpha Clean Value",
+    "s_alpha_transition_width": "Alpha Transition Width",
+    "s_alpha_attack_high_conf": "Apply Attack Alpha to High-Confidence Samples",
+}
+
+
 def parse_csv_strings(text: str) -> List[str]:
     return [chunk.strip() for chunk in text.split(",") if chunk.strip()]
 
@@ -77,6 +89,10 @@ def coerce_plot_value(value: Any) -> Tuple[str, Any]:
         return "None", "None"
     text = str(value)
     return text, text
+
+
+def display_x_label(x_key: str) -> str:
+    return X_KEY_DISPLAY.get(x_key, x_key)
 
 
 def load_records(
@@ -192,10 +208,11 @@ def main() -> int:
         ax.set_xticks(xs_idx)
         ax.set_xticklabels(xs_lbl)
 
-    ax.set_xlabel(args.xlabel or args.x_key)
+    axis_x_label = args.xlabel or display_x_label(args.x_key)
+    ax.set_xlabel(axis_x_label)
     ax.set_ylabel(args.ylabel)
     ax.grid(True, linewidth=0.4, alpha=0.35)
-    ax.set_title(args.title or f"{args.dataset} domain {args.domain_id}: {args.x_key} sensitivity")
+    ax.set_title(args.title or f"Sensitivity to {axis_x_label}")
     if any_line:
         ax.legend(title="Attack rate", frameon=False)
     fig.tight_layout()
@@ -208,12 +225,12 @@ def main() -> int:
     if args.csv_output:
         rows: List[List[object]] = []
         for rate in attack_rates:
-            for x_label, _, y in points_by_rate.get(rate, []):
-                rows.append([x_label, rate, y])
+            for x_value_label, _, y in points_by_rate.get(rate, []):
+                rows.append([x_value_label, rate, y])
         args.csv_output.parent.mkdir(parents=True, exist_ok=True)
         with args.csv_output.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
-            writer.writerow([args.x_key, "attack_rate", args.mean_key])
+            writer.writerow([axis_x_label, "attack_rate", args.mean_key])
             writer.writerows(rows)
         print(f"[ok] wrote csv: {args.csv_output}")
     return 0

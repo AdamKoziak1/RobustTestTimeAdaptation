@@ -58,22 +58,22 @@ POOLING_ROWS: Sequence[RowSpec] = (
         {"adapt_alg": ["Tent"], "s_wrap_alg": [0]},
     ),
     RowSpec(
-        "Tent + SAFER (mean)",
+        "Tent + SAFER (uniform averaging)",
         "tent_pooling",
         {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"], "s_primary_view_pool": ["mean"]},
     ),
     RowSpec(
-        "Tent + SAFER (entropy)",
+        "Tent + SAFER (entropy weighting)",
         "tent_pooling",
         {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"], "s_primary_view_pool": ["entropy"]},
     ),
     RowSpec(
-        "Tent + SAFER (cc)",
+        "Tent + SAFER (class consensus)",
         "tent_pooling",
         {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"], "s_primary_view_pool": ["cc"]},
     ),
     RowSpec(
-        "Tent + SAFER (cc_drop)",
+        "Tent + SAFER (consensus drop)",
         "tent_pooling",
         {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"], "s_primary_view_pool": ["cc_drop"]},
     ),
@@ -102,12 +102,12 @@ SIMPLE_ROWS: Sequence[RowSpec] = (
         {"adapt_alg": ["Tent"], "s_wrap_alg": [0]},
     ),
     RowSpec(
-        "Tent + SAFER (uniform / mean)",
+        "Tent + SAFER (uniform averaging)",
         "tent_pooling",
         {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"], "s_primary_view_pool": ["mean"]},
     ),
     RowSpec(
-        "Tent + SAFER (cc_drop)",
+        "Tent + SAFER (consensus drop)",
         "tent_pooling",
         {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"], "s_primary_view_pool": ["cc_drop"]},
     ),
@@ -300,6 +300,21 @@ def dataset_display_name(dataset: str) -> str:
     return dataset
 
 
+def resolve_domain_name(dataset: str, domain_id: int) -> str:
+    labels = wt.DATASET_DOMAIN_LABELS.get(dataset)
+    if labels and 0 <= domain_id < len(labels):
+        return labels[domain_id]
+    return f"Domain {domain_id}"
+
+
+def domain_scope_text(dataset: str, domain_ids: Sequence[int]) -> str:
+    ds = dataset_display_name(dataset)
+    if len(domain_ids) > 1:
+        return f"all {ds} domains"
+    dom_name = resolve_domain_name(dataset, domain_ids[0])
+    return f"the {dom_name} domain of {ds}"
+
+
 def compute_domain_avg_by_rate(
     records: Sequence[wt.RunRecord],
     row: RowSpec,
@@ -365,6 +380,7 @@ def compute_domain_avg_by_rate(
 
 def render_pooling_table(
     dataset: str,
+    domain_ids: Sequence[int],
     attack_rates: Sequence[int],
     delta_rate: int,
     precision: int,
@@ -380,8 +396,8 @@ def render_pooling_table(
         f"\\begin{{table}}[{placement}]",
         "\\centering",
         (
-            "\\caption{Pooling ablation on a single base method (\\texttt{Tent}), "
-            f"averaged over {dataset_display_name(dataset)} domains.}}"
+            "\\caption{Pooling-strategy ablation for Tent + SAFER, "
+            f"averaged over {domain_scope_text(dataset, domain_ids)}.}}"
         ),
         "\\label{tab:abl-pooling-tent}",
         f"\\begin{{tabular}}{{{col_spec}}}",
@@ -412,6 +428,7 @@ def render_pooling_table(
 
 def render_simple_table(
     dataset: str,
+    domain_ids: Sequence[int],
     attack_rates: Sequence[int],
     delta_rate: int,
     clean_rate: int,
@@ -429,8 +446,8 @@ def render_simple_table(
         f"\\begin{{table}}[{placement}]",
         "\\centering",
         (
-            "\\caption{Simple transform defenses vs full SAFER on \\texttt{Tent} "
-            f"({dataset_display_name(dataset)} average).}}"
+            "\\caption{Simple transform defenses versus full SAFER on Tent, "
+            f"averaged over {domain_scope_text(dataset, domain_ids)}.}}"
         ),
         "\\label{tab:abl-simple-vs-safer}",
         f"\\begin{{tabular}}{{{col_spec}}}",
@@ -563,6 +580,7 @@ def main() -> int:
     tables = [
         render_pooling_table(
             dataset=dataset,
+            domain_ids=domain_ids,
             attack_rates=attack_rates,
             delta_rate=args.delta_rate,
             precision=args.precision,
@@ -571,6 +589,7 @@ def main() -> int:
         ),
         render_simple_table(
             dataset=dataset,
+            domain_ids=domain_ids,
             attack_rates=attack_rates,
             delta_rate=args.delta_rate,
             clean_rate=args.clean_rate,

@@ -65,34 +65,36 @@ METHOD_GROUPS: Sequence[MethodGroup] = (
         ),
     ),
     MethodGroup(
-        title="Standard TTA baselines",
+        title="TTA baselines",
         rows=(
-            MethodRow("Tent", "tent_baseline", {"adapt_alg": ["Tent"]}),
-            MethodRow("Tent+MedBN", "medbn_tent", {"adapt_alg": ["MedBN"]}),
-            MethodRow("PL", "pl_baseline", {"adapt_alg": ["PL"]}),
-            MethodRow("EATA", "eata_baseline", {"adapt_alg": ["EATA"]}),
-            MethodRow("TSD", "tsd_baseline", {"adapt_alg": ["TSD"]}),
             MethodRow("TeSLA", "tesla_baseline", {"adapt_alg": ["TeSLA"]}),
+            MethodRow("EATA", "eata_baseline", {"adapt_alg": ["EATA"]}),
+            MethodRow("Tent", "tent_baseline", {"adapt_alg": ["Tent"]}),
+            MethodRow("Tent$_{\\text{+MedBN}}$", "medbn_tent", {"adapt_alg": ["MedBN"]}),
+            MethodRow("Tent$_{\\text{+SAFER}}$", "tent_safer", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
+            MethodRow("Tent$_{\\text{+SAFER-A}}$", "tent_safer_sig", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("PL", "pl_baseline", {"adapt_alg": ["PL"]}),
+            MethodRow("PL$_{\\text{+SAFER}}$", "pl_safer", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
+            MethodRow("PL$_{\\text{+SAFER-A}}$", "pl_safer_sig", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+            MethodRow("TSD", "tsd_baseline", {"adapt_alg": ["TSD"]}),
+            MethodRow("TSD$_{\\text{+SAFER}}$", "tsd_safer", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
+            MethodRow("TSD$_{\\text{+SAFER-A}}$", "tsd_safer_sig", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
         ),
     ),
-    MethodGroup(
-        title="SAFER plug-in variants with sigmoid/alpha",
-        rows=(
-            MethodRow("Tent + SAFER-A", "tent_safer_sig", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            MethodRow("PL + SAFER-A", "pl_safer_sig", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            #MethodRow("EATA + SAFER-A", "eata_safer_sig", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-            MethodRow("TSD + SAFER-A", "tsd_safer_sig", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
-        ),
-    ),
-    MethodGroup(
-        title="SAFER plug-in variants (main claim)",
-        rows=(
-            MethodRow("Tent + SAFER", "tent_safer", {"adapt_alg": ["Tent"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
-            MethodRow("PL + SAFER", "pl_safer", {"adapt_alg": ["PL"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
-            #MethodRow("EATA + SAFER", "eata_safer", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
-            MethodRow("TSD + SAFER", "tsd_safer", {"adapt_alg": ["TSD"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
-        ),
-    ),
+    # MethodGroup(
+    #     title="SAFER plug-in variants with sigmoid/alpha",
+    #     rows=(
+            
+            
+    #         #MethodRow("EATA$_{\text{+SAFER-A}}$", "eata_safer_sig", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["sigmoid"]}),
+    #     ),
+    # ),
+    # MethodGroup(
+    #     title="SAFER plug-in variants (main claim)",
+    #     rows=(
+    #         #MethodRow("EATA$$_{\\text{+SAFER}}$$", "eata_safer", {"adapt_alg": ["EATA"], "s_wrap_alg": [1], "s_alpha_mode": ["none"]}),
+    #     ),
+    # ),
     # MethodGroup(
     #     title="SAFER Standalone",
     #     rows=(
@@ -662,7 +664,7 @@ def render_table(
         f"\\caption{{{caption}}}",
         f"\\label{{{label}}}",
         "\\resizebox{\\textwidth}{!}{",
-        "\\setlength{\\tabcolsep}{3pt}",
+        "\\setlength{\\tabcolsep}{1pt}",
         f"\\begin{{tabular}}{{{col_spec}}}",
         "\\hline",
     ]
@@ -727,6 +729,11 @@ def main() -> int:
 
     parser.add_argument("--datasets", help="Comma-separated datasets (default: cache file).")
     parser.add_argument("--attack-rates", help="Comma-separated attack rates (default: cache file).")
+    parser.add_argument(
+        "--hide-50-rate",
+        action="store_true",
+        help="Exclude the 50%% attack-rate column(s) while keeping other configured rates.",
+    )
     parser.add_argument("--domain-ids", help="Comma-separated domain ids (default: cache file).")
 
     parser.add_argument("--mean-key", default="acc_mean", help="Summary key for mean accuracy.")
@@ -785,6 +792,8 @@ def main() -> int:
     cache_cfg = load_cache(args.cache_file, args.entity, args.project)
     datasets = wt.parse_csv_strings(args.datasets) if args.datasets else cache_cfg.datasets
     attack_rates = wt.parse_csv_ints(args.attack_rates) if args.attack_rates else cache_cfg.attack_rates
+    if args.hide_50_rate:
+        attack_rates = [rate for rate in attack_rates if rate != 50]
     domain_ids = wt.parse_csv_ints(args.domain_ids) if args.domain_ids else cache_cfg.domain_ids
 
     if not datasets:

@@ -1,4 +1,4 @@
-s_aug_max_ops,attack_rate,acc_mean
+Number of Augmentation Operations Per View,attack_rate,acc_mean
 2,0,78.4
 3,0,80.19
 4,0,79.02

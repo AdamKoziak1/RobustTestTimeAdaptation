@@ -1,18 +1,18 @@
 \begin{table}[t]
 \centering
-\caption{Alpha-signal ablation for SAFER-A on \texttt{Tent}, averaged over PACS domain 0.}
+\caption{Alpha-signal ablation for Tent + SAFER-A, averaged over the Art Painting domain of PACS.}
 \label{tab:abl-alpha-signal}
 \begin{tabular}{lccccc}
 \hline
 Method & 0\% & 50\% & 100\% & $\Delta_{100}$ vs Tent & Clean drop \\
 \hline
 Tent (no SAFER wrapper) & 83.72 & 44.78 & 4.98 & -- & -- \\
-Tent + SAFER-A (feat_disagreement) & 83.89 & 69.25 & 55.21 & +50.23 & -0.17 \\
-Tent + SAFER-A (prob_disagreement) & 84.13 & 73.42 & 66.28 & +61.30 & -0.41 \\
-Tent + SAFER-A (entropy_gap) & 83.85 & 72.97 & 65.32 & +60.34 & -0.13 \\
-Tent + SAFER-A (margin_gap) & 83.63 & 70.78 & 58.76 & +53.78 & +0.09 \\
-Tent + SAFER-A (orig_entropy) & 83.84 & 70.08 & 57.49 & +52.51 & -0.12 \\
-Tent + SAFER-A (orig_conf) & 83.85 & 72.80 & 64.79 & +59.81 & -0.13 \\
+Tent + SAFER-A (Feature disagreement) & 83.89 & 69.25 & 55.21 & +50.23 & -0.17 \\
+Tent + SAFER-A (Probability disagreement) & 84.13 & 73.42 & 66.28 & +61.30 & -0.41 \\
+Tent + SAFER-A (Entropy gap) & 83.85 & 72.97 & 65.32 & +60.34 & -0.13 \\
+Tent + SAFER-A (Margin gap) & 83.63 & 70.78 & 58.76 & +53.78 & +0.09 \\
+Tent + SAFER-A (Original entropy) & 83.84 & 70.08 & 57.49 & +52.51 & -0.12 \\
+Tent + SAFER-A (Original confidence) & 83.85 & 72.80 & 64.79 & +59.81 & -0.13 \\
 \hline
 \end{tabular}
 \end{table}

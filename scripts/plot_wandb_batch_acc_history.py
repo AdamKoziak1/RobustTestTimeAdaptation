@@ -14,6 +14,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+METRIC_DISPLAY = {
+    "batch_acc": "Batch Accuracy",
+}
+
+
 def parse_csv_strings(text: str) -> List[str]:
     return [chunk.strip() for chunk in text.split(",") if chunk.strip()]
 
@@ -70,6 +75,10 @@ def write_csv(path: Path, rows: Iterable[Tuple[str, int, float, float]]) -> None
         writer.writerows(rows)
 
 
+def metric_display_name(metric: str) -> str:
+    return METRIC_DISPLAY.get(metric, metric)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Plot W&B history stability curves for one or more runs.")
     parser.add_argument("--run-ids", required=True, help="Comma-separated run IDs/paths.")
@@ -124,9 +133,10 @@ def main() -> int:
             if args.verbose:
                 print(f"[info] {label} {metric}: {len(vals)} points", file=sys.stderr)
 
+        metric_name = metric_display_name(metric)
         ax.set_xlabel("Step")
-        ax.set_ylabel(metric)
-        ax.set_title(f"{metric} (rolling window={args.window})")
+        ax.set_ylabel(metric_name)
+        ax.set_title(f"{metric_name} (rolling window={args.window})")
         ax.grid(True, linewidth=0.4, alpha=0.35)
         if any_line:
             ax.legend(frameon=False)

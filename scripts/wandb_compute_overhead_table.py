@@ -25,6 +25,24 @@ def _to_float(value: object) -> Optional[float]:
         return None
 
 
+def dataset_display_name(dataset: str) -> str:
+    key = dataset.strip().lower()
+    if key == "pacs":
+        return "PACS"
+    if key == "vlcs":
+        return "VLCS"
+    if key in {"office-home", "officehome"}:
+        return "OfficeHome"
+    return dataset
+
+
+def resolve_domain_name(dataset: str, domain_id: int) -> str:
+    labels = wt.DATASET_DOMAIN_LABELS.get(dataset)
+    if labels and 0 <= domain_id < len(labels):
+        return labels[domain_id]
+    return f"Domain {domain_id}"
+
+
 def method_label(record: wt.RunRecord) -> str:
     adapt_alg = wt.get_value(record, "adapt_alg")
     if not isinstance(adapt_alg, str):
@@ -138,12 +156,14 @@ def render_latex(
     placement: str,
     label: str,
 ) -> str:
+    ds = dataset_display_name(dataset)
+    dom_name = resolve_domain_name(dataset, domain_id)
     lines = [
         f"\\begin{{table}}[{placement}]",
         "\\centering",
         (
             "\\caption{Compute overhead at evaluation time on "
-            f"{dataset} domain {domain_id} under {attack_rate}\\% attack rate.}}"
+            f"the {dom_name} domain of {ds} under {attack_rate}\\% attack rate.}}"
         ),
         f"\\label{{{label}}}",
         "\\begin{tabular}{lrrrrrr}",

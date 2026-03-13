@@ -15,8 +15,9 @@ parameters:
     value: 0
   attack:
     value: linf_eps-8.0_steps-20
+  # Keep this sweep clean-only; reuse existing 100%-attack runs for comparison plots.
   attack_rate:
-    values: [0, 50, 100]
+    values: [0]
   steps:
     value: 1
   seeds:
