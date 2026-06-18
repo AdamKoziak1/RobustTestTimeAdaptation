@@ -1,0 +1,14 @@
+method,attack_eot_views,acc_mean,acc_std
+Tent + SAFER,0,80.19,0.78
+Tent + SAFER,1,17.69,0.6
+Tent + SAFER,4,8.61,0.68
+Tent + SAFER,8,6.51,0.93
+Tent + SAFER-A,0,83.54,0.35
+Tent + SAFER-A,1,12.84,0.58
+Tent + SAFER-A,4,6.84,0.64
+Tent + SAFER-A,8,5.78,0.33
+Tent + SAFER (mean),0,80.06,0.77
+Tent + SAFER (mean),1,15.59,0.15
+Tent + SAFER (mean),4,8.89,0.42
+Tent + SAFER (mean),8,6.97,0.18
+Tent,,1.56,1.62

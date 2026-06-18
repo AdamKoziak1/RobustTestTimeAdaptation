@@ -1,0 +1,75 @@
+program: unsupervise_adapt.py
+project: safer
+name: ablation_attackrate_curve_safera_tent_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# Adds the missing Tent+SAFER-A curve to fig:attack-rate-sweep across the
+# full rho in {0,10,25,50,75,100} range. sweeps/ablation_attackrate_curve_tent_pacs_dom0.yaml
+# (id otxkjguo) + ablation_attackrate_curve_rho10_tent_pacs_dom0.yaml only
+# cover s_alpha_mode="none" (Tent / Tent+SAFER); this sweep is fixed to
+# s_wrap_alg=1, s_alpha_mode="sigmoid" (the SAFER-A operating point used
+# throughout the paper, matching ablation_alpha_mode_tent_pacs_dom0.yaml)
+# so it contributes ONLY "Tent + SAFER-A" points and merges cleanly with no
+# label collisions.
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    values: [0, 10, 25, 50, 75, 100]
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  s_wrap_alg:
+    value: 1
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 1
+  s_primary_view_pool:
+    value: "cc_drop"
+
+  s_alpha_mode:
+    value: "sigmoid"
+  s_alpha_signal:
+    value: "feat_disagreement"
+  s_alpha_conf_threshold:
+    value: 0.2
+  s_alpha_attack_high_conf:
+    value: 1
+  s_alpha_attack_value:
+    value: 0.25
+  s_alpha_clean_value:
+    value: 0.65
+  s_alpha_transition_width:
+    value: 0.1
+  s_alpha_sigmoid_slope:
+    value: 3.0

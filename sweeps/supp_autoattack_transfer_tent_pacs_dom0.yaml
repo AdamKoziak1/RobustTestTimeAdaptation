@@ -1,0 +1,75 @@
+program: unsupervise_adapt.py
+project: safer
+name: supp_autoattack_transfer_tent_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# E5 (Pt 3, R2-W1): AutoAttack transfer set. Verifies SAFER's gains are not
+# specific to PGD (or to surrogate-side gradient masking) by regenerating the
+# *surrogate's* attacked stream with AutoAttack (Croce & Hein, ICML 2020) at the
+# same Linf budget eps=8/255, on a single domain (PACS:Art, test_envs=0), fully
+# attacked (attack_rate=100), and comparing Tent (s_wrap_alg=0) vs Tent+SAFER
+# (s_wrap_alg=1). Same *black-box transfer* threat model as the main paper: the
+# perturbations are crafted offline on the independent surrogate and replayed
+# into the stream; the deployed TTA/SAFER model is never differentiated through.
+# (The adaptive / white-box-on-SAFER corner is covered separately by the
+# defense-aware EOT attack, E10 / fig:supp-eot-attack.)
+#
+# Prerequisite: generate the AutoAttack streams once per seed (reuses the
+# existing per-domain surrogate checkpoints, so --max_epoch 0):
+#   for s in 0 1 2; do
+#     CUDA_VISIBLE_DEVICES=2 python generate_adv_data.py \
+#       --dataset PACS --test_envs 0 --net resnet18 --algorithm ERM --seed $s \
+#       --attack linf --eps 8 --steps 20 \
+#       --attack_method autoattack --autoattack_version standard --batch_size 64
+#   done
+# This writes datasets_adv/seed_<s>/PACS/resnet18_autoattack_linf_eps-8.0_steps-20/art_painting/,
+# selected at adaptation time via --attack_config_id below.
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  attack_source:
+    value: "precomputed"
+  attack_config_id:
+    value: "resnet18_autoattack_linf_eps-8.0_steps-20"
+  attack_rate:
+    value: 100
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  s_wrap_alg:
+    values: [0, 1]
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 1
+  s_primary_view_pool:
+    value: "cc_drop"
+  s_alpha_mode:
+    value: "none"

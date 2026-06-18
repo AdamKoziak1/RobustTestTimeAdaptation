@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Tuple
@@ -10,6 +11,11 @@ from typing import Dict, Iterable, List, Mapping, MutableMapping, Optional, Tupl
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+
+# Allow running from scripts/ by putting the repo root on sys.path.
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from alg import alg
 from utils.fft import FFTDrop2D
@@ -78,7 +84,7 @@ def parse_args() -> argparse.Namespace:
         "--channel-index",
         type=int,
         default=-1,
-        help="Channel to visualize (−1 uses mean over channels)",
+        help="Channel to visualize (-1 uses mean over channels)",
     )
     parser.add_argument("--cmap", default="magma", help="Matplotlib colormap for heatmaps")
     parser.add_argument("--dpi", type=int, default=200, help="Figure DPI")

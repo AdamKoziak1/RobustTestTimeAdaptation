@@ -1293,7 +1293,7 @@ def _js_divergence(
     eps: float = 1e-12,
 ) -> torch.Tensor:
     """
-    Jensen–Shannon divergence across augmentation views.
+    Jensen-Shannon divergence across augmentation views.
 
     Args:
         probs: tensor with shape (B, V, K) containing per-view class probabilities.

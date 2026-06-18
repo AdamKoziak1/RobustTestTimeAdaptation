@@ -60,9 +60,9 @@ def get_img_dataloader(args):
 def get_img_dataloader_adv(args):
     """
     Builds three loaders for the held-out test domain:
-        • train_loader – stratified split, image_train transform
-        • val_loader   – complementary split, image_test transform
-        • test_loader  – full domain,  image_test transform
+        - train_loader - stratified split, image_train transform
+        - val_loader   - complementary split, image_test transform
+        - test_loader  - full domain,  image_test transform
     """
     # --- domain metadata ----------------------------------------------------
     dom_id   = args.test_envs[0]                        # single held-out env

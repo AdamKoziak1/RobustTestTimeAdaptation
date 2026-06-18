@@ -1,0 +1,59 @@
+program: unsupervise_adapt.py
+project: safer
+name: ablation_static_tte_mean_pacs_dom2
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# E4 / "not just ensembling" rebuttal: a frozen source model (adapt_alg=ERM,
+# no TTA update at all) doing Perez-style static test-time augmentation -
+# uniform mean-pooling over the SAME stochastic SAFER view library used
+# elsewhere (s_primary_view_pool="mean", s_view_weighting=0). Sweeps the same
+# rho range as fig:attack-rate-sweep so it merges straight into that plot as
+# a 4th curve ("Static TTE (mean)", recognized by to_method_label in
+# plot_wandb_attack_rate_curve.py / plot_wandb_eps_sweep.py).
+parameters:
+  adapt_alg:
+    value: "ERM"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 2
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    values: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  s_wrap_alg:
+    value: 1
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 0
+  s_primary_view_pool:
+    value: "mean"
+  s_alpha_mode:
+    value: "none"

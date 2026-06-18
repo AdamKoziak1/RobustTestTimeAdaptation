@@ -1,0 +1,89 @@
+program: unsupervise_adapt.py
+project: safer
+name: eot_safer_defense_aware_attack_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# E10 (stretch): a defense-aware ("adaptive") attack against Tent+SAFER, built
+# on the existing attack_source=live machinery. Rather than attacking a frozen
+# source model and replaying the perturbation (the precomputed-attack setup
+# used everywhere else), this attacks the *currently-deployed, SAFER-pooled*
+# predictor on every batch with PGD whose ascent direction is averaged over
+# attack_eot_views=K fresh stochastic view-pooling realizations per step -
+# i.e. Expectation over Transformation (Athalye et al. 2018), the standard
+# recipe for breaking randomized defenses:
+#   K=1 -> a single noisy realization per step (the attack mostly chases
+#          whichever views happened to be sampled that step - a weak,
+#          "non-defense-aware" adaptive baseline; ~= naive live PGD)
+#   K>1 -> the gradient estimate converges towards the *expected* SAFER-pooled
+#          loss surface, i.e. a perturbation explicitly optimized to survive
+#          (be "bounded in the band preserved by") SAFER's randomized
+#          augmentation + cross-view pooling, not just to fool one draw of it.
+# s_wrap_alg=1 is fixed (Tent+SAFER attacked through itself: the strongest,
+# most favourable setting for the adversary). Pair with
+# eot_safer_defense_aware_attack_baseline_tent_pacs_dom0.yaml, which runs the
+# bare-Tent reference point under the same live-PGD budget at K=1 (EOT
+# averaging is a no-op against a deterministic model, so sweeping K there
+# would just burn compute reproducing the same number three times).
+#
+# NOTE on cost: each PGD step costs K forward+backward passes through the
+# SAFER-wrapped model on top of the usual per-batch adaptation step, so
+# wall-clock scales roughly as attack_steps * K relative to the
+# precomputed-attack runs. attack_steps is reduced to 10 (from the usual 20)
+# to keep K=8 tractable; attack_rate is fixed at 100 so every batch is
+# attacked and the adaptive-attack effect isn't diluted by clean batches.
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  attack_source:
+    value: "live"
+  attack_preset:
+    value: "linf8"
+  attack_steps:
+    value: 10
+  attack_rate:
+    value: 100
+  s_attack_use_views:
+    value: 1
+  attack_eot_views:
+    values: [1, 4, 8]
+
+  s_wrap_alg:
+    value: 1
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 1
+  s_primary_view_pool:
+    value: "cc_drop"
+  s_alpha_mode:
+    value: "none"

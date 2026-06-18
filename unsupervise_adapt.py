@@ -48,11 +48,10 @@ from utils.safer_view import SAFERViewModule
 from datautil.attacked_imagefolder import AttackedImageFolder
 from datautil.getdataloader import get_img_dataloader
 import statistics
-from peft import LoraConfig, get_peft_model
 import wandb
 from adapt_presets import apply_adapt_preset
 from utils.attack_presets import resolve_attack_config, DEFAULT_ATTACK_PRESET
-from utils.adv_attack import build_attack_transform, pgd_attack
+from utils.adv_attack import build_attack_transform, pgd_attack, pgd_attack_eot
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -115,7 +114,7 @@ def get_args():
     parser.add_argument("--beta1", type=float, default=0.5, help="Adam hyper-param")
     parser.add_argument("--checkpoint_freq", type=int, default=3, help="Checkpoint every N epoch")
     parser.add_argument("--classifier", type=str, default="linear", choices=["linear", "wn"])
-    parser.add_argument("--data_file", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/", help="root_dir")
+    parser.add_argument("--data_file", type=str, default=os.getcwd(), help="root_dir")
     parser.add_argument("--dis_hidden", type=int, default=256, help="dis hidden dimension")
     parser.add_argument("--gpu_id", type=str, nargs="?", default="0", help="device id to run")
     parser.add_argument("--lr_decay", type=float, default=0.75, help="for sgd")
@@ -135,7 +134,7 @@ def get_args():
     parser.add_argument("--batch_size", type=int, default=64, help="batch_size of **test** time")
     parser.add_argument("--dataset", type=str, default="PACS", help="office-home,PACS,VLCS,DomainNet")
     parser.add_argument("--data_dir", type=str, default="datasets", help="data dir")
-    parser.add_argument("--attack_data_dir", type=str, default="/home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv", help="attacked data dir")
+    parser.add_argument("--attack_data_dir", type=str, default=os.path.join(os.getcwd(), "datasets_adv"), help="attacked data dir")
     parser.add_argument("--lr",type=float,default=1e-4,help="learning rate of **test** time adaptation,important",)
     parser.add_argument("--net",type=str,default="resnet18",help="featurizer: vgg16, resnet18,resnet50, resnet101,DTNBase,ViT-B16,resnext50",)
     parser.add_argument("--test_envs", type=int, nargs="+", default=[0], help="target domains")
@@ -160,7 +159,7 @@ def get_args():
     parser.add_argument("--lam_cr", type=float, default=0.0, help="Coefficient for Consistency Regularization Loss")
     parser.add_argument("--lam_pl", type=float, default=0.0, help="Coefficient for PsuedoLabel Loss")
     parser.add_argument("--cr_type", type=str, choices=['cosine', 'l2'], default='cosine')   
-    parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, help="Which ResNet block to start consistency-regularization at (0=layer1, …, 3=layer4).")
+    parser.add_argument("--cr_start", type=int, choices=[0,1,2,3], default=0, help="Which ResNet block to start consistency-regularization at (0=layer1, ..., 3=layer4).")
 
     # SAFER
     parser.add_argument("--s_num_views", type=int, default=4, help="Number of augmented SAFER views per input.")
@@ -407,7 +406,17 @@ def get_args():
         type=int,
         default=0,
         choices=[0, 1],
-        help="Use SAFER view pooling during live attacks when adapt_alg=SAFER.",
+        help="Use SAFER view pooling during live attacks (adapt_alg=SAFER, or any algorithm with s_wrap_alg=1).",
+    )
+    parser.add_argument(
+        "--attack_eot_views",
+        type=int,
+        default=1,
+        help="E10: Expectation-over-Transformation sample count K for live/on-the-fly PGD. "
+             "K=1 is a single stochastic forward per step (existing behaviour); K>1 averages "
+             "the loss gradient over K fresh stochastic forward passes per PGD step, producing "
+             "a defense-aware attack that targets SAFER's randomized pooling rather than one "
+             "lucky/unlucky realization of it.",
     )
     # TeSLA
     parser.add_argument("--tesla_sub_policy_dim", type=int, default=2, help="Number of ops per TeSLA sub-policy.")
@@ -460,6 +469,11 @@ def get_args():
     parser.add_argument("--mt_use_teacher_pred", type=int, default=1, choices=[0,1], help="Use teacher predictions for evaluation (1 enables).")
 
     parser.add_argument("--attack", type=str, default="linf_eps-8.0_steps-20", help="Attack config suffix or 'clean'.")
+    parser.add_argument("--attack_config_id", type=str, default="",
+                        help="Override the precomputed attack-stream directory verbatim "
+                             "(e.g. 'resnet18_autoattack_linf_eps-8.0_steps-20' for the E5 "
+                             "AutoAttack transfer set). When empty, the dir is derived as "
+                             "'<net>_<attack>' as usual.")
     parser.add_argument("--attack_preset", type=str, default=None, help="Named attack preset for on-the-fly attacks.")
     parser.add_argument(
         "--attack_source",
@@ -475,7 +489,7 @@ def get_args():
     parser.add_argument("--attack_fft_rho", type=float, default=None)
     parser.add_argument("--attack_fft_alpha", type=float, default=None)
     parser.add_argument("--eps", type=float, default=4)  
-    parser.add_argument("--attack_rate", type=int, choices=[0, 25, 50, 75, 100], default=0)   
+    parser.add_argument("--attack_rate", type=int, choices=range(0, 101), default=0, metavar="{0..100}")
     parser.add_argument(
         "--use_adv_source",
         nargs="?",
@@ -803,11 +817,14 @@ def log_args(args, time_taken_s):
 
 
 def resolve_source_checkpoint(args, dom_id: int) -> str:
+    # Mirror train.py's net_dir_suffix rule (E9): non-default backbones are
+    # trained into test_{env}_{net}/ so they don't overwrite resnet18 checkpoints.
+    net_dir_suffix = "" if args.net == "resnet18" else f"_{args.net}"
     base_dir = os.path.join(
         args.data_file,
         "train_output",
         args.dataset,
-        f"test_{str(dom_id)}",
+        f"test_{str(dom_id)}{net_dir_suffix}",
         f"seed_{str(args.seed)}",
     )
     if args.use_adv_source:
@@ -831,14 +848,15 @@ def adapt_loader(args):
     if args.attack == "clean":
         testset = ImageFolder(root=data_root, transform=clean_transform)
     elif args.attack_source == "precomputed":
+        config_id = args.attack_config_id or f"{args.net}_{args.attack}"
         testset = AttackedImageFolder(
             root=data_root, # normal ImageFolder root
             transform=None,
             adv_root=args.attack_data_dir,
             dataset=args.dataset,
             domain=domain_name,
-            config=f"{args.net}_{args.attack}",
-            rate=args.attack_rate,                            
+            config=config_id,
+            rate=args.attack_rate,
             seed=args.seed)
     else:
         testset = ImageFolder(root=data_root, transform=attack_transform)
@@ -1127,6 +1145,7 @@ def make_adapt_model(args, algorithm):
             optimizer = torch.optim.Adam(algorithm.classifier.parameters(), lr=args.lr)
             print("Update classifier")
         elif args.update_param == "lora":
+            from peft import LoraConfig, get_peft_model
             def resnet_target_modules(model, depth=(3, 4)):
                 targets = []
                 for blk in depth:
@@ -1144,7 +1163,7 @@ def make_adapt_model(args, algorithm):
                 task_type="FEATURE_EXTRACTION"
             )
             algorithm = get_peft_model(algorithm, lora_cfg)
-            algorithm.print_trainable_parameters()  # sanity‑check
+            algorithm.print_trainable_parameters()  # sanity-check
             
             optimizer = torch.optim.Adam(algorithm.parameters(), lr=args.lr)
         elif args.update_param == "nuc":
@@ -1384,13 +1403,18 @@ def run_one_seed(args):
             for param in attack_model.parameters():
                 param.requires_grad_(False)
         else:
-            if args.adapt_alg == "SAFER" and args.s_attack_use_views:
-                base_model = getattr(adapt_model, "model", None)
-                view_module = getattr(adapt_model, "view_module", None)
-                if base_model is not None and view_module is not None:
-                    attack_model = SAFERPooledPredictor(base_model, view_module, log_metrics=False)
-                else:
-                    attack_model = getattr(adapt_model, "model", None)
+            base_model = getattr(adapt_model, "model", None)
+            view_module = getattr(adapt_model, "view_module", None)
+            if view_module is None and isinstance(base_model, SAFERPooledPredictor):
+                # E10: Tent+SAFER (s_wrap_alg=1) stores the pooled predictor as
+                # adapt_model.model rather than exposing view_module directly
+                # (that's only how the standalone "SAFER" adapt_alg is wired).
+                # Unwrap it so a defense-aware attack can target the same
+                # SAFER-pooled forward pass the evaluation actually uses.
+                view_module = base_model.view_module
+                base_model = base_model.model
+            if args.s_attack_use_views and base_model is not None and view_module is not None:
+                attack_model = SAFERPooledPredictor(base_model, view_module, log_metrics=False)
             else:
                 attack_model = getattr(adapt_model, "model", None)
 
@@ -1409,22 +1433,37 @@ def run_one_seed(args):
     attack_rng = torch.Generator(device="cuda" if use_cuda else "cpu")
     attack_rng.manual_seed(args.seed)
 
+    def _run_pgd_attack(images: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+        if args.attack_eot_views > 1:
+            return pgd_attack_eot(
+                attack_model,
+                images,
+                labels,
+                args.attack_eps / 255.0,
+                args.attack_alpha / 255.0,
+                args.attack_steps,
+                norm=args.attack_norm,
+                input_transform=attack_transform,
+                eot_samples=args.attack_eot_views,
+            )
+        return pgd_attack(
+            attack_model,
+            images,
+            labels,
+            args.attack_eps / 255.0,
+            args.attack_alpha / 255.0,
+            args.attack_steps,
+            norm=args.attack_norm,
+            input_transform=attack_transform,
+        )
+
     for _, sample in enumerate(dataloader):
         image, label = sample
         image = image.cuda()
         label = label.cuda()
         if attack_model is not None and args.attack_rate > 0:
             if args.attack_rate >= 100:
-                image = pgd_attack(
-                    attack_model,
-                    image,
-                    label,
-                    args.attack_eps / 255.0,
-                    args.attack_alpha / 255.0,
-                    args.attack_steps,
-                    norm=args.attack_norm,
-                    input_transform=attack_transform,
-                )
+                image = _run_pgd_attack(image, label)
             else:
                 mask = torch.rand(
                     (image.size(0),),
@@ -1432,16 +1471,7 @@ def run_one_seed(args):
                     device=image.device,
                 ) < (args.attack_rate / 100.0)
                 if mask.any():
-                    adv = pgd_attack(
-                        attack_model,
-                        image[mask],
-                        label[mask],
-                        args.attack_eps / 255.0,
-                        args.attack_alpha / 255.0,
-                        args.attack_steps,
-                        norm=args.attack_norm,
-                        input_transform=attack_transform,
-                    )
+                    adv = _run_pgd_attack(image[mask], label[mask])
                     image = image.clone()
                     image[mask] = adv
         logits = adapt_model(image)

@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software or its results, please cite the paper below."
+type: software
+title: "Reliability-Guided Adaptive Ensembling for Robust Test-Time Adaptation"
+version: 1.0.0
+date-released: 2026-06-18
+license: MIT
+repository-code: "https://github.com/AdamKoziak1/RobustTestTimeAdaptation"
+authors:
+  - family-names: Koziak
+    given-names: Adam
+    orcid: "https://orcid.org/0009-0002-9077-2946"
+  - family-names: Guo
+    given-names: Yuhong
+    orcid: "https://orcid.org/0000-0002-7621-342X"
+preferred-citation:
+  type: conference-paper
+  title: "Reliability-Guided Adaptive Ensembling for Robust Test-Time Adaptation"
+  authors:
+    - family-names: Koziak
+      given-names: Adam
+      orcid: "https://orcid.org/0009-0002-9077-2946"
+    - family-names: Guo
+      given-names: Yuhong
+      orcid: "https://orcid.org/0000-0002-7621-342X"
+  collection-title: "Machine Learning and Knowledge Discovery in Databases (ECML PKDD 2026)"
+  publisher:
+    name: "Springer"
+  year: 2026
+  # doi: "<fill in once Springer assigns the chapter DOI>"

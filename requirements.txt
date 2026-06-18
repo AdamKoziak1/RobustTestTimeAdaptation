@@ -2,9 +2,12 @@ torch==2.8.0
 torchvision==0.23.0
 numpy==2.3.2
 tqdm==4.67.1
-timm== 1.0.19
+timm==1.0.19
 scikit-learn==1.7.1
 pillow==11.3.0
 wandb==0.21.2
 peft==0.17.1
 matplotlib==3.10.6
+pyyaml==6.0.3
+# AutoAttack transfer set (supplementary E5): official implementation, no PyPI release.
+autoattack @ git+https://github.com/fra31/auto-attack.git@a39220048b3c9f2cca9a4d3a54604793c68eca7e

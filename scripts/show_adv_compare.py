@@ -4,22 +4,22 @@
 Interactive viewer for clean vs adversarial tensors saved by generate_adv_data.py.
 
 Example:
-  python show_adv_compare.py \
-      --data_root /home/adam/Downloads/RobustTestTimeAdaptation/datasets \
-      --adv_root  /home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv \
+  python scripts/show_adv_compare.py \
+      --data_root $RTTA_ROOT/datasets \
+      --adv_root  $RTTA_ROOT/datasets_adv \
       --dataset PACS --domain 0 --seed 0 \
       --config resnet18_linf_eps-8.0_steps-20
 
 UI:
-  • Buttons: Prev / Random / Next
-  • TextBox: enter an integer to jump to that global index
-  • Overlays: Top-3 predictions for both clean and adversarial panels
+  - Buttons: Prev / Random / Next
+  - TextBox: enter an integer to jump to that global index
+  - Overlays: Top-3 predictions for both clean and adversarial panels
 
 Notes:
-  • If --model is not given, the script tries:
+  - If --model is not given, the script tries:
       {adv_root}/seed_{seed}/{dataset}/clean/model_{<domain_name>}_best.pt
-  • The backbone net is inferred from --config's prefix (e.g., resnet18_*).
-  • Predictions run on pixel tensors in [0,1]; the model featurizer handles
+  - The backbone net is inferred from --config's prefix (e.g., resnet18_*).
+  - Predictions run on pixel tensors in [0,1]; the model featurizer handles
     ImageNet normalization through attach_input_standardization().
 """
 
@@ -29,6 +29,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button, TextBox
 from torchvision.datasets import ImageFolder
+
+# Allow running from scripts/ by putting the repo root on sys.path.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 from alg.alg import get_algorithm_class   # ERM
 from utils.util import img_param_init
@@ -51,14 +56,14 @@ def parse_args():
                         "resnet18_linf_eps-8_steps-20",
                         "resnet18_l2_eps-112.0_steps-100"
                      ], default="resnet18_linf_eps-8.0_steps-20",
-                     help="Attack configuration folder name under datasets_adv/seed_S/DATASET/…")
+                     help="Attack configuration folder name under datasets_adv/seed_S/DATASET/...")
     pa.add_argument("--idx",       type=int, default=-1,
                     help="Initial index to show (global dataset index). -1 => random.")
     pa.add_argument("--cmap",      default="inferno", help="Heatmap colormap for |δ|.")
     pa.add_argument("--figsize",   type=float, nargs=2, default=(10.5, 3.6),
                     help="Matplotlib figure size (W H).")
     pa.add_argument("--model",     default=None,
-                    help="Path to model_<domain>_best.pt. If omitted, auto-resolve in adv_root/…/clean/")
+                    help="Path to model_<domain>_best.pt. If omitted, auto-resolve in adv_root/.../clean/")
     pa.add_argument("--cpu",       action="store_true", help="Force CPU (otherwise use CUDA if available).")
     pa.add_argument("--no_label_lookup", action="store_true",
                     help="Skip ImageFolder label resolution (if original dataset not available).")
@@ -76,7 +81,7 @@ def _img_form(t):  # CxHxW -> HxWxC, clamp to [0,1], numpy
     return t.clamp(0,1).permute(1,2,0).cpu().numpy()
 
 def _infer_net_from_config(cfg: str) -> str:
-    # assumes "<net>_<attack…>"
+    # assumes "<net>_<attack...>"
     return cfg.split("_")[0]
 
 def _attack_type(cfg: str) -> str:
@@ -327,7 +332,7 @@ class Viewer:
 
         # Title with only the relevant norm
         sym, val = self._delta_norm(clean_t, adv_t)
-        self.fig.suptitle(f"{sym} = {val:.4f}   (pixel scale 0–1)   {self._pretty_eps(self.args.config)}", y=0.99, fontsize=10)
+        self.fig.suptitle(f"{sym} = {val:.4f}   (pixel scale 0-1)   {self._pretty_eps(self.args.config)}", y=0.99, fontsize=10)
 
         self.fig.canvas.draw_idle()
 

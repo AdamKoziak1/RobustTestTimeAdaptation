@@ -1,0 +1,74 @@
+program: unsupervise_adapt.py
+project: safer
+name: ablation_attackrate_curve_safer_a_retry_5_10_15_tent_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# Retry-only sweep: re-runs the 3 (attack_rate in {5,10,15}) grid points from
+# ablation_attackrate_curve_safer_a_tent_pacs_dom0 (sweep 03wdpwii) that failed
+# with CUDA OOM before the earlier clean-restart picked up the rest of the grid.
+# Identical config to that sweep -- only the attack_rate grid is restricted so
+# the agent doesn't re-run the 18 already-finished points. Once these 3 finish,
+# merge their acc_mean/acc_std into the SAFER-A attack-rate curve alongside the
+# 18 from 03wdpwii and re-render attack_rate_curve_dom0.{png,csv}.
+
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    values: [5, 10, 15]
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  s_wrap_alg:
+    value: 1
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 1
+  s_primary_view_pool:
+    value: "cc_drop"
+  s_alpha_mode:
+    value: "sigmoid"
+  s_alpha_signal:
+    value: "feat_disagreement"
+  s_alpha_attack_high_conf:
+    value: 1
+  s_alpha_transition_width:
+    value: 0.1
+  s_alpha_attack_value:
+    value: 0.25
+  s_alpha_clean_value:
+    value: 0.65
+  s_alpha_conf_threshold:
+    value: 0.2
+  s_alpha_sigmoid_slope:
+    value: 3.0

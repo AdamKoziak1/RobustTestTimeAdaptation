@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import random
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence
@@ -19,6 +20,11 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision.transforms.functional as TF
 from PIL import Image
+
+# Allow running from scripts/ by putting the repo root on sys.path.
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from utils.safer_aug import _build_registry, _clamp_img, _OpSpec
 

@@ -31,11 +31,19 @@ def to_method_label(record: wt.RunRecord) -> str:
     wrap = bool(wt.to_int(wrap_raw) or 0)
     alpha_mode = wt.get_value(record, "s_alpha_mode")
     alpha_text = str(alpha_mode).lower() if alpha_mode is not None else "none"
+    primary_pool = wt.get_value(record, "s_primary_view_pool")
+    pool_text = str(primary_pool).lower() if primary_pool is not None else ""
 
     if not wrap:
         return adapt_alg
+    # E4: frozen source model + uniformly-averaged augmented views, no TTA
+    # update at all (Perez-style static test-time ensembling baseline).
+    if adapt_alg == "ERM" and pool_text == "mean":
+        return "Static TTE (mean)"
     if alpha_text == "sigmoid":
         return f"{adapt_alg} + SAFER-A"
+    if pool_text == "mean":
+        return f"{adapt_alg} + SAFER (mean)"
     return f"{adapt_alg} + SAFER"
 
 
@@ -116,8 +124,21 @@ def collect_curve_points(
     return curve_mean, curve_std
 
 
+def load_points_from_csv(path: Path) -> Tuple[Dict[str, Dict[int, float]], Dict[str, Dict[int, float]]]:
+    curve_mean: Dict[str, Dict[int, float]] = {}
+    curve_std: Dict[str, Dict[int, float]] = {}
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            label = row["method"]
+            rate = int(float(row["attack_rate"]))
+            curve_mean.setdefault(label, {})[rate] = float(row["acc_mean"])
+            curve_std.setdefault(label, {})[rate] = float(row["acc_std"])
+    return curve_mean, curve_std
+
+
 def sort_labels(labels: Sequence[str]) -> List[str]:
-    preferred = ["Tent", "Tent + SAFER", "Tent + SAFER-A"]
+    preferred = ["Tent", "Tent + SAFER", "Tent + SAFER (mean)", "Tent + SAFER-A", "Static TTE (mean)"]
     order: Dict[str, int] = {name: idx for idx, name in enumerate(preferred)}
     return sorted(labels, key=lambda x: (order.get(x, 999), x))
 
@@ -145,7 +166,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Plot attack-rate robustness curves from W&B sweep runs."
     )
-    parser.add_argument("--sweep-ids", required=True, help="Comma-separated sweep IDs/paths.")
+    parser.add_argument("--sweep-ids", default="", help="Comma-separated sweep IDs/paths.")
     parser.add_argument("--entity", default="bigslav", help="W&B entity for bare sweep IDs.")
     parser.add_argument("--project", default="safer", help="W&B project for bare sweep IDs.")
     parser.add_argument("--dataset", default="PACS", help="Dataset name.")
@@ -164,9 +185,12 @@ def main() -> int:
         default=None,
         help="Optional plot title (default is auto-generated).",
     )
+    parser.add_argument("--xtick-step", type=int, default=0, help="If set, only show x-axis ticks at multiples of this value.")
     parser.add_argument("--ymin", type=float, default=0.0, help="Y-axis minimum.")
     parser.add_argument("--ymax", type=float, default=100.0, help="Y-axis maximum.")
     parser.add_argument("--dpi", type=int, default=180, help="Figure DPI.")
+    parser.add_argument("--fig-width", type=float, default=6.2, help="Figure width in inches.")
+    parser.add_argument("--fig-height", type=float, default=4.2, help="Figure height in inches.")
     parser.add_argument("--output", type=Path, default=Path("sweeps/attack_rate_curve.png"))
     parser.add_argument(
         "--csv-output",
@@ -175,32 +199,39 @@ def main() -> int:
         help="CSV export for plotted points.",
     )
     parser.add_argument("--wandb-timeout", type=int, default=60, help="W&B API timeout in seconds.")
+    parser.add_argument(
+        "--from-csv", type=Path, default=None, help="Re-render from a previously exported points CSV instead of querying W&B."
+    )
+    parser.add_argument("--no-title", action="store_true", help="Omit the plot title.")
     parser.add_argument("--verbose", action="store_true", help="Print diagnostics to stderr.")
     args = parser.parse_args()
 
-    sweep_ids = parse_csv_strings(args.sweep_ids)
-    if not sweep_ids:
-        raise ValueError("No sweep IDs provided.")
     method_filter = set(parse_csv_strings(args.methods)) if args.methods else set()
 
-    records = load_records(
-        sweep_ids=sweep_ids,
-        entity=args.entity,
-        project=args.project,
-        wandb_timeout=args.wandb_timeout,
-        verbose=args.verbose,
-    )
-    select_metric = args.select_metric or args.mean_key
-    curve_mean, curve_std = collect_curve_points(
-        records=records,
-        dataset=args.dataset,
-        domain_id=args.domain_id,
-        mean_key=args.mean_key,
-        std_key=args.std_key,
-        select_mode=args.select,
-        select_metric=select_metric,
-        verbose=args.verbose,
-    )
+    if args.from_csv:
+        curve_mean, curve_std = load_points_from_csv(args.from_csv)
+    else:
+        sweep_ids = parse_csv_strings(args.sweep_ids)
+        if not sweep_ids:
+            raise ValueError("No sweep IDs provided.")
+        records = load_records(
+            sweep_ids=sweep_ids,
+            entity=args.entity,
+            project=args.project,
+            wandb_timeout=args.wandb_timeout,
+            verbose=args.verbose,
+        )
+        select_metric = args.select_metric or args.mean_key
+        curve_mean, curve_std = collect_curve_points(
+            records=records,
+            dataset=args.dataset,
+            domain_id=args.domain_id,
+            mean_key=args.mean_key,
+            std_key=args.std_key,
+            select_mode=args.select,
+            select_metric=select_metric,
+            verbose=args.verbose,
+        )
 
     labels = sort_labels(list(curve_mean.keys()))
     if method_filter:
@@ -208,7 +239,11 @@ def main() -> int:
     if not labels:
         raise ValueError("No matching methods found for the selected dataset/domain.")
 
-    fig, ax = plt.subplots(figsize=(6.2, 4.2))
+    all_rates: set = set()
+    for label in labels:
+        all_rates.update(curve_mean[label].keys())
+
+    fig, ax = plt.subplots(figsize=(args.fig_width, args.fig_height))
     markers = ["o", "s", "^", "D", "P", "X"]
 
     for idx, label in enumerate(labels):
@@ -219,24 +254,29 @@ def main() -> int:
         ys = [p[1] for p in points]
         yerr = [curve_std.get(label, {}).get(rate, 0.0) for rate in xs]
         marker = markers[idx % len(markers)]
-        ax.errorbar(
+        line, = ax.plot(
             xs,
             ys,
-            yerr=yerr,
             marker=marker,
             linewidth=1.8,
             markersize=5.2,
-            capsize=3.0,
             label=label,
         )
+        lo = [y - e for y, e in zip(ys, yerr)]
+        hi = [y + e for y, e in zip(ys, yerr)]
+        ax.fill_between(xs, lo, hi, color=line.get_color(), alpha=0.15, linewidth=0)
 
     ax.set_xlabel("Attack rate (%)")
     ax.set_ylabel("Accuracy (%)")
-    ax.set_xticks([0, 25, 50, 75, 100])
+    if args.xtick_step > 0:
+        ax.set_xticks([r for r in sorted(all_rates) if r % args.xtick_step == 0])
+    else:
+        ax.set_xticks(sorted(all_rates))
     ax.set_ylim(args.ymin, args.ymax)
     ax.grid(True, linewidth=0.4, alpha=0.35)
-    title = args.title or f"{args.dataset} domain {args.domain_id}: robustness curve"
-    ax.set_title(title)
+    if not args.no_title:
+        title = args.title or f"{wt.domain_label(args.dataset, args.domain_id)}: Robustness curve"
+        ax.set_title(title)
     ax.legend(frameon=False)
     fig.tight_layout()
 

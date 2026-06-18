@@ -1,0 +1,70 @@
+program: unsupervise_adapt.py
+project: safer
+name: eot_safer_mean_defense_aware_attack_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# E10 variant: EOT attack on Tent+SAFER with mean (uniform) view pooling.
+# Same setup as eot_safer_defense_aware_attack_pacs_dom0.yaml but with
+# s_primary_view_pool=mean (uniform averaging) instead of cc_drop
+# (reliability-guided) to show robustness loss from removing the reliability
+# weighting under EOT attack. s_alpha_mode=none (base SAFER, no clean retention).
+#
+# Pair with eot_safer_defense_aware_attack_baseline_tent_pacs_dom0.yaml for
+# the bare-Tent reference point (s_wrap_alg=0, K=1 only).
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  attack_source:
+    value: "live"
+  attack_preset:
+    value: "linf8"
+  attack_steps:
+    value: 10
+  attack_rate:
+    value: 100
+  s_attack_use_views:
+    value: 1
+  attack_eot_views:
+    values: [1, 4, 8]
+
+  s_wrap_alg:
+    value: 1
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 1
+  s_primary_view_pool:
+    value: "mean"
+
+  s_alpha_mode:
+    value: "none"

@@ -1,0 +1,5 @@
+method,attack,acc_mean,acc_std
+Tent,pgd,4.98,1.89
+Tent,autoattack,2.69,0.77
+Tent+SAFER,pgd,73.10,0.68
+Tent+SAFER,autoattack,73.31,0.92

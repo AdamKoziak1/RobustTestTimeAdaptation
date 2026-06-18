@@ -31,7 +31,7 @@ def get_args():
                         default=3, help='Checkpoint every N epoch')
     parser.add_argument('--classifier', type=str,
                         default="linear", choices=["linear", "wn"])
-    parser.add_argument('--data_file', type=str, default='/home/adam/Downloads/RobustTestTimeAdaptation',
+    parser.add_argument('--data_file', type=str, default=os.getcwd(),
                         help='root_dir')
     parser.add_argument('--dataset', type=str, default='office')
     parser.add_argument('--data_dir', type=str, default='datasets', help='data dir')
@@ -81,7 +81,14 @@ def get_args():
     args.steps_per_epoch = 100
     args.data_dir = os.path.join(args.data_file,args.data_dir,args.dataset)
     #os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
-    args.output = os.path.join(args.output, args.dataset, f"test_{str(args.test_envs[0])}", f"seed_{str(args.seed)}")
+    # E9: keep non-default backbones (e.g. resnet50) from clobbering the
+    # resnet18 checkpoints that live at .../test_{env}/seed_{seed}/model.pkl -
+    # suffix the env directory with the net name for any non-default backbone
+    # while leaving existing resnet18 paths (and thus existing checkpoints)
+    # untouched. resolve_source_checkpoint() in unsupervise_adapt.py mirrors
+    # this exact rule so adaptation runs find the matching checkpoint.
+    net_dir_suffix = "" if args.net == "resnet18" else f"_{args.net}"
+    args.output = os.path.join(args.output, args.dataset, f"test_{str(args.test_envs[0])}{net_dir_suffix}", f"seed_{str(args.seed)}")
     os.makedirs(args.output, exist_ok=True)
     sys.stdout = Tee(os.path.join(args.output, 'out.txt'))
     sys.stderr = Tee(os.path.join(args.output, 'err.txt'))

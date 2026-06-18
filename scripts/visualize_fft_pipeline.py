@@ -316,7 +316,7 @@ def plot_channel_comparison(
                 ax.set_axis_off()
                 ax.set_title(f"{labels[c_idx]} {name}", fontsize=9)
         fig.suptitle(
-            f"Channel-wise – {titles.get(key, key.replace('_', ' '))}", fontsize=13
+            f"Channel-wise - {titles.get(key, key.replace('_', ' '))}", fontsize=13
         )
         fig.tight_layout(rect=[0, 0, 1, 0.96])
         fig.subplots_adjust(wspace=0.005)

@@ -1,0 +1,55 @@
+program: unsupervise_adapt.py
+project: safer
+name: ablation_attackrate_curve_rho10_tent_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# Supplements sweeps/ablation_attackrate_curve_tent_pacs_dom0.yaml (rho in
+# {0,25,50,75,100}, cached sweep id otxkjguo) with the missing rho=10 point
+# needed for fig:attack-rate-sweep (rho in {0,10,25,50,75,100}).
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  attack:
+    value: linf_eps-8.0_steps-20
+  attack_rate:
+    values: [10]
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  s_wrap_alg:
+    values: [0, 1]
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 1
+  s_primary_view_pool:
+    value: "cc_drop"
+  s_alpha_mode:
+    value: "none"

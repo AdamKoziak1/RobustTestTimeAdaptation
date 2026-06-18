@@ -1,0 +1,61 @@
+program: unsupervise_adapt.py
+project: safer
+name: supp_eps_sweep_tent_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# fig:supp-eps-sweep: accuracy vs Linf perturbation budget eps in
+# {2,4,8,16}/255 on PACS:Art (test_envs=0), Tent vs Tent+SAFER, fully
+# attacked stream (attack_rate=100) so the eps effect is isolated.
+# Requires adversarial streams generated for eps in {2,4,16} first
+# (eps=8 already exists as linf_eps-8.0_steps-20); see commands below.
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  attack:
+    values:
+      - linf_eps-2.0_steps-20
+      - linf_eps-4.0_steps-20
+      - linf_eps-8.0_steps-20
+      - linf_eps-16.0_steps-20
+  attack_rate:
+    value: 100
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  s_wrap_alg:
+    values: [0, 1]
+  s_tta_loss:
+    value: "none"
+  s_tta_weight:
+    value: 0.0
+  s_num_views:
+    value: 4
+  s_aug_prob:
+    value: 1.0
+  s_aug_max_ops:
+    value: 3
+  s_aug_seed:
+    value: 123
+  s_noise_std:
+    value: -1.0
+  s_aug_require_freq_blur:
+    value: 1
+  s_input_is_normalized:
+    value: -1
+  s_view_weighting:
+    value: 1
+  s_primary_view_pool:
+    value: "cc_drop"
+  s_alpha_mode:
+    value: "none"

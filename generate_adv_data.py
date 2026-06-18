@@ -1,6 +1,6 @@
-# coding=utf‑8
+# coding=utf-8
 """
-Train per‑domain model, create ℓp‑bounded PGD images,
+Train per-domain model, create ℓp-bounded PGD images,
 save *one tensor per image*  (clean & adv)  and print accuracy each epoch.
 """
 import argparse, os
@@ -30,7 +30,7 @@ def get_args_adv():
                         default=3, help='Checkpoint every N epoch')
     parser.add_argument('--classifier', type=str,
                         default="linear", choices=["linear", "wn"])
-    parser.add_argument('--data_file', type=str, default='/home/adam/Downloads/RobustTestTimeAdaptation',
+    parser.add_argument('--data_file', type=str, default=os.getcwd(),
                         help='root_dir')
     parser.add_argument('--dataset', type=str, default='office')
     parser.add_argument('--data_dir', type=str, default='datasets', help='data dir')
@@ -69,9 +69,22 @@ def get_args_adv():
     parser.add_argument('--weight_decay', type=float, default=0)
    
     parser.add_argument("--attack", choices=["linf","l2"], default="linf")
-    parser.add_argument("--eps", type=float, default=8)    
+    parser.add_argument("--eps", type=float, default=8)
     parser.add_argument("--alpha_adv", type=float, default=2)
     parser.add_argument("--steps", type=int, default=20)
+    parser.add_argument("--attack_method", type=str, default="pgd",
+                        choices=["pgd", "autoattack"],
+                        help="Adversarial generator: 'pgd' (default, used for all "
+                             "main-paper streams) or 'autoattack' (Croce & Hein, ICML "
+                             "2020) for the E5 transfer-set robustness check. AutoAttack "
+                             "tensors are written to a distinct '<net>_autoattack_...' "
+                             "config dir so they never collide with the PGD streams.")
+    parser.add_argument("--autoattack_version", type=str, default="standard",
+                        choices=["standard", "plus", "rand"],
+                        help="AutoAttack ensemble version (only used when "
+                             "--attack_method autoattack).")
+    parser.add_argument("--max_batches", type=int, default=0,
+                        help="If >0, only attack this many batches (debug/timing).")
     parser.add_argument("--attack_preset", type=str, default=None, help="Named attack preset to apply.")
     parser.add_argument("--fft_rho", type=float, default=1.0,
                         help="Frequency keep ratio for FFT input transform (1.0 disables).")
@@ -260,7 +273,7 @@ if __name__ == "__main__":
         )
     
     wandb.init(
-        project="tta3_train_attack",         # ← change to your project
+        project="tta3_train_attack",         # <- change to your project
         name=f"{args.dataset}_test-env-{args.test_envs[0]}_s{args.seed}_rho{args.fft_rho}_a{args.fft_alpha}",  # run name in W&B
         config=vars(args),                   # log all hyperparameters
     )
@@ -276,9 +289,26 @@ if __name__ == "__main__":
     os.makedirs(domain_clean_dir, exist_ok=True)
 
     configuration_id = get_config_id(args)
+    if args.attack_method == "autoattack":
+        # Keep AutoAttack streams in their own config dir (e.g.
+        # resnet18_autoattack_linf_eps-8.0_steps-20) so they never overwrite or
+        # get confused with the PGD streams that share the same eps/steps. The
+        # TTA side selects this dir via --attack_config_id (see unsupervise_adapt).
+        configuration_id = configuration_id.replace(
+            f"{args.net}_", f"{args.net}_autoattack_", 1
+        )
     attack_config_dom_dir = os.path.join(dataset_dir, configuration_id, dom)
     os.makedirs(attack_config_dom_dir, exist_ok=True)
-    best_model_path = os.path.join(clean_dir, f"model_{dom}_best.pt")
+    # E9: clean_dir (the *.pt clean-image cache AttackedImageFolder reads from)
+    # is intentionally backbone-agnostic and shared - the images don't depend
+    # on --net. Only the white-box source checkpoint trained here for attack
+    # generation is net-specific, so suffix *that* filename (and only for
+    # non-default backbones) to avoid a resnet50 run silently overwriting /
+    # mis-loading the cached resnet18 model_{dom}_best.pt that the existing
+    # adversarial datasets were generated from - this lets resnet50 reuse the
+    # exact same seeds (0,1,2) as the rest of the paper with no collisions.
+    net_tag = "" if args.net == "resnet18" else f"_{args.net}"
+    best_model_path = os.path.join(clean_dir, f"model_{dom}_best{net_tag}.pt")
     
 
     # ---------- training -------------------------------------------------
@@ -340,25 +370,59 @@ if __name__ == "__main__":
         for param in attack_transform.parameters():
             param.requires_grad_(False)
 
+    adversary = None
+    if args.attack_method == "autoattack":
+        from autoattack import AutoAttack
+
+        # AutoAttack operates on pixel inputs in [0,1] and expects a callable
+        # mapping images -> logits. We reuse the *exact* same forward as PGD
+        # (model.predict, optionally pre-composed with the FFT input transform)
+        # so the AutoAttack stream is directly comparable to the PGD stream:
+        # same surrogate, same input domain, same eps budget.
+        def _forward_pass(x):
+            x_in = attack_transform(x) if attack_transform is not None else x
+            return model.predict(x_in)
+
+        aa_norm = "Linf" if args.attack == "linf" else "L2"
+        adversary = AutoAttack(
+            _forward_pass,
+            norm=aa_norm,
+            eps=args.eps / 255.,
+            version=args.autoattack_version,
+            device=torch.device("cuda"),
+            seed=args.seed,
+        )
+        # These benchmarks have few classes (PACS=7, VLCS=5, OfficeHome=65), so
+        # cap the targeted attacks (APGD-T, FAB-T) at num_classes-1 targets;
+        # AutoAttack's default of 9 otherwise triggers a warning and wastes work.
+        n_target = max(1, args.num_classes - 1)
+        adversary.apgd_targeted.n_target_classes = n_target
+        adversary.fab.n_target_classes = n_target
+
     ptr = 0
-    for img, lab, _ in tqdm(attack_loader, desc="attack"):
+    for b_i, (img, lab, _) in enumerate(tqdm(attack_loader, desc="attack")):
+        if args.max_batches and b_i >= args.max_batches:
+            break
         img, lab = img.to(torch.device('cuda')), lab.to(torch.device('cuda'))
         bsz = img.size(0)
 
-        img_adv = pgd(
-            model,
-            img,
-            lab,
-            args.eps / 255.,
-            args.alpha_adv / 255.,
-            args.steps,
-            n_classes,
-            args.attack,
-            input_transform=attack_transform,
-            attack_variant=args.attack_variant,
-            attack_augmenter=attack_augmenter,
-            attack_views=args.attack_aug_views,
-        )
+        if args.attack_method == "autoattack":
+            img_adv = adversary.run_standard_evaluation(img, lab, bs=bsz)
+        else:
+            img_adv = pgd(
+                model,
+                img,
+                lab,
+                args.eps / 255.,
+                args.alpha_adv / 255.,
+                args.steps,
+                n_classes,
+                args.attack,
+                input_transform=attack_transform,
+                attack_variant=args.attack_variant,
+                attack_augmenter=attack_augmenter,
+                attack_views=args.attack_aug_views,
+            )
 
         adv_cursor = 0                   # points into img_adv
         for k in range(bsz):

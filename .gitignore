@@ -186,3 +186,5 @@ tta_output_old/*
 *.sh
 .gemini
 .gpu-queues/
+.vscode/
+tta-full.yml

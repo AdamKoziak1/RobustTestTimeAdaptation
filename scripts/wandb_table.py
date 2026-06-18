@@ -229,6 +229,16 @@ def format_cell(
     return f"{fmt.format(mean_val)}$\\pm${fmt.format(std_val)}"
 
 
+def domain_label(dataset: Optional[str], domain_id: Optional[int]) -> str:
+    """Human-readable 'Dataset: DomainName' label (e.g. 'PACS: Art Painting')."""
+    names = DATASET_DOMAIN_LABELS.get(dataset) if dataset else None
+    if names and domain_id is not None and 0 <= domain_id < len(names):
+        return f"{dataset}: {names[domain_id]}"
+    if dataset and domain_id is not None:
+        return f"{dataset} domain {domain_id}"
+    return str(dataset or "")
+
+
 def resolve_domain_names(dataset: Optional[str], domain_names: Optional[List[str]]) -> Optional[List[str]]:
     if domain_names:
         return domain_names

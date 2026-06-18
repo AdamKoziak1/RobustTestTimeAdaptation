@@ -182,7 +182,7 @@ def visualize_distributions(
     ax_freq.set_axis_off()
     cbar0 = fig_freq.colorbar(im0, ax=ax_freq, fraction=0.035, pad=0.02)
     cbar0.ax.tick_params(labelsize=8)
-    fig_freq.suptitle(f"{args.dataset} env {args.test_env} – {args.attack}", fontsize=12)
+    fig_freq.suptitle(f"{args.dataset} env {args.test_env} - {args.attack}", fontsize=12)
     fig_freq.tight_layout(rect=[0, 0, 1, 0.97])
     freq_path = output_dir / f"dataset_fft_diff_freq_{meta}.png"
     fig_freq.savefig(freq_path, dpi=args.dpi)
@@ -194,7 +194,7 @@ def visualize_distributions(
     ax_recon.imshow(np.clip(recon_vis, 0.0, 1.0))
     ax_recon.set_title("Reconstruction difference (adv - clean)")
     ax_recon.set_axis_off()
-    fig_recon.suptitle(f"{args.dataset} env {args.test_env} – {args.attack}", fontsize=12)
+    fig_recon.suptitle(f"{args.dataset} env {args.test_env} - {args.attack}", fontsize=12)
     fig_recon.tight_layout(rect=[0, 0, 1, 0.97])
     recon_path = output_dir / f"dataset_fft_diff_recon_{meta}.png"
     fig_recon.savefig(recon_path, dpi=args.dpi)

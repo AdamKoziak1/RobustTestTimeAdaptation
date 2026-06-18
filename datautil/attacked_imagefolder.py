@@ -7,7 +7,7 @@ class AttackedImageFolder(ImageFolder):
     def __init__(self, *,
                  root, transform,
                  adv_root,      # path to datasets_adv
-                 dataset,       # "PACS", "office-home", …
+                 dataset,       # "PACS", "office-home", ...
                  domain,        # e.g. "photo"
                  config,        # configuration_id that holds the adversarial tensors
                  rate=100,       # attack percentage

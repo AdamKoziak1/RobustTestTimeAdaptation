@@ -1,0 +1,47 @@
+program: unsupervise_adapt.py
+project: safer
+name: eot_safer_defense_aware_attack_baseline_tent_pacs_dom0
+method: grid
+metric:
+  name: acc_mean
+  goal: maximize
+
+# E10 baseline: bare Tent (s_wrap_alg=0, no SAFER) under the *same* live-PGD
+# attack budget (attack_source=live, linf8 preset, attack_steps=10,
+# attack_rate=100) as eot_safer_defense_aware_attack_pacs_dom0.yaml, at
+# attack_eot_views=1. Tent's inner classifier is deterministic, so EOT
+# averaging over K stochastic realizations is a no-op for it (K>1 would just
+# reproduce this same number K times at K-times the cost) - this single point
+# is the correct reference: "what does this attack budget do with no SAFER
+# wrapper to be defense-aware about". Merges into the same plot/table as the
+# Tent+SAFER sweep via the existing to_method_label "Tent" / "Tent + SAFER"
+# detection (s_wrap_alg is the only thing that differs).
+parameters:
+  adapt_alg:
+    value: "Tent"
+  dataset:
+    value: "PACS"
+  test_envs:
+    value: 0
+  steps:
+    value: 1
+  seeds:
+    value: "0,1,2"
+  batch_size:
+    value: 64
+
+  attack_source:
+    value: "live"
+  attack_preset:
+    value: "linf8"
+  attack_steps:
+    value: 10
+  attack_rate:
+    value: 100
+  s_attack_use_views:
+    value: 1
+  attack_eot_views:
+    value: 1
+
+  s_wrap_alg:
+    value: 0

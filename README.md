@@ -3,12 +3,16 @@
 This repository builds on [TSD](https://github.com/SakurajimaMaiii/TSD) and contains code/results for robust test-time adaptation with SAFER.
 
 ## ECML Reproducibility Checklist
-1. Create environment and install dependencies.
+1. Create the environment and install dependencies ([uv](https://docs.astral.sh/uv/)). `uv sync` provisions `.venv` from the pinned `pyproject.toml`/`uv.lock` (Python 3.13, all deps including the `autoattack` git package):
 ```bash
-conda create -n tta-ecml python=3.13.5 -y
-conda activate tta-ecml
-pip install -r requirements.txt
-pip install pyyaml
+uv sync
+source .venv/bin/activate
+wandb login
+```
+Or install into your own environment with pip / `uv pip`:
+```bash
+uv venv .venv --python 3.13 && source .venv/bin/activate
+uv pip install -r requirements.txt
 wandb login
 ```
 
@@ -33,7 +37,7 @@ Links:
 - VLCS: https://drive.google.com/uc?id=1skwblH1_okBwxWxmRsp9_qi15hyPpxg8
 
 4. Reproduce paper artifacts from logged W&B sweeps (recommended for review).  
-These commands regenerate the `.tex/.csv/.png` files already tracked in `sweeps/`.
+These commands regenerate the `.tex`/`.csv` artifacts tracked in `sweeps/` and render the corresponding `.png` figures locally.
 
 Main paper tables (PACS, VLCS, OfficeHome + domain average):
 ```bash
@@ -66,7 +70,7 @@ python scripts/wandb_alpha_signal_table.py \
   --output sweeps/alpha_signal_table_dom0.tex
 ```
 
-Sensitivity plots used in `paper.tex`:
+Sensitivity plots used in the paper:
 ```bash
 python scripts/plot_wandb_param_curve.py \
   --sweep-ids mxif4s7w \
@@ -133,7 +137,7 @@ python scripts/plot_wandb_param_curve.py \
   --csv-output sweeps/alpha_cleanval_sensitivity_dom0_0_100.csv
 ```
 
-Batch-stability plot used in `paper.tex`:
+Batch-stability plot used in the paper:
 ```bash
 python scripts/plot_wandb_batch_acc_history.py \
   --run-ids 7x4fwbep,wf4s03uf,ta93e6fh,2pd4iyfq,6c31hz8j,nfri3cya \
@@ -144,10 +148,9 @@ python scripts/plot_wandb_batch_acc_history.py \
   --csv-output sweeps/batch_stability_dom0_0_100_batch_acc.csv
 ```
 
-5. Compile the paper:
-```bash
-latexmk -pdf paper.tex
-```
+5. Compile the paper with your LaTeX toolchain (e.g. `latexmk -pdf`). Build the main
+   paper first, then the supplementary: the supplementary uses `xr` to resolve
+   main-paper cross-references and therefore needs the main paper's `.aux` to exist.
 
 ## Full Rerun From Scratch (Compute-Heavy)
 1. Train source models (all datasets, domains, seeds).
@@ -172,6 +175,24 @@ for d in PACS VLCS office-home; do
     done
   done
 done
+```
+
+   AutoAttack transfer set (supplementary E5; the `autoattack` package is pinned in `pyproject.toml`/`requirements.txt`, so `uv sync` already installs it).
+   Reuses the existing per-domain surrogate checkpoints (`--max_epoch 0`), writes to a
+   distinct `<net>_autoattack_...` config dir, and is selected at adaptation time via
+   `--attack_config_id`:
+```bash
+for s in 0 1 2; do
+  python generate_adv_data.py --dataset PACS --data_file "$RTTA_ROOT" --data_dir datasets \
+    --test_envs 0 --net resnet18 --algorithm ERM --seed "$s" \
+    --attack linf --eps 8 --steps 20 \
+    --attack_method autoattack --autoattack_version standard --batch_size 64
+done
+# Evaluate Tent vs Tent+SAFER on the AutoAttack stream (see sweeps/supp_autoattack_transfer_tent_pacs_dom0.yaml):
+python unsupervise_adapt.py --dataset PACS --data_file "$RTTA_ROOT" --data_dir datasets \
+  --attack_data_dir "$RTTA_ROOT/datasets_adv" --test_envs 0 --adapt_alg Tent \
+  --attack_source precomputed --attack_config_id resnet18_autoattack_linf_eps-8.0_steps-20 \
+  --attack_rate 100 --seeds 0,1,2 --batch_size 64 --steps 1 --s_wrap_alg 1
 ```
 
 3. Launch adaptation sweeps with W&B (`wandb sweep <yaml>`, then `wandb agent <entity/project/sweep_id>`).  

@@ -1,0 +1,9 @@
+method,eps_pixel_scale,acc_mean,acc_std
+Tent,2.0,22.61,4.64
+Tent,4.0,6.8,2.22
+Tent,8.0,4.98,1.89
+Tent,16.0,1.9,0.8
+Tent + SAFER,2.0,74.69,0.72
+Tent + SAFER,4.0,74.25,0.89
+Tent + SAFER,8.0,73.1,0.68
+Tent + SAFER,16.0,66.08,0.98

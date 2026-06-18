@@ -4,9 +4,9 @@
 Analyze clean vs attacked prediction distributions per image.
 
 Example:
-  python analyze_label_distributions.py \
-    --data_root /home/adam/Downloads/RobustTestTimeAdaptation/datasets \
-    --adv_root /home/adam/Downloads/RobustTestTimeAdaptation/datasets_adv \
+  python scripts/analyze_label_distributions.py \
+    --data_root $RTTA_ROOT/datasets \
+    --adv_root $RTTA_ROOT/datasets_adv \
     --dataset PACS --domain 0 --seed 1 \
     --config resnet18_linf_eps-8.0_steps-20 \
     --max_images 50 --topk 10
@@ -27,6 +27,11 @@ from torchvision.datasets import ImageFolder
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Allow running from scripts/ by putting the repo root on sys.path.
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
 from alg.alg import get_algorithm_class
 from utils.util import img_param_init
